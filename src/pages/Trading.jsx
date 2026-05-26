@@ -1,11 +1,44 @@
-import { useMemo } from 'react';
-import { DATA } from '../data.js';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { CandleChart } from '../components/CandleChart.jsx';
+import { TradeForm } from '../components/TradeForm.jsx';
+import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
+import { useAuth } from '../lib/useAuth.js';
 
 export function Trading() {
+  const { user } = useAuth();
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await listTrades({ limit: 200 });
+      setTrades(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Realtime — เปิด 2 tab จะเห็น update ทันที
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsub = subscribeTrades(user.id, () => refresh());
+    return () => unsub();
+  }, [user?.id, refresh]);
+
+  const stats = useMemo(() => computeStats(trades), [trades]);
+
   const candles = useMemo(() => {
+    // Synthetic chart — ภายหลังจะแทนด้วยข้อมูลจริงจาก price feed
     const out = [];
     let price = 1.0820;
     for (let i = 0; i < 80; i++) {
@@ -20,8 +53,21 @@ export function Trading() {
     return out;
   }, []);
 
-  const wins = DATA.trades.filter(t => t.status === 'WIN').length;
-  const winRate = Math.round((wins / DATA.trades.length) * 100);
+  const handleEdit = (trade) => { setEditing(trade); setFormOpen(true); };
+  const handleNew  = () => { setEditing(null); setFormOpen(true); };
+
+  const handleDelete = async (trade) => {
+    if (!confirm(`ลบ trade ${trade.symbol} วันที่ ${formatDate(trade.trade_date)} ?`)) return;
+    try {
+      await deleteTrade(trade.id);
+      refresh();
+    } catch (e) {
+      alert('ลบไม่สำเร็จ: ' + e.message);
+    }
+  };
+
+  const totalPnlDisplay = (stats.totalPnl >= 0 ? '+' : '') + '฿' + Math.abs(stats.totalPnl).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const featured = trades.find(t => t.status === 'WIN' && (t.reason || t.emotion)) || trades[0];
 
   return (
     <>
@@ -29,21 +75,50 @@ export function Trading() {
         eyebrow="ICT · SMC · NY/LDN Session"
         title="Trading" em="Journal"
         sub="บันทึก setup, screenshot และอารมณ์ของทุก trade — เพื่อหา edge ของตัวเอง"
-        meta={<><div>เดือน · พ.ค. 2568</div><div className="page-header__meta-big profit">+฿18,420</div></>}
+        meta={<><div>เดือน · {currentMonthLabel()}</div>
+          <div className={`page-header__meta-big ${stats.totalPnl >= 0 ? 'profit' : 'loss'}`}>{totalPnlDisplay}</div></>}
         actions={<>
-          <button className="btn btn--ghost"><Icon name="filter" size={14}/> Filter</button>
-          <button className="btn btn--primary"><Icon name="plus" size={14}/> Log Trade</button>
+          <button className="btn btn--ghost" onClick={refresh}><Icon name="filter" size={14}/> Refresh</button>
+          <button className="btn btn--primary" onClick={handleNew}><Icon name="plus" size={14}/> Log Trade</button>
         </>}
       />
 
       <div className="page-body">
+        {error && (
+          <div style={{
+            marginBottom: 18, padding: '10px 14px', borderRadius: 'var(--r-md)',
+            background: 'var(--loss-bg)', color: 'var(--loss)',
+            border: '1px solid #4a2e2a', fontSize: 13,
+          }}>⚠ {error}</div>
+        )}
+
+        {/* KPI row */}
         <div className="grid-4" style={{ marginBottom: 22 }}>
-          <div className="card"><div className="stat__label">Win Rate</div><div className="stat__value" style={{ color: 'var(--profit)' }}>{winRate}%</div><div className="stat__delta">{wins}W / {DATA.trades.length - wins}L · 7 trades</div></div>
-          <div className="card"><div className="stat__label">Avg R:R</div><div className="stat__value">1 : 2.4</div><div className="stat__delta">target 1:2 ขึ้นไป</div></div>
-          <div className="card"><div className="stat__label">Profit Factor</div><div className="stat__value">3.18</div><div className="stat__delta profit">healthy zone</div></div>
-          <div className="card"><div className="stat__label">Max Drawdown</div><div className="stat__value loss">−4.2%</div><div className="stat__delta">วันที่ 18 พ.ค.</div></div>
+          <div className="card">
+            <div className="stat__label">Win Rate</div>
+            <div className="stat__value" style={{ color: stats.winRate >= 50 ? 'var(--profit)' : 'var(--ink)' }}>
+              {loading ? '—' : `${stats.winRate}%`}
+            </div>
+            <div className="stat__delta">{stats.wins}W / {stats.losses}L · {stats.count} trades</div>
+          </div>
+          <div className="card">
+            <div className="stat__label">Avg R:R</div>
+            <div className="stat__value">{loading ? '—' : (stats.avgRR === '—' ? '—' : `1 : ${stats.avgRR}`)}</div>
+            <div className="stat__delta">target 1:2 ขึ้นไป</div>
+          </div>
+          <div className="card">
+            <div className="stat__label">Profit Factor</div>
+            <div className="stat__value">{loading ? '—' : stats.profitFactor}</div>
+            <div className="stat__delta profit">{Number(stats.profitFactor) >= 1.5 ? 'healthy zone' : 'ต้องปรับ'}</div>
+          </div>
+          <div className="card">
+            <div className="stat__label">Max Drawdown</div>
+            <div className="stat__value loss">{loading ? '—' : `฿${Math.round(stats.maxDrawdown).toLocaleString()}`}</div>
+            <div className="stat__delta">running peak</div>
+          </div>
         </div>
 
+        {/* Chart + Trade Plan */}
         <div className="grid-2" style={{ marginBottom: 22 }}>
           <div className="card">
             <div className="card__head">
@@ -105,68 +180,161 @@ export function Trading() {
           </div>
         </div>
 
+        {/* Trade log */}
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div className="card__head" style={{ padding: '20px 20px 14px', margin: 0, borderBottom: '1px solid var(--line)' }}>
             <div className="card__title">Trade Log</div>
             <div className="row" style={{ gap: 8 }}>
-              <span className="card__label">7 trades</span>
-              <button className="btn btn--ghost btn--sm">Export CSV</button>
+              <span className="card__label">{stats.count} trades</span>
+              <button className="btn btn--ghost btn--sm" onClick={() => exportCSV(trades)}>Export CSV</button>
             </div>
           </div>
-          <div className="trade-row trade-row--head">
-            <span>DATE</span><span>SYMBOL</span><span>SIDE</span><span>SETUP</span>
-            <span>R:R</span><span>P&amp;L</span><span style={{ textAlign: 'right' }}>RESULT</span>
-          </div>
-          {DATA.trades.map(t => (
-            <div key={t.id} className="trade-row">
-              <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>{t.date}</span>
-              <span className="trade-symbol">{t.sym}</span>
-              <span className={`trade-side trade-side--${t.side}`} style={{ justifySelf: 'start' }}>{t.side.toUpperCase()}</span>
-              <span style={{ color: 'var(--ink-2)' }}>{t.setup}</span>
-              <span className="mono" style={{ fontSize: 12 }}>{t.rr}</span>
-              <span className={`mono ${t.status === 'WIN' ? 'profit' : 'loss'}`} style={{ fontWeight: 500 }}>{t.pnl}</span>
-              <span style={{ textAlign: 'right' }}>
-                <span className={`tag ${t.status === 'WIN' ? 'tag--profit' : 'tag--loss'}`}>{t.status}</span>
-              </span>
-            </div>
-          ))}
+
+          {loading ? (
+            <EmptyState icon="⟳" title="กำลังโหลด..." />
+          ) : trades.length === 0 ? (
+            <EmptyState
+              icon="✦"
+              title="ยังไม่มี Trade ในระบบ"
+              hint="กดปุ่ม “Log Trade” มุมขวาบนเพื่อบันทึก trade แรก"
+            />
+          ) : (
+            <>
+              <div className="trade-row trade-row--head" style={{ gridTemplateColumns: '70px 80px 80px 1fr 80px 100px 100px 60px' }}>
+                <span>DATE</span><span>SYMBOL</span><span>SIDE</span><span>SETUP</span>
+                <span>R:R</span><span>P&amp;L</span><span style={{ textAlign: 'right' }}>RESULT</span><span></span>
+              </div>
+              {trades.map(t => (
+                <TradeRow key={t.id} trade={t} onEdit={handleEdit} onDelete={handleDelete} />
+              ))}
+            </>
+          )}
         </div>
 
-        <div className="card" style={{ marginTop: 22 }}>
-          <div className="card__head">
-            <div>
-              <div className="card__label">Trade ของวัน</div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, marginTop: 4 }}>
-                <span style={{ fontStyle: 'italic' }}>EURUSD</span> <span className="muted" style={{ fontSize: 14 }}>· 22 พ.ค. · 14:32 LDN</span>
+        {/* Featured trade write-up */}
+        {featured && (featured.reason || featured.emotion) && (
+          <div className="card" style={{ marginTop: 22 }}>
+            <div className="card__head">
+              <div>
+                <div className="card__label">Trade ล่าสุดที่มีโน้ต</div>
+                <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, marginTop: 4 }}>
+                  <span style={{ fontStyle: 'italic' }}>{featured.symbol}</span>{' '}
+                  <span className="muted" style={{ fontSize: 14 }}>· {formatDate(featured.trade_date)} · {featured.session}</span>
+                </div>
               </div>
+              <span className={`tag ${featured.status === 'WIN' ? 'tag--profit' : 'tag--loss'}`}>
+                {formatPnl(featured.pnl)} · {featured.rr || '—'}
+              </span>
             </div>
-            <span className="tag tag--profit">+฿4,820 · 1:3.2R</span>
-          </div>
-          <div className="grid-2">
-            <div>
-              <div className="card__label" style={{ marginBottom: 8 }}>Why I took this trade</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--ink-2)' }}>
-                4H bullish bias ชัด — มี unmitigated bullish order block ที่ 1.0815 หลังจาก break ของ structure ตอน NY ก่อนหน้า ผมรอให้ราคา sweep liquidity ใต้ Asian low ที่ 1.0795 แล้วได้ CHoCH ที่ 5m ก่อน เข้า long ที่ FVG บน 1m หลัง displacement
-              </div>
+            <div className="grid-2">
+              {featured.reason && (
+                <div>
+                  <div className="card__label" style={{ marginBottom: 8 }}>Why I took this trade</div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--ink-2)' }}>{featured.reason}</div>
+                </div>
+              )}
+              {featured.emotion && (
+                <div>
+                  <div className="card__label" style={{ marginBottom: 8 }}>What I felt</div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--ink-2)', fontStyle: 'italic', fontFamily: 'var(--f-display)' }}>
+                    "{featured.emotion}"
+                  </div>
+                </div>
+              )}
             </div>
-            <div>
-              <div className="card__label" style={{ marginBottom: 8 }}>What I felt</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--ink-2)', fontStyle: 'italic', fontFamily: 'var(--f-display)' }}>
-                "รู้สึกใจเย็นมากตอนรอ. ตอน sweep เกิด ผมเกือบเข้าเร็วเกินไป แต่หยุดตัวเองได้ทัน รออีก 2 แท่งให้ CHoCH ยืนยัน — นี่คือสิ่งที่ตัวเอง 6 เดือนก่อนไม่เคยทำได้"
-              </div>
-            </div>
           </div>
-          <div className="divider" />
-          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <span className="setup-chip">OB · Bullish</span>
-            <span className="setup-chip">FVG · 1m</span>
-            <span className="setup-chip">Liquidity Sweep</span>
-            <span className="setup-chip">CHoCH · 5m</span>
-            <span className="setup-chip">LDN Killzone</span>
-            <span className="setup-chip">A+ Setup</span>
-          </div>
-        </div>
+        )}
       </div>
+
+      <TradeForm
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        onSaved={refresh}
+        initialTrade={editing}
+      />
     </>
   );
+}
+
+// ───── helpers ──────────────────────────────────────────────────────────────
+
+function TradeRow({ trade, onEdit, onDelete }) {
+  const t = trade;
+  return (
+    <div className="trade-row" style={{ gridTemplateColumns: '70px 80px 80px 1fr 80px 100px 100px 60px' }}>
+      <span className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>{formatDate(t.trade_date)}</span>
+      <span className="trade-symbol">{t.symbol}</span>
+      <span className={`trade-side trade-side--${t.side}`} style={{ justifySelf: 'start' }}>{t.side?.toUpperCase()}</span>
+      <span style={{ color: 'var(--ink-2)' }}>{t.setup || '—'}</span>
+      <span className="mono" style={{ fontSize: 12 }}>{t.rr || '—'}</span>
+      <span className={`mono ${t.pnl >= 0 ? 'profit' : 'loss'}`} style={{ fontWeight: 500 }}>{formatPnl(t.pnl)}</span>
+      <span style={{ textAlign: 'right' }}>
+        <span className={`tag ${t.status === 'WIN' ? 'tag--profit' : t.status === 'LOSS' ? 'tag--loss' : ''}`}>{t.status}</span>
+      </span>
+      <span style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+        <IconBtn title="แก้ไข" onClick={() => onEdit(t)}>✎</IconBtn>
+        <IconBtn title="ลบ" onClick={() => onDelete(t)}>×</IconBtn>
+      </span>
+    </div>
+  );
+}
+
+function IconBtn({ children, ...props }) {
+  return (
+    <button {...props} style={{
+      width: 24, height: 24, borderRadius: 4,
+      background: 'transparent', border: '1px solid var(--line)',
+      color: 'var(--ink-3)', cursor: 'pointer',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 12,
+    }}>{children}</button>
+  );
+}
+
+function EmptyState({ icon, title, hint }) {
+  return (
+    <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+      <div style={{
+        fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 48,
+        color: 'var(--amber)', marginBottom: 10,
+      }}>{icon}</div>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, marginBottom: 6 }}>{title}</div>
+      {hint && <div style={{ color: 'var(--ink-3)', fontSize: 13 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  const date = new Date(d);
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return `${date.getDate()} ${months[date.getMonth()]}`;
+}
+
+function formatPnl(pnl) {
+  if (pnl == null || pnl === '') return '—';
+  const n = Number(pnl);
+  return (n >= 0 ? '+฿' : '−฿') + Math.abs(n).toLocaleString();
+}
+
+function currentMonthLabel() {
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const d = new Date();
+  return `${months[d.getMonth()]} ${d.getFullYear() + 543}`;
+}
+
+function exportCSV(trades) {
+  if (!trades?.length) return alert('ไม่มี trade ให้ export');
+  const headers = ['date', 'symbol', 'side', 'setup', 'rr', 'pnl', 'status', 'session', 'reason', 'emotion'];
+  const rows = trades.map(t => headers.map(h => {
+    const v = h === 'date' ? t.trade_date : t[h];
+    if (v == null) return '';
+    return `"${String(v).replace(/"/g, '""')}"`;
+  }).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `trades-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click(); URL.revokeObjectURL(url);
 }

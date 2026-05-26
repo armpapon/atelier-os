@@ -114,10 +114,10 @@ export function LoginScreen() {
 
 const styles = {
   container: {
-    minHeight: '100vh', width: '100vw',
+    position: 'fixed', inset: 0,                   // ครอบ viewport จริง ไม่อิงกับ meta width=1280
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: 'radial-gradient(800px 400px at 50% 0%, rgba(212,165,116,0.12), transparent 60%), var(--bg)',
-    padding: 20,
+    padding: 20, overflow: 'auto',
   },
   card: {
     width: '100%', maxWidth: 380,
