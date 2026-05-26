@@ -305,6 +305,112 @@ export async function deleteTransaction(id) {
   if (error) throw error;
 }
 
+/** List transactions in an arbitrary date range — used by analytics */
+export async function listTransactionsRange({ startDate, endDate, scope, limit = 5000 } = {}) {
+  if (!supabase) return [];
+  let q = supabase
+    .from('transactions')
+    .select('*')
+    .gte('occurred_at', startDate)
+    .lt('occurred_at', endDate)
+    .order('occurred_at', { ascending: false })
+    .limit(limit);
+  if (scope) q = q.eq('scope', scope);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+// ── Analytics aggregators (pure client-side) ─────────────────────────────────
+/** Sum income/expense for a list of transactions */
+export function summarize(txns) {
+  let income = 0, expense = 0;
+  for (const t of txns) {
+    if (t.amount > 0) income += t.amount;
+    else expense += Math.abs(t.amount);
+  }
+  const net = income - expense;
+  const savingsRate = income > 0 ? (net / income) * 100 : 0;
+  return { income, expense, net, savingsRate, count: txns.length };
+}
+
+/** Group by yearMonth → { ym: { income, expense, ... } } */
+export function aggregateByMonth(txns) {
+  const m = {};
+  for (const t of txns) {
+    const ym = (t.occurred_at || '').substring(0, 7);
+    if (!ym) continue;
+    if (!m[ym]) m[ym] = { ym, income: 0, expense: 0, count: 0 };
+    if (t.amount > 0) m[ym].income += t.amount;
+    else m[ym].expense += Math.abs(t.amount);
+    m[ym].count++;
+  }
+  return Object.values(m)
+    .map(r => ({ ...r, net: r.income - r.expense, savingsRate: r.income > 0 ? ((r.income - r.expense) / r.income) * 100 : 0 }))
+    .sort((a, b) => a.ym.localeCompare(b.ym));
+}
+
+/** Group expenses by category → sorted descending */
+export function aggregateByCategory(txns) {
+  const m = {};
+  for (const t of txns) {
+    if (t.amount >= 0) continue;
+    const c = t.category || 'อื่น ๆ';
+    if (!m[c]) m[c] = { category: c, type: t.type, amount: 0, count: 0 };
+    m[c].amount += Math.abs(t.amount);
+    m[c].count++;
+  }
+  return Object.values(m).sort((a, b) => b.amount - a.amount);
+}
+
+/** Group by day of month → { '01': totalExpense, '02': ... } */
+export function aggregateByDay(txns, yearMonth) {
+  const m = {};
+  for (const t of txns) {
+    if (t.amount >= 0) continue;
+    const date = (t.occurred_at || '').substring(0, 10);
+    if (!date.startsWith(yearMonth)) continue;
+    const day = date.substring(8, 10);
+    m[day] = (m[day] || 0) + Math.abs(t.amount);
+  }
+  return m;
+}
+
+/** Top N largest expenses */
+export function topExpenses(txns, n = 10) {
+  return txns
+    .filter(t => t.amount < 0)
+    .sort((a, b) => a.amount - b.amount)
+    .slice(0, n);
+}
+
+/** Get the previous yearMonth string (yyyy-mm) */
+export function previousMonth(yearMonth) {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;
+  return `${py}-${String(pm).padStart(2, '0')}`;
+}
+
+/** Get the next yearMonth string (yyyy-mm) */
+export function nextMonth(yearMonth) {
+  const [y, m] = yearMonth.split('-').map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return `${ny}-${String(nm).padStart(2, '0')}`;
+}
+
+/** Get N months back including current (e.g. last 12) as yyyy-mm[] */
+export function lastNMonths(n, fromYearMonth) {
+  const result = [];
+  let cur = fromYearMonth || currentYearMonth();
+  for (let i = 0; i < n; i++) {
+    result.unshift(cur);
+    cur = previousMonth(cur);
+  }
+  return result;
+}
+
 // ── Accounts ─────────────────────────────────────────────────────────────────
 export async function listAccounts({ scope } = {}) {
   if (!supabase) return [];

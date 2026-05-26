@@ -1,159 +1,209 @@
-import { DATA } from '../data.js';
-import { Icon } from '../components/Icon.jsx';
-import { PageHeader } from '../components/PageHeader.jsx';
-import { Sparkline } from '../components/Sparkline.jsx';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  listTransactions, listTransactionsRange, listAccounts, listBudgets,
+  summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
+  previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
+} from '../lib/api/finance.js';
+import { isSupabaseConfigured } from '../lib/supabase.js';
+import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
+import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
+import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
+import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
+
+const SCOPE_TABS = [
+  { id: 'personal', label: 'ส่วนตัว',  accent: '#7aa4f0', sub: 'รายรับ-รายจ่ายของคุณ' },
+  { id: 'family',   label: 'ครอบครัว', accent: '#c084f5', sub: 'กองทุนครอบครัว & น้องอคิน' },
+];
 
 export function Dashboard() {
-  const equityCurve = [120, 122, 121, 124, 128, 127, 130, 134, 133, 136, 140, 138, 143, 148, 152, 150, 156, 161, 159, 165, 172, 178];
-  const moodCurve   = [3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 5, 4, 4, 5, 3, 4, 5, 4, 5, 4, 5, 4];
+  const [scope, setScope]         = useState(() => localStorage.getItem('atelier:dash:scope') || 'personal');
+  const [yearMonth, setYearMonth] = useState(() => localStorage.getItem('atelier:dash:ym') || currentYearMonth());
+
+  const [thisMonth, setThisMonth] = useState([]);
+  const [prevMonth, setPrevMonth] = useState([]);
+  const [trend12, setTrend12]     = useState([]);
+  const [accounts, setAccounts]   = useState([]);
+  const [budgets, setBudgets]     = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+
+  useEffect(() => { localStorage.setItem('atelier:dash:scope', scope); }, [scope]);
+  useEffect(() => { localStorage.setItem('atelier:dash:ym', yearMonth); }, [yearMonth]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setThisMonth([]); setPrevMonth([]); setTrend12([]); setAccounts([]); setBudgets([]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true); setError(null);
+
+    (async () => {
+      try {
+        const prev = previousMonth(yearMonth);
+        const months12 = lastNMonths(12, yearMonth);
+        const { start: startTrend } = getMonthBounds(months12[0]);
+        const { end:   endTrend   } = getMonthBounds(months12[months12.length - 1]);
+
+        const [thisM, prevM, range12, accs, buds] = await Promise.all([
+          listTransactions({ yearMonth, scope, limit: 2000 }),
+          listTransactions({ yearMonth: prev, scope, limit: 2000 }),
+          listTransactionsRange({ startDate: startTrend, endDate: endTrend, scope }),
+          listAccounts({ scope }),
+          listBudgets(yearMonth, scope),
+        ]);
+
+        if (cancelled) return;
+        setThisMonth(thisM || []);
+        setPrevMonth(prevM || []);
+        setTrend12(range12 || []);
+        setAccounts(accs || []);
+        setBudgets(buds || []);
+      } catch (e) {
+        if (!cancelled) setError(e.message || 'โหลดข้อมูลไม่สำเร็จ');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [scope, yearMonth]);
+
+  // ── Computed ────────────────────────────────────────────────────────────────
+  const thisSum = useMemo(() => summarize(thisMonth), [thisMonth]);
+  const prevSum = useMemo(() => summarize(prevMonth), [prevMonth]);
+
+  const trendData = useMemo(() => {
+    const agg = aggregateByMonth(trend12);
+    const months = lastNMonths(12, yearMonth);
+    return months.map(ym => agg.find(a => a.ym === ym) || { ym, income: 0, expense: 0, net: 0, savingsRate: 0, count: 0 });
+  }, [trend12, yearMonth]);
+
+  const categories = useMemo(() => aggregateByCategory(thisMonth), [thisMonth]);
+  const top10      = useMemo(() => topExpenses(thisMonth, 10), [thisMonth]);
+  const dailyMap   = useMemo(() => aggregateByDay(thisMonth, yearMonth), [thisMonth, yearMonth]);
+
+  const deltas = useMemo(() => {
+    const pct = (cur, prev) => prev > 0 ? ((cur - prev) / prev) * 100 : (cur > 0 ? 100 : 0);
+    return {
+      income:      pct(thisSum.income,  prevSum.income),
+      expense:     pct(thisSum.expense, prevSum.expense),
+      net:         pct(thisSum.net,     prevSum.net),
+      savingsRate: thisSum.savingsRate - prevSum.savingsRate,
+    };
+  }, [thisSum, prevSum]);
+
+  const currentTab = SCOPE_TABS.find(t => t.id === scope) || SCOPE_TABS[0];
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <>
-      <PageHeader
-        eyebrow={DATA.weekRange}
-        title="สวัสดีตอนเช้า,"
-        em="อาทิตย์"
-        sub="วันนี้คุณมี 6 งาน · 2 trade ที่เปิดอยู่ · 1 ครอบครัวต้องดูแล. ค่อย ๆ ทำทีละอย่าง"
-        meta={<><div>{DATA.today}</div><div className="page-header__meta-big">06:42 น.</div></>}
-        actions={<button className="btn btn--primary"><Icon name="plus" size={14}/> Quick Entry</button>}
-      />
-      <div className="page-body">
-        <div className="dash-hero">
-          <div className="dash-hero__greeting">วันนี้คือ <em>วันที่ดี</em> ที่จะทำต่อไป</div>
-          <div className="dash-hero__sub">เป้าหมายของสัปดาห์: backtest 30 setup, อ่านหนังสือจบ 1 เล่ม, ใช้เงินไม่เกิน ฿8,000</div>
-          <div className="kpi-strip">
-            {DATA.kpis.map((k, i) => (
-              <div key={i} className="kpi">
-                <div className="stat__label">{k.label}</div>
-                <div className="stat__value" style={{ marginTop: 8, color: k.tone === 'profit' ? 'var(--profit)' : k.tone === 'amber' ? 'var(--amber)' : 'var(--ink)' }}>{k.value}</div>
-                <div className="stat__delta">{k.delta}</div>
-              </div>
-            ))}
+    <div className="page-body" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+      {/* Header: title + month nav */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 14 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.18em', marginBottom: 5 }}>
+              FINANCIAL PLANNER · {formatThaiMonth(yearMonth).toUpperCase()}
+            </div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 32, color: 'var(--ink)', lineHeight: 1.1 }}>
+              ภาพรวม <em style={{ color: currentTab.accent }}>{currentTab.label}</em>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 5 }}>
+              {currentTab.sub} · เทียบกับ {formatThaiMonth(previousMonth(yearMonth))}
+            </div>
           </div>
+          <MonthNav value={yearMonth} onChange={setYearMonth} />
         </div>
 
-        <div style={{ height: 18 }} />
-
-        <div className="dash-grid">
-          <div className="col">
-            <div className="card">
-              <div className="card__head">
-                <div className="card__title">วันนี้ของคุณ</div>
-                <div className="row" style={{ gap: 6 }}>
-                  <span className="card__label">6 งาน</span>
-                  <button className="btn btn--ghost btn--sm">ดูทั้งหมด <Icon name="chevron" size={12}/></button>
-                </div>
-              </div>
-              <div className="today-list">
-                {DATA.todayTasks.map(t => (
-                  <div key={t.id} className={`today-item ${t.done ? 'today-item--done' : ''}`}>
-                    <div className="today-item__check">{t.done && <Icon name="check" size={12} />}</div>
-                    <div><div className="today-item__text">{t.text}</div></div>
-                    <div className="row" style={{ gap: 10 }}>
-                      <span className={`tag tag--${t.tag === 'TRADE' ? 'amber' : t.tag === 'FINANCE' ? 'profit' : t.tag === 'LEARN' ? 'blue' : t.tag === 'READ' ? 'violet' : 'rose'}`}>{t.tag}</span>
-                      <span className="today-item__meta">{t.time}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid-2">
-              <div className="card">
-                <div className="card__head">
-                  <div>
-                    <div className="card__label">Equity Curve · 30 วัน</div>
-                    <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, marginTop: 4, color: 'var(--profit)' }}>+฿42,180</div>
-                  </div>
-                  <span className="tag tag--profit">+8.7%</span>
-                </div>
-                <Sparkline data={equityCurve} color="#6cbf83" />
-                <div className="row row--between" style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>
-                  <span>22 เม.ย.</span><span>22 พ.ค.</span>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="card__head">
-                  <div>
-                    <div className="card__label">อารมณ์ & พลังงาน</div>
-                    <div style={{ fontFamily: 'var(--f-display)', fontSize: 28, marginTop: 4 }}>โอเค</div>
-                  </div>
-                  <Icon name="mood" size={22}/>
-                </div>
-                <Sparkline data={moodCurve} color="#d4a574" />
-                <div className="row" style={{ marginTop: 10, gap: 6, flexWrap: 'wrap' }}>
-                  <span className="tag tag--amber">โฟกัสได้ดี</span>
-                  <span className="tag">นอนน้อย</span>
-                  <span className="tag">ใจร้อน</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="col">
-            <div className="card card--paper">
-              <div className="card__head">
-                <div className="card__title" style={{ fontStyle: 'italic' }}>โน้ตของวันนี้</div>
-                <span className="card__label" style={{ color: '#8a6438' }}>22 พ.ค.</span>
-              </div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, lineHeight: 1.55, color: 'var(--paper-ink)' }}>
-                "ก่อนเข้า trade ให้ถามตัวเองว่า — ถ้านี่คือ trade สุดท้ายของเดือน คุณยังจะกดเข้าอยู่ไหม?"
-              </div>
-              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: '#8a6438', marginTop: 14, letterSpacing: '0.1em' }}>
-                — จาก Mark Douglas, Trading in the Zone
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card__head">
-                <div className="card__title">กำลังเรียนอยู่</div>
-                <span className="card__label">3 active</span>
-              </div>
-              {DATA.courses.slice(0, 3).map(c => (
-                <div key={c.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
-                  <div className="row row--between" style={{ marginBottom: 6 }}>
-                    <span className="tag">{c.src}</span>
-                    <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>{c.progress}%</span>
-                  </div>
-                  <div style={{ fontSize: 13.5, color: 'var(--ink)' }}>{c.title}</div>
-                  <div className="mono" style={{ fontSize: 10.5, color: 'var(--ink-3)', marginTop: 3 }}>{c.author} · {c.dur}</div>
-                  <div className="budget-bar" style={{ marginTop: 8 }}>
-                    <div className="budget-bar__fill" style={{ width: `${c.progress}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="card">
-              <div className="card__head">
-                <div className="card__title">การเงินสัปดาห์นี้</div>
-                <span className="tag tag--profit">+฿12,400</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div className="stat"><div className="stat__label">เข้า</div><div className="stat__value profit">฿73,200</div></div>
-                <div className="stat"><div className="stat__label">ออก</div><div className="stat__value loss">฿60,800</div></div>
-              </div>
-              <div className="divider" />
-              <div className="col" style={{ gap: 12 }}>
-                {DATA.budgets.slice(0, 3).map((b, i) => {
-                  const pct = Math.round((b.spent / b.limit) * 100);
-                  return (
-                    <div key={i}>
-                      <div className="row row--between" style={{ marginBottom: 4 }}>
-                        <span style={{ fontSize: 13 }}>{b.cat}</span>
-                        <span className="mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>฿{b.spent.toLocaleString()} / ฿{b.limit.toLocaleString()}</span>
-                      </div>
-                      <div className="budget-bar">
-                        <div className={`budget-bar__fill ${pct > 90 ? 'budget-bar__fill--over' : ''}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+        {/* Scope tabs */}
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg-2)', padding: 4, borderRadius: 'var(--r-md)', border: '1px solid var(--line)', width: 'fit-content' }}>
+          {SCOPE_TABS.map(t => (
+            <button key={t.id} onClick={() => setScope(t.id)}
+              style={{
+                padding: '8px 22px', borderRadius: 'var(--r-sm)', border: 0,
+                background: scope === t.id ? 'var(--surface)' : 'transparent',
+                color: scope === t.id ? t.accent : 'var(--ink-3)',
+                fontFamily: 'var(--f-body)', fontSize: 13, cursor: 'pointer',
+                boxShadow: scope === t.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
+                transition: 'all 130ms', display: 'flex', alignItems: 'center', gap: 7,
+              }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: t.accent, opacity: scope === t.id ? 1 : 0.5 }} />
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
-    </>
+
+      {error && (
+        <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+          ⚠️ {error}
+        </div>
+      )}
+      {loading && (
+        <div style={{ padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--ink-3)', borderRadius: 'var(--r-md)', fontSize: 11, fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', textAlign: 'center' }}>
+          กำลังโหลดข้อมูล…
+        </div>
+      )}
+
+      {/* Row 1: KPI cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        <KPICard
+          label="รายรับเดือนนี้" sub={`${thisMonth.filter(t => t.amount > 0).length} ครั้ง`}
+          value={'+' + formatBaht(thisSum.income, { compact: true })}
+          valueColor="var(--profit)" accent="var(--profit)"
+          delta={deltas.income} deltaLabel="vs เดือนก่อน"
+        />
+        <KPICard
+          label="รายจ่ายเดือนนี้" sub={`${thisMonth.filter(t => t.amount < 0).length} ครั้ง`}
+          value={'-' + formatBaht(thisSum.expense, { compact: true })}
+          valueColor="var(--loss)" accent="var(--loss)"
+          delta={-deltas.expense} deltaLabel="vs เดือนก่อน"
+        />
+        <KPICard
+          label="คงเหลือสุทธิ" sub="รายรับ − รายจ่าย"
+          value={(thisSum.net >= 0 ? '+' : '-') + formatBaht(Math.abs(thisSum.net), { compact: true })}
+          valueColor={thisSum.net >= 0 ? 'var(--ink)' : 'var(--loss)'}
+          accent={thisSum.net >= 0 ? 'var(--amber)' : 'var(--loss)'}
+          delta={deltas.net} deltaLabel="vs เดือนก่อน"
+        />
+        <KPICard
+          label="อัตราการออม" sub="% ของรายรับ"
+          value={isFinite(thisSum.savingsRate) ? thisSum.savingsRate.toFixed(1) + '%' : '—'}
+          valueColor={thisSum.savingsRate >= 20 ? 'var(--profit)' : thisSum.savingsRate >= 0 ? 'var(--amber)' : 'var(--loss)'}
+          accent={thisSum.savingsRate >= 20 ? 'var(--profit)' : 'var(--amber)'}
+          delta={deltas.savingsRate} deltaLabel="pp"
+        />
+      </div>
+
+      {/* Row 2: Cash flow chart */}
+      <CashFlowChart data={trendData} currentYm={yearMonth} onMonthClick={setYearMonth} />
+
+      {/* Row 3: Categories + Top expenses */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
+        <TopExpenses data={top10} />
+      </div>
+
+      {/* Row 4: Budget vs Actual */}
+      <BudgetProgress budgets={budgets} categoryActuals={categories} />
+
+      {/* Row 5: Net worth + Heatmap */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 14 }}>
+        <NetWorthCard accounts={accounts} />
+        <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
+      </div>
+
+      {/* Footer info */}
+      <div style={{
+        marginTop: 8, padding: '10px 16px', borderTop: '1px solid var(--line)',
+        fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)',
+        letterSpacing: '0.1em', textAlign: 'center',
+      }}>
+        {thisMonth.length} รายการเดือนนี้ · {accounts.length} บัญชี · {budgets.length} งบ
+        {!isSupabaseConfigured && ' · DEMO MODE'}
+      </div>
+    </div>
   );
 }
