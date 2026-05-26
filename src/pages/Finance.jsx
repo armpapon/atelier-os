@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Icon } from '../components/Icon.jsx';
-import { PageHeader } from '../components/PageHeader.jsx';
-import { Sparkline } from '../components/Sparkline.jsx';
 import { CSVImporter } from '../components/CSVImporter.jsx';
 import { toneColor } from '../lib/helpers.js';
 import {
-  currentYearMonth, listTransactions, createTransaction, deleteTransaction,
+  listTransactions, listTransactionsRange, createTransaction, deleteTransaction,
   listAccounts, createAccount, deleteAccount,
   listBudgets, listGoals, createGoal, deleteGoal,
+  summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
+  previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
 } from '../lib/api/finance.js';
+import { isSupabaseConfigured } from '../lib/supabase.js';
+import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
+import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
+import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
+import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -22,25 +27,27 @@ const CATEGORIES = [
 ];
 const CAT_ICON = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
 
-function fmt(n) { const a = Math.abs(n); return a >= 1000 ? (a / 1000).toFixed(1) + 'k' : a.toLocaleString('th'); }
-function fmtFull(n) { return Math.abs(n).toLocaleString('th', { maximumFractionDigits: 0 }); }
-function monthLabel(ym) {
-  const [y, m] = ym.split('-').map(Number);
-  return `${'ม.ค.ก.พ.มี.ค.เม.ย.พ.ค.มิ.ย.ก.ค.ส.ค.ก.ย.ต.ค.พ.ย.ธ.ค.'.split('').slice((m - 1) * 4, m * 4).join('') ||
-    ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][m - 1]} ${y + 543}`;
-}
-function thaiMonth(m) { return ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][m - 1] || ''; }
-function mLabel(ym) { const [y,m] = ym.split('-').map(Number); return `${thaiMonth(m)} ${y + 543}`; }
-function txDate(iso) { if (!iso) return ''; const d = new Date(iso); return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }); }
+const SCOPE_META = {
+  personal: { label: 'ส่วนตัว',  accent: '#7aa4f0', sub: 'รายรับ-รายจ่ายส่วนตัว · บัญชี Make · เป้าหมาย' },
+  family:   { label: 'ครอบครัว', accent: '#c084f5', sub: 'รายจ่ายครอบครัว · บัญชีร่วม · กองทุน & งบประมาณ' },
+};
 
-// ── Add Transaction Drawer ────────────────────────────────────────────────────
+function txDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Add Transaction Drawer
+// ════════════════════════════════════════════════════════════════════════════
 function TxnForm({ accounts, scope, onSave, onClose }) {
   const [form, setForm] = useState({
     title: '', amount: '', type: 'food', account_id: accounts[0]?.id || '',
     note: '', occurred_at: new Date().toISOString().split('T')[0],
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError]   = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isIncome = form.type === 'income';
 
@@ -68,14 +75,14 @@ function TxnForm({ accounts, scope, onSave, onClose }) {
       <form onSubmit={handleSubmit} style={{ position: 'relative', width: 440, height: '100%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>บันทึกรายการ</div>
-          <button type="button" onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 18 }}>×</button>
+          <button type="button" onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 18, background: 'none', border: 0, cursor: 'pointer' }}>×</button>
         </div>
         <div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {CATEGORIES.map(c => (
               <button key={c.id} type="button" onClick={() => set('type', c.id)}
-                style={{ padding: '5px 10px', borderRadius: 'var(--r-md)', fontSize: 12, background: form.type === c.id ? 'var(--amber)' : 'var(--surface-2)', color: form.type === c.id ? '#1a1410' : 'var(--ink-2)', border: `1px solid ${form.type === c.id ? 'var(--amber)' : 'var(--line)'}` }}>
+                style={{ padding: '5px 10px', borderRadius: 'var(--r-md)', fontSize: 12, background: form.type === c.id ? 'var(--amber)' : 'var(--surface-2)', color: form.type === c.id ? '#1a1410' : 'var(--ink-2)', border: `1px solid ${form.type === c.id ? 'var(--amber)' : 'var(--line)'}`, cursor: 'pointer' }}>
                 {c.icon} {c.label}
               </button>
             ))}
@@ -116,7 +123,9 @@ function TxnForm({ accounts, scope, onSave, onClose }) {
   );
 }
 
-// ── Account Modal ─────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+//  Account Modal
+// ════════════════════════════════════════════════════════════════════════════
 function AccountModal({ scope, onSave, onClose }) {
   const [form, setForm] = useState({ name: '', type: 'savings', balance: '', tone: 'amber' });
   const [saving, setSaving] = useState(false);
@@ -139,7 +148,8 @@ function AccountModal({ scope, onSave, onClose }) {
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ประเภท</span>
           <select className="input" value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}>
             <option value="savings">ออมทรัพย์</option><option value="checking">กระแสรายวัน</option>
-            <option value="investment">การลงทุน</option><option value="cash">เงินสด</option><option value="crypto">คริปโต</option>
+            <option value="investment">การลงทุน</option><option value="cash">เงินสด</option>
+            <option value="debt">หนี้สิน</option><option value="crypto">คริปโต</option>
           </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -155,7 +165,9 @@ function AccountModal({ scope, onSave, onClose }) {
   );
 }
 
-// ── Goal Modal ────────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+//  Goal Modal
+// ════════════════════════════════════════════════════════════════════════════
 function GoalModal({ scope, onSave, onClose }) {
   const [form, setForm] = useState({ title: '', target_amount: '', current_amount: '0', deadline: '' });
   const [saving, setSaving] = useState(false);
@@ -195,178 +207,264 @@ function GoalModal({ scope, onSave, onClose }) {
   );
 }
 
-// ── Shared Finance View (used by both Personal & Family pages) ────────────────
+// ════════════════════════════════════════════════════════════════════════════
+//  Shared FinanceView — Financial Planner Edition
+// ════════════════════════════════════════════════════════════════════════════
 export function FinanceView({ scope }) {
-  const isPersonal = scope === 'personal';
-  const [txns, setTxns] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [budgets, setBudgets] = useState([]);
-  const [goals, setGoals] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const meta = SCOPE_META[scope] || SCOPE_META.personal;
 
-  const [showTxnForm, setShowTxnForm] = useState(false);
-  const [showAccForm, setShowAccForm] = useState(false);
+  const [yearMonth, setYearMonth] = useState(() => localStorage.getItem(`atelier:fin:ym:${scope}`) || currentYearMonth());
+
+  const [txns, setTxns]         = useState([]);
+  const [prevTxns, setPrevTxns] = useState([]);
+  const [trend12, setTrend12]   = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [budgets, setBudgets]   = useState([]);
+  const [goals, setGoals]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
+
+  const [showTxnForm, setShowTxnForm]   = useState(false);
+  const [showAccForm, setShowAccForm]   = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
 
-  const yearMonth = currentYearMonth();
+  useEffect(() => { localStorage.setItem(`atelier:fin:ym:${scope}`, yearMonth); }, [scope, yearMonth]);
 
   const refresh = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setTxns([]); setPrevTxns([]); setTrend12([]); setAccounts([]); setBudgets([]); setGoals([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true); setError(null);
     try {
-      const [t, a, b, g] = await Promise.all([
-        listTransactions({ yearMonth, scope }),
+      const prev = previousMonth(yearMonth);
+      const months12 = lastNMonths(12, yearMonth);
+      const { start: startTrend } = getMonthBounds(months12[0]);
+      const { end:   endTrend   } = getMonthBounds(months12[months12.length - 1]);
+
+      const [t, p, r12, a, b, g] = await Promise.all([
+        listTransactions({ yearMonth, scope, limit: 2000 }),
+        listTransactions({ yearMonth: prev, scope, limit: 2000 }),
+        listTransactionsRange({ startDate: startTrend, endDate: endTrend, scope }),
         listAccounts({ scope }),
         listBudgets(yearMonth, scope),
         listGoals(scope),
       ]);
-      setTxns(t); setAccounts(a); setBudgets(b); setGoals(g);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
+
+      setTxns(t || []); setPrevTxns(p || []); setTrend12(r12 || []);
+      setAccounts(a || []); setBudgets(b || []); setGoals(g || []);
+    } catch (err) {
+      setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
+    } finally { setLoading(false); }
   }, [yearMonth, scope]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const stats = useMemo(() => {
-    const income  = txns.filter(t => t.amount > 0).reduce((s, t) => s + Number(t.amount), 0);
-    const expense = txns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
-    const net = income - expense;
-    const totalBalance = accounts.reduce((s, a) => s + Number(a.balance || 0), 0);
-    const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
-    return { income, expense, net, totalBalance, savingsRate };
-  }, [txns, accounts]);
+  // ── Computed ────────────────────────────────────────────────────────────────
+  const thisSum = useMemo(() => summarize(txns),     [txns]);
+  const prevSum = useMemo(() => summarize(prevTxns), [prevTxns]);
 
-  const budgetSpend = useMemo(() => {
-    const spend = {};
-    for (const t of txns) {
-      if (t.amount < 0 && t.type) spend[t.type] = (spend[t.type] || 0) + Math.abs(Number(t.amount));
-    }
-    return spend;
-  }, [txns]);
+  const trendData = useMemo(() => {
+    const agg = aggregateByMonth(trend12);
+    const months = lastNMonths(12, yearMonth);
+    return months.map(ym => agg.find(a => a.ym === ym) || { ym, income: 0, expense: 0, net: 0, savingsRate: 0, count: 0 });
+  }, [trend12, yearMonth]);
 
-  const spendCurve = useMemo(() => {
-    const byDay = {};
-    for (const t of txns) {
-      if (t.amount < 0) { const d = t.occurred_at?.split('T')[0] || ''; byDay[d] = (byDay[d] || 0) + Math.abs(Number(t.amount)); }
-    }
-    return Object.values(byDay).slice(-20);
-  }, [txns]);
+  const categories = useMemo(() => aggregateByCategory(txns), [txns]);
+  const top10      = useMemo(() => topExpenses(txns, 10),      [txns]);
+  const dailyMap   = useMemo(() => aggregateByDay(txns, yearMonth), [txns, yearMonth]);
 
-  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--ink-3)' }}>กำลังโหลด...</div>;
+  const deltas = useMemo(() => {
+    const pct = (cur, prev) => prev > 0 ? ((cur - prev) / prev) * 100 : (cur > 0 ? 100 : 0);
+    return {
+      income:      pct(thisSum.income,  prevSum.income),
+      expense:     pct(thisSum.expense, prevSum.expense),
+      net:         pct(thisSum.net,     prevSum.net),
+      savingsRate: thisSum.savingsRate - prevSum.savingsRate,
+    };
+  }, [thisSum, prevSum]);
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
-      <PageHeader
-        eyebrow={`${mLabel(yearMonth)} · ${isPersonal ? 'ส่วนตัว' : 'ครอบครัว'} · ${accounts.length} บัญชี`}
-        title={isPersonal ? 'การเงิน' : 'การเงิน'}
-        em={isPersonal ? 'ส่วนตัว' : 'ครอบครัว'}
-        sub={isPersonal
-          ? 'รายรับ-รายจ่ายส่วนตัว, บัญชี Make by KBank และเป้าหมายส่วนตัว'
-          : 'รายจ่ายครอบครัว, บัญชีร่วม, งบประมาณบ้าน และเป้าหมายครอบครัว'}
-        meta={<>
-          <div>ยอดสุทธิเดือนนี้</div>
-          <div className={`page-header__meta-big ${stats.net >= 0 ? 'profit' : 'loss'}`}>
-            {stats.net >= 0 ? '+' : ''}฿{fmtFull(stats.net)}
+      <div className="page-body" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.18em', marginBottom: 5 }}>
+              FINANCIAL PLANNER · {formatThaiMonth(yearMonth).toUpperCase()} · {accounts.length} บัญชี
+            </div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color: 'var(--ink)', lineHeight: 1.1 }}>
+              การเงิน <em style={{ color: meta.accent }}>{meta.label}</em>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 5 }}>
+              {meta.sub}
+            </div>
           </div>
-        </>}
-        actions={<>
-          <button className="btn btn--ghost" onClick={() => setShowImporter(true)}>
-            📂 Import CSV
-          </button>
-          <button className="btn btn--ghost" onClick={() => setShowAccForm(true)}>+ บัญชี</button>
-          <button className="btn btn--primary" onClick={() => setShowTxnForm(true)}>
-            <Icon name="plus" size={14}/> บันทึกรายการ
-          </button>
-        </>}
-      />
-
-      <div className="page-body">
-        {error && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)' }}>{error}</div>}
-
-        {/* Hero */}
-        <div className="finance-hero" style={{ marginBottom: 22 }}>
-          <div className="balance-card">
-            <div className="balance-card__label">{isPersonal ? 'ยอดรวมบัญชีส่วนตัว' : 'ยอดรวมบัญชีครอบครัว'}</div>
-            <div className="balance-card__value"><sup>฿</sup>{stats.totalBalance.toLocaleString('th')}</div>
-            <div className="balance-card__delta">
-              {stats.net >= 0 ? '▲' : '▼'} {mLabel(yearMonth)} {stats.net >= 0 ? '+' : ''}฿{fmtFull(stats.net)} (Savings {stats.savingsRate}%)
-            </div>
-            {spendCurve.length > 0 && <div style={{ marginTop: 24 }}><Sparkline data={spendCurve} color="#d4a574" height={70} /></div>}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: 14 }}>
-            <div className="card" style={{ display: 'flex', gap: 14 }}>
-              <div style={{ flex: 1 }}>
-                <div className="stat__label">รายรับเดือนนี้</div>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: 'var(--profit)', marginTop: 4 }}>+฿{fmt(stats.income)}</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <div className="stat__label">รายจ่ายเดือนนี้</div>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: 'var(--loss)', marginTop: 4 }}>-฿{fmt(stats.expense)}</div>
-              </div>
-            </div>
-            <div className="card">
-              <div className="stat__label">Savings Rate</div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 32, marginTop: 4 }}>{stats.savingsRate}%</div>
-              <div className="budget-bar" style={{ marginTop: 8 }}>
-                <div className="budget-bar__fill" style={{ width: `${Math.min(stats.savingsRate, 100)}%`, background: stats.savingsRate >= 20 ? 'var(--profit)' : 'var(--amber)' }} />
-              </div>
-            </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <MonthNav value={yearMonth} onChange={setYearMonth} />
+            <button className="btn btn--ghost" onClick={() => setShowImporter(true)}>
+              📂 Import
+            </button>
+            <button className="btn btn--ghost" onClick={() => setShowAccForm(true)}>
+              + บัญชี
+            </button>
+            <button className="btn btn--primary" onClick={() => setShowTxnForm(true)}>
+              <Icon name="plus" size={14}/> บันทึกรายการ
+            </button>
           </div>
         </div>
 
-        {/* Accounts + Budgets */}
-        <div className="grid-2" style={{ marginBottom: 22 }}>
-          <div className="card">
-            <div className="card__head">
-              <div className="card__title">บัญชี & ทรัพย์สิน</div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span className="card__label">{accounts.length} บัญชี</span>
-                <button className="btn btn--ghost btn--sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</button>
+        {error && (
+          <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+            ⚠️ {error}
+          </div>
+        )}
+        {loading && (
+          <div style={{ padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--ink-3)', borderRadius: 'var(--r-md)', fontSize: 11, fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', textAlign: 'center' }}>
+            กำลังโหลดข้อมูล…
+          </div>
+        )}
+
+        {/* Row 1: KPI cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+          <KPICard
+            label="รายรับเดือนนี้" sub={`${txns.filter(t => t.amount > 0).length} ครั้ง`}
+            value={'+' + formatBaht(thisSum.income, { compact: true })}
+            valueColor="var(--profit)" accent="var(--profit)"
+            delta={deltas.income} deltaLabel="vs เดือนก่อน"
+          />
+          <KPICard
+            label="รายจ่ายเดือนนี้" sub={`${txns.filter(t => t.amount < 0).length} ครั้ง`}
+            value={'-' + formatBaht(thisSum.expense, { compact: true })}
+            valueColor="var(--loss)" accent="var(--loss)"
+            delta={-deltas.expense} deltaLabel="vs เดือนก่อน"
+          />
+          <KPICard
+            label="คงเหลือสุทธิ" sub="รายรับ − รายจ่าย"
+            value={(thisSum.net >= 0 ? '+' : '-') + formatBaht(Math.abs(thisSum.net), { compact: true })}
+            valueColor={thisSum.net >= 0 ? 'var(--ink)' : 'var(--loss)'}
+            accent={thisSum.net >= 0 ? 'var(--amber)' : 'var(--loss)'}
+            delta={deltas.net} deltaLabel="vs เดือนก่อน"
+          />
+          <KPICard
+            label="อัตราการออม" sub="% ของรายรับ"
+            value={isFinite(thisSum.savingsRate) ? thisSum.savingsRate.toFixed(1) + '%' : '—'}
+            valueColor={thisSum.savingsRate >= 20 ? 'var(--profit)' : thisSum.savingsRate >= 0 ? 'var(--amber)' : 'var(--loss)'}
+            accent={thisSum.savingsRate >= 20 ? 'var(--profit)' : 'var(--amber)'}
+            delta={deltas.savingsRate} deltaLabel="pp"
+          />
+        </div>
+
+        {/* Row 2: Cash Flow chart */}
+        <CashFlowChart data={trendData} currentYm={yearMonth} onMonthClick={setYearMonth} />
+
+        {/* Row 3: Categories + Top 10 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
+          <TopExpenses data={top10} />
+        </div>
+
+        {/* Row 4: Budget vs Actual */}
+        <BudgetProgress budgets={budgets} categoryActuals={categories} />
+
+        {/* Row 5: Net Worth + Heatmap */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 14 }}>
+          <NetWorthCard accounts={accounts} />
+          <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
+        </div>
+
+        {/* Row 6: Accounts + Goals (CRUD) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          {/* Accounts */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>บัญชี & ทรัพย์สิน</div>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
+                  {accounts.length} บัญชี · จัดการที่นี่
+                </div>
               </div>
+              <button className="btn btn--ghost btn--sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</button>
             </div>
             {accounts.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '24px 0', fontSize: 13 }}>ยังไม่มีบัญชี — กด "+ เพิ่ม" เพื่อเพิ่ม</div>
-            ) : accounts.map((a, i) => (
-              <div key={a.id} className="row row--between" style={{ paddingBottom: 12, borderBottom: i < accounts.length - 1 ? '1px solid var(--line)' : 'none' }}>
-                <div className="row" style={{ gap: 10 }}>
-                  <span style={{ width: 4, height: 28, borderRadius: 2, background: toneColor(a.tone) }} />
-                  <div>
-                    <div style={{ fontSize: 13 }}>{a.name}</div>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{a.type}</div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, color: a.balance >= 0 ? 'var(--ink)' : 'var(--loss)' }}>
-                    ฿{Number(a.balance).toLocaleString('th')}
-                  </div>
-                  <button onClick={() => { if (confirm('ลบบัญชีนี้?')) deleteAccount(a.id).then(refresh); }} style={{ color: 'var(--ink-4)', fontSize: 11, padding: '2px 4px' }}>ลบ</button>
-                </div>
+              <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '20px 0', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
+                ยังไม่มีบัญชี
               </div>
-            ))}
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {accounts.map(a => (
+                  <div key={a.id} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 0', borderBottom: '1px solid var(--line)', fontSize: 12,
+                  }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                      <span style={{ width: 4, height: 24, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
+                      <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                        <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>{a.type}</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: Number(a.balance) >= 0 ? 'var(--ink)' : 'var(--loss)' }}>
+                        ฿{Number(a.balance).toLocaleString('th')}
+                      </div>
+                      <button onClick={() => { if (confirm('ลบบัญชีนี้?')) deleteAccount(a.id).then(refresh); }}
+                        style={{ color: 'var(--ink-4)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="card">
-            <div className="card__head">
-              <div className="card__title">ค่าใช้จ่ายตามหมวด</div>
-              <span className="card__label">{mLabel(yearMonth)}</span>
+          {/* Goals */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>เป้าหมายการเงิน</div>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
+                  {goals.length} เป้าหมาย
+                </div>
+              </div>
+              <button className="btn btn--ghost btn--sm" onClick={() => setShowGoalForm(true)}>+ เพิ่ม</button>
             </div>
-            {Object.keys(budgetSpend).length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '24px 0', fontSize: 13 }}>ยังไม่มีรายจ่ายเดือนนี้</div>
+            {goals.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '20px 0', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
+                ยังไม่มีเป้าหมาย
+              </div>
             ) : (
-              <div className="col" style={{ gap: 12 }}>
-                {Object.entries(budgetSpend).sort((a, b) => b[1] - a[1]).map(([type, amt]) => {
-                  const cat = CATEGORIES.find(c => c.type === type);
-                  const maxAmt = Math.max(...Object.values(budgetSpend));
-                  const pct = Math.round((amt / maxAmt) * 100);
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {goals.map(g => {
+                  const pct = Math.min(Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100), 100);
                   return (
-                    <div key={type}>
-                      <div className="row row--between" style={{ marginBottom: 4 }}>
-                        <span style={{ fontSize: 13 }}>{cat?.icon} {cat?.label || type}</span>
-                        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>฿{fmtFull(amt)}</span>
+                    <div key={g.id}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <div>
+                          <div style={{ fontSize: 13, color: 'var(--ink)' }}>{g.title}</div>
+                          {g.deadline && (
+                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)', marginTop: 1 }}>
+                              {new Date(g.deadline).toLocaleDateString('th-TH')}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-2)' }}>
+                            ฿{Number(g.current_amount).toLocaleString('th')} / ฿{Number(g.target_amount).toLocaleString('th')}
+                          </div>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: pct >= 100 ? 'var(--profit)' : 'var(--amber)' }}>
+                            {pct}%
+                          </div>
+                        </div>
                       </div>
-                      <div className="budget-bar">
-                        <div className="budget-bar__fill" style={{ width: `${pct}%` }} />
+                      <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: pct >= 100 ? 'var(--profit)' : 'var(--amber)' }} />
                       </div>
+                      <button onClick={() => { if (confirm('ลบเป้าหมายนี้?')) deleteGoal(g.id).then(refresh); }}
+                        style={{ marginTop: 3, color: 'var(--ink-4)', fontSize: 10, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>ลบ</button>
                     </div>
                   );
                 })}
@@ -375,78 +473,85 @@ export function FinanceView({ scope }) {
           </div>
         </div>
 
-        {/* Transaction log */}
-        <div className="card" style={{ marginBottom: 22 }}>
-          <div className="card__head">
-            <div className="card__title">รายการธุรกรรม</div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span className="card__label">{txns.length} รายการ · {mLabel(yearMonth)}</span>
+        {/* Row 7: Full transaction list */}
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+            <div>
+              <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>รายการธุรกรรม</div>
+              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
+                {txns.length} รายการ · {formatThaiMonth(yearMonth)}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost btn--sm" onClick={() => setShowImporter(true)}>📂 Import</button>
+              <button className="btn btn--ghost btn--sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</button>
             </div>
           </div>
 
           {txns.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '32px 0' }}>
-              <div style={{ fontSize: 24, marginBottom: 8 }}>📋</div>
-              ยังไม่มีรายการเดือนนี้<br/>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 12 }}>
-                <button className="btn btn--ghost btn--sm" onClick={() => setShowImporter(true)}>📂 Import จาก Make by KBank</button>
+              <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
+              <div style={{ fontSize: 13 }}>ยังไม่มีรายการเดือนนี้</div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+                <button className="btn btn--ghost btn--sm" onClick={() => setShowImporter(true)}>📂 Import จาก Make</button>
                 <button className="btn btn--ghost btn--sm" onClick={() => setShowTxnForm(true)}>+ เพิ่มเอง</button>
               </div>
             </div>
           ) : (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '38px 1fr 110px 110px 40px', gap: 12, padding: '8px 12px', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)' }}>
-                <div/><div>รายการ</div><div>ประเภท</div><div style={{ textAlign: 'right' }}>จำนวน</div><div/>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 32px', gap: 10,
+                padding: '6px 12px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
+                textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)',
+              }}>
+                <div/><div>วันที่</div><div>รายการ</div><div>หมวด</div><div>ประเภท</div>
+                <div style={{ textAlign: 'right' }}>จำนวน</div><div/>
               </div>
-              {txns.map(t => {
-                const isIn = t.amount > 0;
-                return (
-                  <div key={t.id} className="txn-row" style={{ display: 'grid', gridTemplateColumns: '38px 1fr 110px 110px 40px', gap: 12, padding: '10px 12px', borderBottom: '1px solid var(--line)', alignItems: 'center', fontSize: 13 }}>
-                    <div className={`txn-icon txn-icon--${t.type || 'other'}`}>{CAT_ICON[t.type] || '📦'}</div>
-                    <div>
-                      <div className="txn-row__title">{t.title}</div>
-                      <div className="txn-row__sub">{txDate(t.occurred_at)}{t.note ? ` · ${t.note}` : ''}</div>
+              <div style={{ maxHeight: 600, overflow: 'auto' }}>
+                {txns.map(t => {
+                  const isIn = t.amount > 0;
+                  return (
+                    <div key={t.id} style={{
+                      display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 32px', gap: 10,
+                      padding: '9px 12px', borderBottom: '1px solid var(--line)',
+                      alignItems: 'center', fontSize: 12.5,
+                    }}>
+                      <div style={{
+                        width: 26, height: 26, borderRadius: 6,
+                        background: 'var(--surface-2)', border: '1px solid var(--line)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
+                      }}>{CAT_ICON[t.type] || '📦'}</div>
+                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{txDate(t.occurred_at)}</div>
+                      <div>
+                        <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                        {t.note && <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.note}</div>}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.category}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)' }}>{t.type}</div>
+                      <div style={{
+                        textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13,
+                        color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 500,
+                      }}>
+                        {isIn ? '+' : ''}฿{Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
+                      </div>
+                      <button onClick={() => { if (confirm('ลบรายการนี้?')) deleteTransaction(t.id).then(refresh); }}
+                        style={{ color: 'var(--ink-4)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
                     </div>
-                    <div className="txn-row__cat">{t.category || t.type}</div>
-                    <div className={`txn-row__amount ${isIn ? 'txn-row__amount--in' : ''}`}>{isIn ? '+' : ''}฿{fmtFull(t.amount)}</div>
-                    <button onClick={() => { if (confirm('ลบ?')) deleteTransaction(t.id).then(refresh); }} style={{ color: 'var(--ink-4)', fontSize: 14, padding: 4 }}>×</button>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </>
           )}
         </div>
 
-        {/* Goals */}
-        <div className="card">
-          <div className="card__head">
-            <div className="card__title">เป้าหมายการเงิน</div>
-            <button className="btn btn--ghost btn--sm" onClick={() => setShowGoalForm(true)}>+ เพิ่ม</button>
-          </div>
-          {goals.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '24px 0', fontSize: 13 }}>ยังไม่มีเป้าหมาย</div>
-          ) : goals.map(g => {
-            const pct = Math.min(Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100), 100);
-            return (
-              <div key={g.id} style={{ marginBottom: 18 }}>
-                <div className="row row--between" style={{ marginBottom: 6 }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontFamily: 'var(--f-display)' }}>{g.title}</div>
-                    {g.deadline && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 2 }}>กำหนด: {new Date(g.deadline).toLocaleDateString('th-TH')}</div>}
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13 }}>฿{Number(g.current_amount).toLocaleString('th')} / ฿{Number(g.target_amount).toLocaleString('th')}</div>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--amber)', marginTop: 2 }}>{pct}%</div>
-                  </div>
-                </div>
-                <div className="budget-bar" style={{ height: 8 }}>
-                  <div className="budget-bar__fill" style={{ width: `${pct}%`, background: pct >= 100 ? 'var(--profit)' : 'var(--amber)' }} />
-                </div>
-                <button onClick={() => { if (confirm('ลบ?')) deleteGoal(g.id).then(refresh); }} style={{ marginTop: 4, color: 'var(--ink-4)', fontSize: 11 }}>ลบ</button>
-              </div>
-            );
-          })}
+        {/* Footer */}
+        <div style={{
+          marginTop: 4, padding: '10px 16px', borderTop: '1px solid var(--line)',
+          fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)',
+          letterSpacing: '0.1em', textAlign: 'center',
+        }}>
+          {txns.length} รายการ · {accounts.length} บัญชี · {budgets.length} งบ · {goals.length} เป้าหมาย
+          {!isSupabaseConfigured && ' · DEMO MODE'}
         </div>
       </div>
 
@@ -458,5 +563,5 @@ export function FinanceView({ scope }) {
   );
 }
 
-// Default export — re-exported for backward compatibility
+// Backward-compat default export
 export function Finance() { return <FinanceView scope="personal" />; }
