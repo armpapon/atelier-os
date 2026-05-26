@@ -9,6 +9,8 @@ import { Trading } from './pages/Trading.jsx';
 import { Learning } from './pages/Learning.jsx';
 import { Journal } from './pages/Journal.jsx';
 import { Finance } from './pages/Finance.jsx';
+import { PersonalFinance } from './pages/PersonalFinance.jsx';
+import { FamilyFinance } from './pages/FamilyFinance.jsx';
 import { Family } from './pages/Family.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
@@ -54,11 +56,13 @@ export default function App() {
   const render = () => {
     switch (active) {
       case 'dashboard': return <Dashboard />;
-      case 'trading':   return <Trading />;
-      case 'learning':  return <Learning />;
-      case 'journal':   return <Journal />;
-      case 'finance':   return <Finance />;
-      case 'family':    return <Family />;
+      case 'trading':          return <Trading />;
+      case 'learning':         return <Learning />;
+      case 'journal':          return <Journal />;
+      case 'finance':          return <PersonalFinance />;   // backward compat
+      case 'personal-finance': return <PersonalFinance />;
+      case 'family-finance':   return <FamilyFinance />;
+      case 'family':           return <Family />;
       case 'goals':     return <ComingSoon eyebrow="เป้าหมาย & OKR" title="Goals" emoji="◎" description="ตั้งเป้าหมายระยะยาว แบ่งเป็น quarter และ checklist รายสัปดาห์" />;
       case 'brain':     return <ComingSoon eyebrow="Second Brain · 128 โน้ต" title="Second Brain" emoji="✦" description="โน้ตทั้งหมดของคุณ — เชื่อมโยงกันแบบ Zettelkasten ค้นได้ใน 200ms" />;
       default: return <Dashboard />;

@@ -8,9 +8,10 @@ export function Sidebar({ active, onChange, user }) {
       { id: 'journal',   label: 'Daily Journal', icon: 'journal', badge: '6' },
     ]},
     { group: 'เรียนรู้ & ทำเงิน', children: [
-      { id: 'trading',  label: 'Trading Journal', icon: 'trade',  badge: '7' },
-      { id: 'learning', label: 'Learning Hub',    icon: 'book',   badge: null },
-      { id: 'finance',  label: 'Finance',         icon: 'money',  badge: null },
+      { id: 'trading',          label: 'Trading Journal',  icon: 'trade',  badge: null },
+      { id: 'learning',         label: 'Learning Hub',     icon: 'book',   badge: null },
+      { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null },
+      { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
     ]},
     { group: 'ชีวิต', children: [
       { id: 'family',   label: 'ครอบครัว',    icon: 'family',  badge: '4' },
