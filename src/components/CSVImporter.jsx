@@ -1,26 +1,40 @@
 import { useState, useRef } from 'react';
 import {
   parseCSV, detectKBankColumns, mapRowsToTransactions,
-  bulkCreateTransactions, parseAmount,
+  bulkCreateTransactions,
 } from '../lib/api/finance.js';
+import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
-const TYPE_ICONS = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
+const TYPE_ICONS  = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
 const TYPE_LABELS = { food: 'อาหาร', transport: 'เดินทาง', bills: 'บิล', income: 'รายรับ', shop: 'ช้อปปิ้ง', family: 'ครอบครัว', other: 'อื่น ๆ' };
 
 export function CSVImporter({ scope, onImported, onClose }) {
-  const [step, setStep] = useState('upload'); // upload → preview → done
-  const [headers, setHeaders] = useState([]);
-  const [colMap, setColMap] = useState({});
-  const [rows, setRows] = useState([]);
-  const [preview, setPreview] = useState([]); // mapped transactions
+  const [tab, setTab]           = useState('pdf'); // 'pdf' | 'csv'
+  const [step, setStep]         = useState('upload'); // upload → preview → done
+
+  // CSV state
+  const [headers, setHeaders]   = useState([]);
+  const [colMap, setColMap]     = useState({});
+  const [rows, setRows]         = useState([]);
+
+  // Shared preview state
+  const [preview, setPreview]   = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [importing, setImporting] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError]       = useState(null);
   const [fileName, setFileName] = useState('');
-  const fileRef = useRef();
 
-  // ── Step 1: Parse file ────────────────────────────────────────────────────
-  const handleFile = (e) => {
+  // PDF state
+  const [pdfFile, setPdfFile]       = useState(null);
+  const [pdfPassword, setPdfPassword] = useState('');
+  const [pdfParsing, setPdfParsing] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const fileRef    = useRef();
+  const pdfFileRef = useRef();
+
+  // ── CSV: parse ─────────────────────────────────────────────────────────────
+  const handleCSVFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setFileName(file.name);
@@ -29,19 +43,15 @@ export function CSVImporter({ scope, onImported, onClose }) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        // Try UTF-8 first, then TIS-620 for Thai bank exports
-        let text = ev.target.result;
-        const parsed = parseCSV(text);
+        const parsed = parseCSV(ev.target.result);
         if (!parsed?.rows?.length) throw new Error('ไม่พบข้อมูลในไฟล์ หรือรูปแบบไม่ถูกต้อง');
 
         setHeaders(parsed.headers);
         setRows(parsed.rows);
 
-        // Auto-detect KBank columns
         const detected = detectKBankColumns(parsed.headers);
         setColMap(detected);
 
-        // Generate preview immediately
         const txns = mapRowsToTransactions(parsed.rows, detected, scope);
         setPreview(txns);
         setSelected(new Set(txns.map((_, i) => i)));
@@ -62,11 +72,39 @@ export function CSVImporter({ scope, onImported, onClose }) {
     setSelected(new Set(txns.map((_, i) => i)));
   };
 
+  // ── PDF: select & parse ───────────────────────────────────────────────────
+  const handlePDFFileSelect = (file) => {
+    if (!file) return;
+    setPdfFile(file);
+    setFileName(file.name);
+    setError(null);
+  };
+
+  const handlePDFParse = async () => {
+    if (!pdfFile) return;
+    setPdfParsing(true);
+    setError(null);
+    try {
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const txns = await parseKBankPDF(arrayBuffer, pdfPassword, scope);
+      if (!txns.length) throw new Error('ไม่พบรายการธุรกรรมในไฟล์ PDF — ลองตรวจสอบรหัสผ่าน หรือรูปแบบ Statement');
+      setPreview(txns);
+      setSelected(new Set(txns.map((_, i) => i)));
+      setStep('preview');
+    } catch (err) {
+      let msg = err.message || String(err);
+      if (/password|PasswordException/i.test(msg)) msg = 'รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง';
+      setError('อ่าน PDF ไม่ได้: ' + msg);
+    } finally {
+      setPdfParsing(false);
+    }
+  };
+
+  // ── Shared helpers ─────────────────────────────────────────────────────────
   const toggleRow = (i) => {
     setSelected(prev => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
+      if (next.has(i)) next.delete(i); else next.add(i);
       return next;
     });
   };
@@ -76,7 +114,13 @@ export function CSVImporter({ scope, onImported, onClose }) {
     else setSelected(new Set(preview.map((_, i) => i)));
   };
 
-  // ── Step 2: Import ────────────────────────────────────────────────────────
+  const resetUpload = () => {
+    setStep('upload'); setError(null);
+    setPdfFile(null); setPdfPassword(''); setFileName('');
+    setPreview([]); setSelected(new Set());
+    setHeaders([]); setRows([]);
+  };
+
   const handleImport = async () => {
     const toImport = preview.filter((_, i) => selected.has(i)).map(({ _rowIdx, ...r }) => r);
     if (!toImport.length) return;
@@ -95,6 +139,7 @@ export function CSVImporter({ scope, onImported, onClose }) {
   const totalIncome  = preview.filter((_, i) => selected.has(i)).reduce((s, r) => r.amount > 0 ? s + r.amount : s, 0);
   const totalExpense = preview.filter((_, i) => selected.has(i)).reduce((s, r) => r.amount < 0 ? s + Math.abs(r.amount) : s, 0);
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)' }} />
@@ -110,14 +155,14 @@ export function CSVImporter({ scope, onImported, onClose }) {
               Import จาก Make by KBank
             </div>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.12em' }}>
-              {scope === 'personal' ? 'การเงินส่วนตัว' : 'การเงินครอบครัว'} · CSV / Excel Export
+              {scope === 'personal' ? 'การเงินส่วนตัว' : 'การเงินครอบครัว'} · PDF / CSV Statement
             </div>
           </div>
-          <button onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 22, padding: '4px 8px' }}>×</button>
+          <button onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 22, padding: '4px 8px', background: 'none', border: 0, cursor: 'pointer' }}>×</button>
         </div>
 
         {/* Steps indicator */}
-        <div style={{ display: 'flex', padding: '10px 28px', borderBottom: '1px solid var(--line)', gap: 20, flexShrink: 0 }}>
+        <div style={{ display: 'flex', padding: '10px 28px', borderBottom: '1px solid var(--line)', gap: 20, flexShrink: 0, alignItems: 'center' }}>
           {['upload', 'preview', 'done'].map((s, i) => (
             <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{
@@ -129,98 +174,244 @@ export function CSVImporter({ scope, onImported, onClose }) {
               <span style={{ fontSize: 12, color: step === s ? 'var(--ink)' : 'var(--ink-3)' }}>
                 {['เลือกไฟล์', 'ตรวจสอบ', 'เสร็จสิ้น'][i]}
               </span>
-              {i < 2 && <span style={{ color: 'var(--line-2)', fontSize: 12 }}>›</span>}
+              {i < 2 && <span style={{ color: 'var(--line)', fontSize: 12 }}>›</span>}
             </div>
           ))}
-          {fileName && <span style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{fileName}</span>}
+          {fileName && (
+            <span style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+              {fileName}
+            </span>
+          )}
         </div>
 
         {/* Content */}
         <div style={{ flex: 1, overflow: 'auto', padding: '24px 28px' }}>
 
-          {/* STEP: upload */}
+          {/* ──── STEP: upload ──────────────────────────────────────────────── */}
           {step === 'upload' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: '32px 0' }}>
-              <div style={{ fontSize: 48 }}>📂</div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)', marginBottom: 8 }}>เลือกไฟล์ Statement</div>
-                <div style={{ color: 'var(--ink-3)', fontSize: 13, lineHeight: 1.7 }}>
-                  Export Statement จาก <strong style={{ color: 'var(--amber)' }}>Make by KBank</strong> แล้วลากหรือกดเลือกไฟล์<br/>
-                  รองรับ <strong>.csv</strong> ทุกรูปแบบ (UTF-8, TIS-620) · รัน preview ก่อน import จริง
-                </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: '8px 0' }}>
+
+              {/* Tab switcher */}
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg-2)', padding: 4, borderRadius: 'var(--r-md)', border: '1px solid var(--line)' }}>
+                {[
+                  { id: 'pdf', label: '📄 PDF (KBank Make)' },
+                  { id: 'csv', label: '📋 CSV / Excel' },
+                ].map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setTab(t.id); setError(null); }}
+                    style={{
+                      padding: '8px 20px', borderRadius: 'var(--r-sm)', border: 0,
+                      background: tab === t.id ? 'var(--surface)' : 'transparent',
+                      color: tab === t.id ? 'var(--ink)' : 'var(--ink-3)',
+                      fontFamily: 'var(--f-body)', fontSize: 13, cursor: 'pointer',
+                      boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
+                      transition: 'all 150ms',
+                    }}>{t.label}</button>
+                ))}
               </div>
 
-              <div
-                onClick={() => fileRef.current?.click()}
-                onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--amber)'; }}
-                onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--line)'; }}
-                onDrop={e => {
-                  e.preventDefault();
-                  e.currentTarget.style.borderColor = 'var(--line)';
-                  const file = e.dataTransfer.files[0];
-                  if (file) { const dt = new DataTransfer(); dt.items.add(file); fileRef.current.files = dt.files; handleFile({ target: { files: [file] } }); }
-                }}
-                style={{
-                  width: 360, padding: '28px 24px', border: '2px dashed var(--line)', borderRadius: 'var(--r-lg)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, cursor: 'pointer',
-                  transition: 'border-color 150ms', background: 'var(--surface-2)',
-                }}>
-                <div style={{ fontSize: 28 }}>📋</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>คลิกเพื่อเลือก หรือลาก CSV มาวาง</div>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>.csv</div>
-              </div>
-              <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleFile} style={{ display: 'none' }} />
+              {/* ── PDF tab ── */}
+              {tab === 'pdf' && (
+                <>
+                  {/* Drop zone */}
+                  <div
+                    onClick={() => pdfFileRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--amber)'; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--line)'; }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor = 'var(--line)';
+                      const file = e.dataTransfer.files[0];
+                      if (file?.name?.toLowerCase().endsWith('.pdf')) handlePDFFileSelect(file);
+                    }}
+                    style={{
+                      width: 400, padding: '28px 24px', border: '2px dashed var(--line)', borderRadius: 'var(--r-lg)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, cursor: 'pointer',
+                      transition: 'border-color 150ms', background: 'var(--surface-2)',
+                    }}>
+                    <div style={{ fontSize: 36 }}>{pdfFile ? '📄' : '📥'}</div>
+                    {pdfFile ? (
+                      <>
+                        <div style={{ fontSize: 13, color: 'var(--profit)', fontWeight: 500 }}>{pdfFile.name}</div>
+                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                          {(pdfFile.size / 1024).toFixed(0)} KB · คลิกเพื่อเปลี่ยนไฟล์
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 13, color: 'var(--ink-2)', textAlign: 'center', lineHeight: 1.6 }}>
+                          คลิกเพื่อเลือก หรือลาก PDF มาวาง
+                        </div>
+                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>
+                          .pdf · รองรับไฟล์ที่มีรหัสผ่าน
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <input ref={pdfFileRef} type="file" accept=".pdf" onChange={e => handlePDFFileSelect(e.target.files[0])} style={{ display: 'none' }} />
 
-              {error && (
-                <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
-                  {error}
-                </div>
+                  {/* Password input */}
+                  <div style={{ width: 400 }}>
+                    <label style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 6, letterSpacing: '0.1em' }}>
+                      รหัสผ่าน PDF (ถ้ามี)
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={pdfPassword}
+                        onChange={e => setPdfPassword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && pdfFile && handlePDFParse()}
+                        placeholder="เช่น วันเดือนปีเกิด 8 หลัก"
+                        style={{
+                          flex: 1, background: 'var(--bg-2)', border: '1px solid var(--line)',
+                          borderRadius: 'var(--r-sm)', padding: '8px 12px', color: 'var(--ink)',
+                          fontFamily: 'var(--f-mono)', fontSize: 13,
+                        }}
+                      />
+                      <button
+                        onClick={() => setShowPassword(p => !p)}
+                        title={showPassword ? 'ซ่อน' : 'แสดง'}
+                        style={{
+                          background: 'var(--bg-2)', border: '1px solid var(--line)',
+                          borderRadius: 'var(--r-sm)', padding: '8px 12px',
+                          color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14,
+                        }}>
+                        {showPassword ? '🙈' : '👁'}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 5, fontFamily: 'var(--f-mono)' }}>
+                      KBank Make: รหัสผ่านมักเป็นวันเดือนปีเกิด เช่น 01011990
+                    </div>
+                  </div>
+
+                  {/* Parse button */}
+                  <button
+                    className="btn btn--primary"
+                    disabled={!pdfFile || pdfParsing}
+                    onClick={handlePDFParse}
+                    style={{ width: 400, justifyContent: 'center', position: 'relative' }}>
+                    {pdfParsing
+                      ? <><span style={{ marginRight: 8 }}>⏳</span>กำลังอ่าน PDF...</>
+                      : <><span style={{ marginRight: 8 }}>📊</span>วิเคราะห์ Statement</>}
+                  </button>
+
+                  {/* Guide */}
+                  <div style={{ width: 400, background: '#1a2014', border: '1px solid #2e4a30', borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 8, letterSpacing: '0.12em' }}>
+                      วิธีดาวน์โหลด Statement จาก Make
+                    </div>
+                    <ol style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12, color: 'var(--ink-3)', lineHeight: 2.1 }}>
+                      <li>เปิด app <strong style={{ color: 'var(--ink-2)' }}>Make by KBank</strong></li>
+                      <li>กด <strong style={{ color: 'var(--ink-2)' }}>บัญชี → Statement</strong></li>
+                      <li>เลือกช่วงเวลา → กด <strong style={{ color: 'var(--amber)' }}>Download PDF</strong></li>
+                      <li>ส่งไฟล์มาที่คอมแล้วลากมาวางที่นี่</li>
+                    </ol>
+                  </div>
+                </>
               )}
 
-              {/* How to export guide */}
-              <div style={{ width: '100%', maxWidth: 520, background: '#1a2014', border: '1px solid #2e4a30', borderRadius: 'var(--r-lg)', padding: '16px 20px' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 10, letterSpacing: '0.12em' }}>วิธี Export จาก Make by KBank</div>
-                <ol style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 2 }}>
-                  <li>เปิด app <strong style={{ color: 'var(--ink-2)' }}>Make by KBank</strong></li>
-                  <li>ไปที่ <strong style={{ color: 'var(--ink-2)' }}>Account → Statement</strong></li>
-                  <li>เลือกช่วงเวลา (เช่น เดือนที่แล้ว)</li>
-                  <li>กด <strong style={{ color: 'var(--ink-2)' }}>Download / Share</strong> → เลือก <strong style={{ color: 'var(--amber)' }}>CSV</strong></li>
-                  <li>ส่งไฟล์มาที่คอมแล้วลากมาวางที่นี่</li>
-                </ol>
-              </div>
+              {/* ── CSV tab ── */}
+              {tab === 'csv' && (
+                <>
+                  <div
+                    onClick={() => fileRef.current?.click()}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--amber)'; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--line)'; }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor = 'var(--line)';
+                      const file = e.dataTransfer.files[0];
+                      if (file) {
+                        const dt = new DataTransfer(); dt.items.add(file);
+                        fileRef.current.files = dt.files;
+                        handleCSVFile({ target: { files: [file] } });
+                      }
+                    }}
+                    style={{
+                      width: 400, padding: '32px 24px', border: '2px dashed var(--line)', borderRadius: 'var(--r-lg)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, cursor: 'pointer',
+                      transition: 'border-color 150ms', background: 'var(--surface-2)',
+                    }}>
+                    <div style={{ fontSize: 36 }}>📋</div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-2)' }}>คลิกเพื่อเลือก หรือลาก CSV มาวาง</div>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>.csv · UTF-8, TIS-620</div>
+                  </div>
+                  <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleCSVFile} style={{ display: 'none' }} />
+
+                  <div style={{ width: 400, background: '#1a2014', border: '1px solid #2e4a30', borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 8, letterSpacing: '0.12em' }}>
+                      วิธี Export CSV จาก Make by KBank
+                    </div>
+                    <ol style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12, color: 'var(--ink-3)', lineHeight: 2.1 }}>
+                      <li>เปิด app <strong style={{ color: 'var(--ink-2)' }}>Make by KBank</strong></li>
+                      <li>ไปที่ <strong style={{ color: 'var(--ink-2)' }}>บัญชี → Statement</strong></li>
+                      <li>เลือกช่วงเวลา → กด <strong style={{ color: 'var(--amber)' }}>Download → CSV</strong></li>
+                      <li>ส่งไฟล์มาที่คอมแล้วลากมาวางที่นี่</li>
+                    </ol>
+                  </div>
+                </>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div style={{ width: 400, padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+                  ⚠️ {error}
+                </div>
+              )}
             </div>
           )}
 
-          {/* STEP: preview */}
+          {/* ──── STEP: preview ─────────────────────────────────────────────── */}
           {step === 'preview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Column mapping */}
-              <div style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em', marginBottom: 12 }}>MAP COLUMNS — ถ้า auto-detect ไม่ถูก ปรับได้ที่นี่</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                  {[
-                    { key: 'dateCol',    label: 'วันที่' },
-                    { key: 'descCol',    label: 'รายการ / ชื่อ' },
-                    { key: 'amountCol',  label: 'จำนวนเงิน (รวม)' },
-                    { key: 'debitCol',   label: 'ถอน / รายจ่าย' },
-                    { key: 'creditCol',  label: 'ฝาก / รายรับ' },
-                    { key: 'balanceCol', label: 'ยอดคงเหลือ' },
-                  ].map(({ key, label }) => (
-                    <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>{label}</span>
-                      <select value={colMap[key] || ''}
-                        onChange={e => handleColChange(key, e.target.value || null)}
-                        style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 4, padding: '4px 6px', fontSize: 11, color: 'var(--ink)', fontFamily: 'var(--f-mono)' }}>
-                        <option value="">(ไม่ใช้)</option>
-                        {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                      </select>
-                    </label>
-                  ))}
+
+              {/* Column mapping — CSV only */}
+              {tab === 'csv' && headers.length > 0 && (
+                <div style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em', marginBottom: 12 }}>
+                    MAP COLUMNS — ถ้า auto-detect ไม่ถูก ปรับได้ที่นี่
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    {[
+                      { key: 'dateCol',    label: 'วันที่' },
+                      { key: 'descCol',    label: 'รายการ / ชื่อ' },
+                      { key: 'amountCol',  label: 'จำนวนเงิน (รวม)' },
+                      { key: 'debitCol',   label: 'ถอน / รายจ่าย' },
+                      { key: 'creditCol',  label: 'ฝาก / รายรับ' },
+                      { key: 'balanceCol', label: 'ยอดคงเหลือ' },
+                    ].map(({ key, label }) => (
+                      <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>{label}</span>
+                        <select value={colMap[key] || ''}
+                          onChange={e => handleColChange(key, e.target.value || null)}
+                          style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 4, padding: '4px 6px', fontSize: 11, color: 'var(--ink)', fontFamily: 'var(--f-mono)' }}>
+                          <option value="">(ไม่ใช้)</option>
+                          {headers.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* PDF info bar */}
+              {tab === 'pdf' && (
+                <div style={{ background: '#1a2014', border: '1px solid #2e4a30', borderRadius: 'var(--r-md)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 18 }}>📄</span>
+                  <div>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--profit)' }}>
+                      อ่าน PDF สำเร็จ · พบ {preview.length} รายการ
+                    </div>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 2 }}>
+                      {fileName}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Summary bar */}
-              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ padding: '8px 14px', background: 'var(--profit-bg)', border: '1px solid #2e4a37', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--profit)' }}>
                   รายรับ +฿{totalIncome.toLocaleString('th', { maximumFractionDigits: 0 })}
                 </div>
@@ -235,32 +426,34 @@ export function CSVImporter({ scope, onImported, onClose }) {
                 </button>
               </div>
 
-              {/* Transaction table preview */}
+              {/* Transaction table */}
               <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
-                {/* Header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '32px 90px 1fr 100px 110px 80px', gap: 12, padding: '8px 14px', background: 'var(--bg-2)', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)' }}>
-                  <div>✓</div><div>วันที่</div><div>รายการ</div><div style={{ textAlign: 'right' }}>จำนวน</div><div>ประเภท</div><div>หมวด</div>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '32px 90px 1fr 100px 110px 80px', gap: 12,
+                  padding: '8px 14px', background: 'var(--bg-2)',
+                  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
+                  textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)',
+                }}>
+                  <div>✓</div><div>วันที่</div><div>รายการ</div>
+                  <div style={{ textAlign: 'right' }}>จำนวน</div><div>ประเภท</div><div>หมวด</div>
                 </div>
                 <div style={{ maxHeight: 360, overflow: 'auto' }}>
                   {preview.map((row, i) => {
                     const isIn = row.amount > 0;
                     const checked = selected.has(i);
                     return (
-                      <div key={i}
-                        onClick={() => toggleRow(i)}
-                        style={{
-                          display: 'grid', gridTemplateColumns: '32px 90px 1fr 100px 110px 80px', gap: 12,
-                          padding: '9px 14px', borderBottom: '1px solid var(--line)', alignItems: 'center',
-                          fontSize: 12.5, cursor: 'pointer',
-                          background: checked ? 'transparent' : 'rgba(0,0,0,0.15)',
-                          opacity: checked ? 1 : 0.45,
-                        }}>
+                      <div key={i} onClick={() => toggleRow(i)} style={{
+                        display: 'grid', gridTemplateColumns: '32px 90px 1fr 100px 110px 80px', gap: 12,
+                        padding: '9px 14px', borderBottom: '1px solid var(--line)', alignItems: 'center',
+                        fontSize: 12.5, cursor: 'pointer',
+                        background: checked ? 'transparent' : 'rgba(0,0,0,0.15)',
+                        opacity: checked ? 1 : 0.45,
+                      }}>
                         <div style={{
-                          width: 18, height: 18, borderRadius: 4,
+                          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
                           background: checked ? 'var(--amber)' : 'var(--surface-2)',
                           border: `1.5px solid ${checked ? 'var(--amber)' : 'var(--line)'}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 11, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11,
                         }}>{checked ? '✓' : ''}</div>
                         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
                           {row.occurred_at?.split('T')[0] || ''}
@@ -285,13 +478,13 @@ export function CSVImporter({ scope, onImported, onClose }) {
 
               {error && (
                 <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
-                  {error}
+                  ⚠️ {error}
                 </div>
               )}
             </div>
           )}
 
-          {/* STEP: done */}
+          {/* ──── STEP: done ────────────────────────────────────────────────── */}
           {step === 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: '48px 0' }}>
               <div style={{ fontSize: 56 }}>✅</div>
@@ -309,12 +502,12 @@ export function CSVImporter({ scope, onImported, onClose }) {
         {/* Footer */}
         {step === 'preview' && (
           <div style={{ padding: '16px 28px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0, background: 'var(--surface)' }}>
-            <button className="btn btn--ghost" onClick={() => { setStep('upload'); setError(null); }}>← กลับ</button>
+            <button className="btn btn--ghost" onClick={resetUpload}>← กลับ</button>
             <button
               className="btn btn--primary"
               disabled={importing || selected.size === 0}
               onClick={handleImport}
-              style={{ minWidth: 180, justifyContent: 'center' }}>
+              style={{ minWidth: 200, justifyContent: 'center' }}>
               {importing ? 'กำลัง Import...' : `💾 Import ${selected.size} รายการ`}
             </button>
           </div>
