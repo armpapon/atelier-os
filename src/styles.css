@@ -1,41 +1,45 @@
-/* Personal OS — Editorial dark theme with warm paper accents */
+/* Atelier OS · LOOP — Light editorial theme, warm earth tones */
+/* Token + font system per design_handoff_loop/README.md */
 
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Noto+Serif+Thai:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  --bg: #0e0d0b;
-  --bg-2: #15130f;
-  --surface: #1a1714;
-  --surface-2: #221e19;
-  --surface-3: #2b2620;
-  --paper: #f5efe4;
-  --paper-2: #ebe3d2;
-  --paper-ink: #1a1714;
+  /* Surfaces — warm cream / near-white */
+  --bg:        #f4f0e7;   /* page background */
+  --bg-2:      #ece6d9;   /* sidebar, insets, inputs, bar tracks */
+  --surface:   #fdfbf6;   /* cards */
+  --surface-2: #f4efe4;   /* subtle fill, hover */
+  --surface-3: #ebe4d5;   /* deeper hover */
 
-  --ink: #f3ecde;
-  --ink-2: #c7bda9;
-  --ink-3: #8a8170;
-  --ink-4: #5a5345;
-  --line: #2e2820;
-  --line-2: #3d362c;
+  /* Paper accent (kraft/manila) for highlight cards & journal */
+  --paper:     #ece1cb;
+  --paper-2:   #dccfb2;
+  --paper-ink: #4a3d2b;
 
-  --amber: #d4a574;
-  --amber-2: #b88a5a;
-  --amber-deep: #8a6438;
-  --brass: #c9a96e;
+  /* Ink — warm charcoal/brown */
+  --ink:   #33302a;
+  --ink-2: #635b4c;
+  --ink-3: #94897a;
+  --ink-4: #bdb3a2;
+  --line:  #e6ded0;
+  --line-2:#d8cebb;
 
-  --profit: #6cbf83;
-  --profit-bg: #1a2a1f;
-  --loss: #e07a6e;
-  --loss-bg: #2b1d1a;
+  /* Accents — muted earth */
+  --amber:      #b27a42;   /* PRIMARY — clay/terracotta */
+  --amber-2:    #a06d3a;
+  --amber-deep: #87592c;
+  --brass:      #9c7c4d;
 
-  --blue: #7ba7d4;
-  --violet: #a78fcc;
-  --rose: #d49aa5;
+  --profit:    #5d8a5e;   --profit-bg: #e8eedf;   /* sage green */
+  --loss:      #bb5f48;   --loss-bg:   #f4e3db;   /* terracotta */
+  --blue:      #59799f;   /* slate */
+  --violet:    #7e6b9c;
+  --rose:      #a86d78;
 
-  --f-display: 'Newsreader', 'Noto Serif Thai', Georgia, serif;
-  --f-body: 'Sukhumvit Set', 'IBM Plex Sans Thai', 'IBM Plex Sans', system-ui, sans-serif;
-  --f-mono: 'JetBrains Mono', ui-monospace, monospace;
+  /* Type — Anuphan geometric Thai sans + JetBrains Mono for numerals */
+  --f-display: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-body:    'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-mono:    'JetBrains Mono', ui-monospace, monospace;
 
   --r-sm: 4px;
   --r-md: 8px;
