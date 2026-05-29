@@ -55,7 +55,7 @@ export default function App() {
 
   const render = () => {
     switch (active) {
-      case 'dashboard': return <Dashboard />;
+      case 'dashboard':        return <Dashboard onNav={setActive} user={user} />;
       case 'trading':          return <Trading />;
       case 'learning':         return <Learning />;
       case 'journal':          return <Journal />;
@@ -65,7 +65,7 @@ export default function App() {
       case 'family':           return <Family />;
       case 'goals':     return <ComingSoon eyebrow="เป้าหมาย & OKR" title="Goals" emoji="◎" description="ตั้งเป้าหมายระยะยาว แบ่งเป็น quarter และ checklist รายสัปดาห์" />;
       case 'brain':     return <ComingSoon eyebrow="Second Brain · 128 โน้ต" title="Second Brain" emoji="✦" description="โน้ตทั้งหมดของคุณ — เชื่อมโยงกันแบบ Zettelkasten ค้นได้ใน 200ms" />;
-      default: return <Dashboard />;
+      default: return <Dashboard onNav={setActive} user={user} />;
     }
   };
 
