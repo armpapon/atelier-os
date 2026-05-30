@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import {
   parseCSV, detectKBankColumns, mapRowsToTransactions,
   bulkCreateTransactions, isMakeFormat,
+  extractAccountsFromMapped, bulkUpsertAccountsByPocket,
+  getExistingTxnKeys, txnKey, deleteTransactionsInMonth,
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
@@ -9,8 +11,14 @@ const TYPE_ICONS  = { food: '🍜', transport: '🚗', bills: '💡', income: '�
 const TYPE_LABELS = { food: 'อาหาร', transport: 'เดินทาง', bills: 'บิล', income: 'รายรับ', shop: 'ช้อปปิ้ง', family: 'ครอบครัว', other: 'อื่น ๆ' };
 
 const SCOPE_BADGE = {
-  personal: { label: 'ส่วนตัว',    bg: '#1a2030', border: '#2a3a60', color: '#7aa4f0' },
-  family:   { label: 'ครอบครัว',   bg: '#1f1a30', border: '#4a3060', color: '#c084f5' },
+  personal: { label: 'ส่วนตัว',    bg: 'rgba(89,121,159,0.10)',  border: 'rgba(89,121,159,0.35)',  color: 'var(--blue)'   },
+  family:   { label: 'ครอบครัว',   bg: 'rgba(168,109,120,0.10)', border: 'rgba(168,109,120,0.35)', color: 'var(--rose)'   },
+};
+
+const POCKET_TONE_BG = {
+  amber:  'rgba(178,122,66,0.10)',  profit: 'rgba(93,138,94,0.10)',
+  blue:   'rgba(89,121,159,0.10)',  violet: 'rgba(126,107,156,0.10)',
+  rose:   'rgba(168,109,120,0.10)', brass:  'rgba(156,124,77,0.10)',
 };
 
 export function CSVImporter({ scope: defaultScope = 'personal', onImported, onClose }) {
@@ -125,18 +133,87 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
     setHeaders([]); setRows([]); setMakeFmt(false);
   };
 
+  // Import options (Make format only)
+  const [dedup, setDedup]         = useState(true);   // skip rows that already exist
+  const [createAccts, setCreateAccts] = useState(true); // auto-create accounts from pockets
+  const [wipeMonth, setWipeMonth] = useState(false);  // delete all txns in selected months first
+  const [importStats, setImportStats] = useState(null);
+
+  // Accounts that will be created/updated
+  const pocketSummary = useMemo(
+    () => makeFmt ? extractAccountsFromMapped(preview) : [],
+    [preview, makeFmt]
+  );
+
   const handleImport = async () => {
-    const toImport = preview
-      .filter((_, i) => selected.has(i))
-      .map(({ _rowIdx, _pocket, _txtype, ...r }) => r);
-    if (!toImport.length) return;
+    const selectedRows = preview.filter((_, i) => selected.has(i));
+    if (!selectedRows.length) return;
+
     setImporting(true); setError(null);
     try {
-      await bulkCreateTransactions(toImport);
+      // Detect month range of selected rows (for dedup / wipe)
+      const months = new Set();
+      for (const r of selectedRows) {
+        const ym = (r.occurred_at || '').substring(0, 7);
+        if (ym) months.add(ym);
+      }
+      const monthArr = [...months].sort();
+
+      // Step 1: optionally wipe existing transactions in these months
+      if (wipeMonth && monthArr.length) {
+        const scopes = new Set(selectedRows.map(r => r.scope));
+        await Promise.all(
+          monthArr.flatMap(ym =>
+            [...scopes].map(sc => deleteTransactionsInMonth(ym, sc))
+          )
+        );
+      }
+
+      // Step 2: auto-create accounts from pocket names → get id map
+      let pocketIdMap = new Map();
+      if (createAccts && makeFmt && pocketSummary.length) {
+        pocketIdMap = await bulkUpsertAccountsByPocket(pocketSummary);
+      }
+
+      // Step 3: dedup against existing transactions
+      let toImport = selectedRows;
+      let skipped = 0;
+      if (dedup && !wipeMonth && monthArr.length) {
+        const first = monthArr[0] + '-01';
+        const lastMonth = monthArr[monthArr.length - 1];
+        const [ly, lm] = lastMonth.split('-').map(Number);
+        const lastEnd = `${lm === 12 ? ly + 1 : ly}-${String(lm === 12 ? 1 : lm + 1).padStart(2, '0')}-01`;
+        const scopesNeeded = [...new Set(selectedRows.map(r => r.scope))];
+        const allKeys = new Set();
+        for (const sc of scopesNeeded) {
+          const keys = await getExistingTxnKeys({ startDate: first, endDate: lastEnd, scope: sc });
+          keys.forEach(k => allKeys.add(k + '|' + sc));
+        }
+        toImport = selectedRows.filter(r => !allKeys.has(txnKey(r) + '|' + r.scope));
+        skipped = selectedRows.length - toImport.length;
+      }
+
+      // Step 4: attach account_id from pocket → strip internal _* fields → insert
+      const clean = toImport.map(({ _rowIdx, _pocket, _txtype, _cp_bal, ...r }) => ({
+        ...r,
+        account_id: pocketIdMap.get(_pocket) || null,
+      }));
+
+      let inserted = 0;
+      if (clean.length) {
+        await bulkCreateTransactions(clean);
+        inserted = clean.length;
+      }
+
+      setImportStats({
+        inserted, skipped,
+        accountsCreated: pocketIdMap.size,
+        wipedMonths: wipeMonth ? monthArr.length : 0,
+      });
       setStep('done');
       onImported?.();
     } catch (err) {
-      setError('Import ไม่สำเร็จ: ' + err.message);
+      setError('Import ไม่สำเร็จ: ' + (err.message || String(err)));
     } finally { setImporting(false); }
   };
 
@@ -410,13 +487,100 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
 
               {/* Make format info */}
               {makeFmt && (
-                <div style={{ background: '#1a1f2e', border: '1px solid #2a3550', borderRadius: 'var(--r-md)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  background: 'var(--paper)', border: '1px solid var(--paper-2)',
+                  borderRadius: 'var(--r-md)', padding: '10px 16px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}>
                   <span style={{ fontSize: 16 }}>✨</span>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: '#7aa4f0' }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--paper-ink)' }}>
                     ตรวจพบ Make Cloud Pocket CSV · แยก scope จากชื่อกระเป๋าอัตโนมัติ
                   </div>
                 </div>
               )}
+
+              {/* Accounts to create/update — Make format only */}
+              {makeFmt && pocketSummary.length > 0 && (
+                <div style={{
+                  background: 'var(--surface)', border: '1px solid var(--line)',
+                  borderRadius: 'var(--r-lg)', padding: '14px 16px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, alignItems: 'baseline' }}>
+                    <div>
+                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em' }}>
+                        💼 บัญชี / Cloud Pockets · {pocketSummary.length}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 3 }}>
+                        จะถูกสร้าง/อัพเดต balance จาก CP Bal ล่าสุด
+                      </div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={createAccts} onChange={e => setCreateAccts(e.target.checked)}
+                        style={{ accentColor: 'var(--amber)', cursor: 'pointer' }} />
+                      สร้าง/อัพเดตบัญชี
+                    </label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+                    {pocketSummary.map(p => (
+                      <div key={p.pocket} style={{
+                        background: POCKET_TONE_BG.amber, border: '1px solid var(--line)',
+                        borderRadius: 'var(--r-sm)', padding: '8px 10px',
+                        display: 'flex', flexDirection: 'column', gap: 2,
+                      }}>
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6,
+                        }}>
+                          <span style={{ fontSize: 12, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {p.pocket}
+                          </span>
+                          <span style={{
+                            fontFamily: 'var(--f-mono)', fontSize: 9, padding: '1px 6px', borderRadius: 99,
+                            background: SCOPE_BADGE[p.scope].bg, color: SCOPE_BADGE[p.scope].color,
+                            border: `1px solid ${SCOPE_BADGE[p.scope].border}`, flexShrink: 0,
+                          }}>{SCOPE_BADGE[p.scope].label}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>
+                          <span>{p.txCount} ครั้ง</span>
+                          <span style={{ color: 'var(--ink)' }}>
+                            ฿{(p.latestBalance != null ? p.latestBalance : 0).toLocaleString('th', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Import options */}
+              <div style={{
+                background: 'var(--surface)', border: '1px solid var(--line)',
+                borderRadius: 'var(--r-lg)', padding: '12px 16px',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em', marginBottom: 2 }}>
+                  ⚙ ตัวเลือก IMPORT
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12.5, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={dedup} onChange={e => setDedup(e.target.checked)}
+                    style={{ accentColor: 'var(--amber)', cursor: 'pointer', marginTop: 2 }} disabled={wipeMonth} />
+                  <span>
+                    <strong style={{ color: 'var(--ink)' }}>ข้ามรายการซ้ำ</strong>
+                    <span style={{ color: 'var(--ink-3)', marginLeft: 6 }}>
+                      — เช็คจาก (วันที่+เวลา+ยอด+ชื่อ) กับฐานข้อมูลเดิม
+                    </span>
+                  </span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12.5, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={wipeMonth} onChange={e => setWipeMonth(e.target.checked)}
+                    style={{ accentColor: 'var(--loss)', cursor: 'pointer', marginTop: 2 }} />
+                  <span>
+                    <strong style={{ color: 'var(--loss)' }}>⚠️ ลบรายการเดิมในเดือนนั้นก่อน import</strong>
+                    <span style={{ color: 'var(--ink-3)', marginLeft: 6 }}>
+                      — ใช้เมื่อต้องการ re-import แบบสะอาด (ลบของเก่าหมดในเดือนที่เกี่ยวข้อง)
+                    </span>
+                  </span>
+                </label>
+              </div>
 
               {/* Table */}
               <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
@@ -499,22 +663,31 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
 
           {/* ──────────────── DONE ────────────────────────────────────────── */}
           {step === 'done' && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: '48px 0' }}>
-              <div style={{ fontSize: 56 }}>✅</div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, padding: '40px 0' }}>
+              <div style={{ fontSize: 52 }}>✅</div>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', marginBottom: 10 }}>Import สำเร็จ!</div>
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {personalSel > 0 && (
-                    <div style={{ padding: '8px 16px', background: '#1a2030', border: '1px solid #2a3a60', borderRadius: 'var(--r-md)', color: '#7aa4f0', fontFamily: 'var(--f-mono)', fontSize: 12 }}>
-                      ส่วนตัว {personalSel} รายการ
-                    </div>
+                <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', marginBottom: 14 }}>
+                  Import สำเร็จ!
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, maxWidth: 480 }}>
+                  {importStats?.inserted > 0 && (
+                    <StatChip label="รายการใหม่"  value={importStats.inserted} accent="var(--profit)" />
                   )}
-                  {familySel > 0 && (
-                    <div style={{ padding: '8px 16px', background: '#1f1a30', border: '1px solid #4a3060', borderRadius: 'var(--r-md)', color: '#c084f5', fontFamily: 'var(--f-mono)', fontSize: 12 }}>
-                      ครอบครัว {familySel} รายการ
-                    </div>
+                  {importStats?.skipped > 0 && (
+                    <StatChip label="ข้าม (ซ้ำ)"  value={importStats.skipped} accent="var(--ink-3)" />
+                  )}
+                  {importStats?.accountsCreated > 0 && (
+                    <StatChip label="บัญชี" value={importStats.accountsCreated} accent="var(--amber)" />
+                  )}
+                  {importStats?.wipedMonths > 0 && (
+                    <StatChip label="เดือนที่ล้าง" value={importStats.wipedMonths} accent="var(--loss)" />
                   )}
                 </div>
+                {importStats?.inserted === 0 && importStats?.skipped > 0 && (
+                  <div style={{ marginTop: 14, color: 'var(--ink-3)', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
+                    ทุกรายการเป็นรายการที่มีอยู่แล้ว — ไม่ได้เพิ่มอะไรใหม่
+                  </div>
+                )}
               </div>
               <button className="btn btn--primary" onClick={onClose}>ปิดและดูรายการ</button>
             </div>
@@ -533,6 +706,23 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function StatChip({ label, value, accent }) {
+  return (
+    <div style={{
+      padding: '10px 14px', background: 'var(--surface-2)',
+      border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+      display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center',
+    }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: accent }}>
+        {value}
+      </div>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-3)', letterSpacing: '0.12em' }}>
+        {label}
       </div>
     </div>
   );

@@ -4,10 +4,11 @@ import { CSVImporter } from '../components/CSVImporter.jsx';
 import { toneColor } from '../lib/helpers.js';
 import {
   listTransactions, listTransactionsRange, createTransaction, deleteTransaction,
-  listAccounts, createAccount, deleteAccount,
+  listAccounts, createAccount, deleteAccount, updateAccount,
   listBudgets, listGoals, createGoal, deleteGoal,
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
+  deleteTransactionsInMonth,
 } from '../lib/api/finance.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
@@ -214,6 +215,7 @@ export function FinanceView({ scope }) {
   const meta = SCOPE_META[scope] || SCOPE_META.personal;
 
   const [yearMonth, setYearMonth] = useState(() => localStorage.getItem(`atelier:fin:ym:${scope}`) || currentYearMonth());
+  const [accountFilter, setAccountFilter] = useState(null);   // account_id or null
 
   const [txns, setTxns]         = useState([]);
   const [prevTxns, setPrevTxns] = useState([]);
@@ -383,40 +385,63 @@ export function FinanceView({ scope }) {
           <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
               <div>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>บัญชี & ทรัพย์สิน</div>
+                <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
+                  บัญชี & ทรัพย์สิน
+                </div>
                 <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-                  {accounts.length} บัญชี · จัดการที่นี่
+                  {accounts.length} บัญชี · รวม{' '}
+                  <strong style={{ color: 'var(--ink-2)' }}>
+                    ฿{accounts.reduce((s, a) => s + Number(a.balance || 0), 0).toLocaleString('th', { maximumFractionDigits: 0 })}
+                  </strong>
                 </div>
               </div>
-              <button className="btn btn--ghost btn--sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {accountFilter && (
+                  <button className="btn btn--ghost btn--sm" onClick={() => setAccountFilter(null)} style={{ color: 'var(--amber)' }}>
+                    × ล้าง filter
+                  </button>
+                )}
+                <button className="btn btn--ghost btn--sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</button>
+              </div>
             </div>
             {accounts.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '20px 0', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
-                ยังไม่มีบัญชี
+                ยังไม่มีบัญชี — import CSV จาก Make จะสร้างให้อัตโนมัติ
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {accounts.map(a => (
-                  <div key={a.id} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '8px 0', borderBottom: '1px solid var(--line)', fontSize: 12,
-                  }}>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-                      <span style={{ width: 4, height: 24, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
-                      <div style={{ overflow: 'hidden', minWidth: 0 }}>
-                        <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
-                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>{a.type}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflow: 'auto' }}>
+                {accounts.map(a => {
+                  const isSelected = accountFilter === a.id;
+                  const txCount = txns.filter(t => t.account_id === a.id).length;
+                  return (
+                    <div key={a.id}
+                      onClick={() => setAccountFilter(isSelected ? null : a.id)}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '8px 10px', borderRadius: 'var(--r-sm)',
+                        background: isSelected ? 'var(--surface-2)' : 'transparent',
+                        border: '1px solid ' + (isSelected ? 'var(--amber)' : 'transparent'),
+                        fontSize: 12, cursor: 'pointer', transition: 'all 100ms',
+                      }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                        <span style={{ width: 4, height: 24, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
+                        <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                          <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>
+                            {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: Number(a.balance) >= 0 ? 'var(--ink)' : 'var(--loss)' }}>
+                          ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); if (confirm(`ลบบัญชี "${a.name}"?`)) deleteAccount(a.id).then(refresh); }}
+                          style={{ color: 'var(--ink-4)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: Number(a.balance) >= 0 ? 'var(--ink)' : 'var(--loss)' }}>
-                        ฿{Number(a.balance).toLocaleString('th')}
-                      </div>
-                      <button onClick={() => { if (confirm('ลบบัญชีนี้?')) deleteAccount(a.id).then(refresh); }}
-                        style={{ color: 'var(--ink-4)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -475,16 +500,34 @@ export function FinanceView({ scope }) {
 
         {/* Row 7: Full transaction list */}
         <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
             <div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>รายการธุรกรรม</div>
+              <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
+                รายการธุรกรรม
+                {accountFilter && (
+                  <span style={{ marginLeft: 10, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--amber)' }}>
+                    · กรอง: {accounts.find(a => a.id === accountFilter)?.name}
+                  </span>
+                )}
+              </div>
               <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-                {txns.length} รายการ · {formatThaiMonth(yearMonth)}
+                {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).length} รายการ · {formatThaiMonth(yearMonth)}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn btn--ghost btn--sm" onClick={() => setShowImporter(true)}>📂 Import</button>
               <button className="btn btn--ghost btn--sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</button>
+              {txns.length > 0 && (
+                <button className="btn btn--ghost btn--sm"
+                  onClick={async () => {
+                    if (!confirm(`ลบรายการทั้ง ${txns.length} รายการในเดือน ${formatThaiMonth(yearMonth)}?\n(บัญชีจะยังอยู่)`)) return;
+                    try { await deleteTransactionsInMonth(yearMonth, scope); refresh(); }
+                    catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
+                  }}
+                  style={{ color: 'var(--loss)' }}>
+                  🗑 ล้างเดือนนี้
+                </button>
+              )}
             </div>
           </div>
 
@@ -508,7 +551,7 @@ export function FinanceView({ scope }) {
                 <div style={{ textAlign: 'right' }}>จำนวน</div><div/>
               </div>
               <div style={{ maxHeight: 600, overflow: 'auto' }}>
-                {txns.map(t => {
+                {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).map(t => {
                   const isIn = t.amount > 0;
                   return (
                     <div key={t.id} style={{

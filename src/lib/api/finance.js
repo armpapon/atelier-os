@@ -96,6 +96,7 @@ export function detectKBankColumns(headers) {
     pocketCol:   find('cloud pocket', 'pocket name', 'pocket'),
     txTypeCol:   find('type'),
     txnCol:      find('txn'),       // signed amount
+    cpBalCol:    find('cp bal'),    // pocket balance AFTER this txn
     categoryCol: find('category'),
     memoCol:     find('memo'),
     timeCol:     find('time'),
@@ -168,7 +169,7 @@ export function autoCategory(desc = '') {
  */
 export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
   const {
-    pocketCol, txTypeCol, txnCol, categoryCol, memoCol, timeCol, noteCol,
+    pocketCol, txTypeCol, txnCol, cpBalCol, categoryCol, memoCol, timeCol, noteCol,
     dateCol, descCol, amountCol, debitCol, creditCol,
   } = colMap;
 
@@ -212,6 +213,7 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
         _rowIdx:  i,
         _pocket:  pocket,
         _txtype:  txType,
+        _cp_bal:  cpBalCol ? parseAmount(row[cpBalCol]) : null,
         title,
         occurred_at,
         amount,
@@ -445,6 +447,150 @@ export async function updateAccount(id, patch) {
 export async function deleteAccount(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('accounts').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Account auto-create from Make pocket import ──────────────────────────────
+
+/**
+ * From mapped Make transactions, group by pocket → return latest CP Bal + scope.
+ * Latest = transaction with most recent occurred_at per pocket.
+ *
+ * Returns: [{ pocket, scope, latestBalance, latestDate, txCount }]
+ */
+export function extractAccountsFromMapped(mappedRows) {
+  const byPocket = {};
+  for (const r of mappedRows) {
+    if (!r._pocket) continue;
+    const cur = byPocket[r._pocket];
+    if (!cur || r.occurred_at > cur.latestDate) {
+      byPocket[r._pocket] = {
+        pocket: r._pocket,
+        scope: r.scope,
+        latestBalance: r._cp_bal != null ? r._cp_bal : (cur?.latestBalance ?? 0),
+        latestDate: r.occurred_at,
+        txCount: (cur?.txCount || 0) + 1,
+      };
+    } else {
+      byPocket[r._pocket].txCount++;
+      // Keep balance if newer txn didn't have it
+      if (cur.latestBalance == null && r._cp_bal != null) cur.latestBalance = r._cp_bal;
+    }
+  }
+  return Object.values(byPocket).sort((a, b) => b.txCount - a.txCount);
+}
+
+const POCKET_TONE_PALETTE = ['amber', 'profit', 'blue', 'violet', 'rose', 'brass'];
+function pickTone(name = '') {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return POCKET_TONE_PALETTE[h % POCKET_TONE_PALETTE.length];
+}
+
+/**
+ * Upsert accounts based on { pocket, scope, latestBalance } records.
+ * Dedup key: (user_id, name, scope) — case-insensitive match on name.
+ * Returns: Map<pocketName, accountId>
+ */
+export async function bulkUpsertAccountsByPocket(pockets) {
+  if (!supabase) return new Map();
+  if (!pockets?.length) return new Map();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+
+  // Fetch existing accounts for this user
+  const { data: existing, error: fetchErr } = await supabase
+    .from('accounts').select('id, name, scope, balance')
+    .eq('user_id', user.id);
+  if (fetchErr) throw fetchErr;
+
+  const exMap = new Map();
+  for (const a of (existing || [])) {
+    exMap.set(`${(a.name || '').trim().toLowerCase()}|${a.scope || 'personal'}`, a);
+  }
+
+  const idMap = new Map();
+  const toInsert = [];
+  const toUpdate = [];
+
+  for (const p of pockets) {
+    const key = `${p.pocket.trim().toLowerCase()}|${p.scope}`;
+    const found = exMap.get(key);
+    if (found) {
+      idMap.set(p.pocket, found.id);
+      // Update balance if we have a newer one
+      if (p.latestBalance != null) {
+        toUpdate.push({ id: found.id, balance: p.latestBalance });
+      }
+    } else {
+      toInsert.push({
+        user_id: user.id,
+        name: p.pocket,
+        type: 'savings',  // Make pockets are essentially savings sub-accounts
+        balance: p.latestBalance ?? 0,
+        tone: pickTone(p.pocket),
+        scope: p.scope,
+        is_active: true,
+      });
+    }
+  }
+
+  // Insert new accounts
+  if (toInsert.length) {
+    const { data: inserted, error } = await supabase
+      .from('accounts').insert(toInsert).select('id, name, scope');
+    if (error) throw error;
+    for (const a of (inserted || [])) {
+      idMap.set(a.name, a.id);
+    }
+  }
+
+  // Update existing balances (parallel)
+  if (toUpdate.length) {
+    await Promise.all(toUpdate.map(u =>
+      supabase.from('accounts').update({ balance: u.balance }).eq('id', u.id)
+    ));
+  }
+
+  return idMap;
+}
+
+// ── Dedup ────────────────────────────────────────────────────────────────────
+
+/**
+ * Build a Set of natural keys (date+amount+title) from existing transactions
+ * so the importer can skip duplicates.
+ */
+function txnKey(t) {
+  const date = (t.occurred_at || '').substring(0, 16);   // include HH:mm
+  const amt  = Math.round(Number(t.amount) * 100);
+  const title = (t.title || '').trim().substring(0, 40);
+  return `${date}|${amt}|${title}`;
+}
+
+/** Get keys of existing transactions in a date range for dedup. */
+export async function getExistingTxnKeys({ startDate, endDate, scope } = {}) {
+  if (!supabase) return new Set();
+  let q = supabase.from('transactions')
+    .select('occurred_at, amount, title, scope')
+    .gte('occurred_at', startDate)
+    .lt('occurred_at', endDate);
+  if (scope) q = q.eq('scope', scope);
+  const { data, error } = await q;
+  if (error) throw error;
+  return new Set((data || []).map(txnKey));
+}
+
+export { txnKey };
+
+/** Delete all transactions in a month (used for clean re-import). */
+export async function deleteTransactionsInMonth(yearMonth, scope) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { start, end } = getMonthBounds(yearMonth);
+  let q = supabase.from('transactions').delete().gte('occurred_at', start).lt('occurred_at', end);
+  if (scope) q = q.eq('scope', scope);
+  const { error } = await q;
   if (error) throw error;
 }
 
