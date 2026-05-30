@@ -1,5 +1,5 @@
 /**
- * Atelier OS — Button
+ * Loop — Button
  * Hierarchy: primary > secondary > outline > ghost > icon
  * Only ONE primary button per major section.
  */

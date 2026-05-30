@@ -1,5 +1,5 @@
 /**
- * Atelier OS — Card system
+ * Loop — Card system
  * Standardized card with optional eyebrow / title / meta / actions
  *
  * Variants:

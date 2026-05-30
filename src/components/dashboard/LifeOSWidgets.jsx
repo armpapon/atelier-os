@@ -70,7 +70,7 @@ export function ManifestCard({ manifest, onSave }) {
         <EmptyState
           icon="⌘"
           title="เขียน North Star แรกของคุณ"
-          description="สรุปทิศทางชีวิตหรือหลักการตัดสินใจ เพื่อให้ทุกโมดูลใน Atelier OS มีเข็มทิศเดียวกัน"
+          description="สรุปทิศทางชีวิตหรือหลักการตัดสินใจ เพื่อให้ทุกโมดูลใน Loop มีเข็มทิศเดียวกัน"
           actionLabel="เริ่มเขียน Manifest"
           onAction={() => setEditing(true)}
           compact
@@ -129,7 +129,7 @@ export function ThemesCard({ themes, onSave }) {
   const rows = [
     { key: 'year_theme',    label: 'ปี ' + labels.year_label,        value: themes?.year_theme,    placeholder: '"ปีแห่งการสร้างระบบ"' },
     { key: 'quarter_theme', label: labels.quarter_label,              value: themes?.quarter_theme, placeholder: '"Optimize before scale"' },
-    { key: 'week_theme',    label: 'สัปดาห์ ' + labels.week_label,    value: themes?.week_theme,    placeholder: '"เปิด Atelier OS ให้ใช้งานจริง"' },
+    { key: 'week_theme',    label: 'สัปดาห์ ' + labels.week_label,    value: themes?.week_theme,    placeholder: '"เปิด Loop ให้ใช้งานจริง"' },
   ];
 
   return (

@@ -15,6 +15,7 @@ import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx'
 import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
+import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -29,8 +30,8 @@ const CATEGORIES = [
 const CAT_ICON = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
 
 const SCOPE_META = {
-  personal: { label: 'ส่วนตัว',  accent: '#7aa4f0', sub: 'รายรับ-รายจ่ายส่วนตัว · บัญชี Make · เป้าหมาย' },
-  family:   { label: 'ครอบครัว', accent: '#c084f5', sub: 'รายจ่ายครอบครัว · บัญชีร่วม · กองทุน & งบประมาณ' },
+  personal: { label: 'ส่วนตัว',  accent: 'var(--accent)',  sub: 'รายรับ-รายจ่ายส่วนตัว · บัญชี Make · เป้าหมาย' },
+  family:   { label: 'ครอบครัว', accent: 'var(--violet)',  sub: 'รายจ่ายครอบครัว · บัญชีร่วม · กองทุน & งบประมาณ' },
 };
 
 function txDate(iso) {
@@ -116,8 +117,8 @@ function TxnForm({ accounts, scope, onSave, onClose }) {
         </label>
         {error && <div style={{ padding: '10px 12px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
-          <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : '💾 บันทึก'}</button>
+          <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : '💾 บันทึก'}</Button>
         </div>
       </form>
     </div>
@@ -158,8 +159,8 @@ function AccountModal({ scope, onSave, onClose }) {
           <input className="input" type="number" value={form.balance} onChange={e => setForm(f => ({...f, balance: e.target.value}))} placeholder="0" />
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : '+ เพิ่มบัญชี'}</button>
+          <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : '+ เพิ่มบัญชี'}</Button>
         </div>
       </form>
     </div>
@@ -200,8 +201,8 @@ function GoalModal({ scope, onSave, onClose }) {
           <input className="input" type="date" value={form.deadline} onChange={e => setForm(f => ({...f, deadline: e.target.value}))} />
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : 'บันทึก'}</button>
+          <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : 'บันทึก'}</Button>
         </div>
       </form>
     </div>
@@ -306,27 +307,30 @@ export function FinanceView({ scope }) {
               {meta.sub}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <MonthNav value={yearMonth} onChange={setYearMonth} />
-            <button className="btn btn--ghost" onClick={() => setShowImporter(true)}>
-              📂 Import
-            </button>
-            <button className="btn btn--ghost" onClick={() => setShowAccForm(true)}>
-              + บัญชี
-            </button>
-            <button className="btn btn--primary" onClick={() => setShowTxnForm(true)}>
+            <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ บัญชี</Button>
+            <Button variant="primary" size="md" onClick={() => setShowTxnForm(true)}>
               <Icon name="plus" size={14}/> บันทึกรายการ
-            </button>
+            </Button>
           </div>
         </div>
 
         {error && (
-          <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+          <div style={{
+            padding: '12px 16px', background: 'var(--danger-soft)', color: 'var(--danger)',
+            border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)', fontSize: 13,
+          }}>
             ⚠️ {error}
           </div>
         )}
         {loading && (
-          <div style={{ padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--ink-3)', borderRadius: 'var(--r-md)', fontSize: 11, fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', textAlign: 'center' }}>
+          <div style={{
+            padding: '8px 14px', background: 'var(--surface-muted)', color: 'var(--text-muted)',
+            borderRadius: 'var(--radius-control)', fontSize: 11, fontFamily: 'var(--f-mono)',
+            letterSpacing: '0.1em', textAlign: 'center',
+          }}>
             กำลังโหลดข้อมูล…
           </div>
         )}
@@ -397,19 +401,24 @@ export function FinanceView({ scope }) {
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {accountFilter && (
-                  <button className="btn btn--ghost btn--sm" onClick={() => setAccountFilter(null)} style={{ color: 'var(--amber)' }}>
-                    × ล้าง filter
-                  </button>
+                  <Button variant="ghost" size="sm" onClick={() => setAccountFilter(null)}>× ล้าง filter</Button>
                 )}
-                <button className="btn btn--ghost btn--sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</button>
+                <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</Button>
               </div>
             </div>
             {accounts.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '20px 0', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
-                ยังไม่มีบัญชี — import CSV จาก Make จะสร้างให้อัตโนมัติ
-              </div>
+              <EmptyState
+                icon="💼"
+                title="ยังไม่มีบัญชี"
+                description="import CSV จาก Make จะสร้างบัญชี (Cloud Pockets) ให้อัตโนมัติ พร้อมยอดล่าสุด"
+                actionLabel="📂 Import จาก Make"
+                onAction={() => setShowImporter(true)}
+                secondaryLabel="+ สร้างเอง"
+                onSecondary={() => setShowAccForm(true)}
+                compact
+              />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflow: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 340, overflow: 'auto', marginTop: 2 }}>
                 {accounts.map(a => {
                   const isSelected = accountFilter === a.id;
                   const txCount = txns.filter(t => t.account_id === a.id).length;
@@ -418,26 +427,29 @@ export function FinanceView({ scope }) {
                       onClick={() => setAccountFilter(isSelected ? null : a.id)}
                       style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '8px 10px', borderRadius: 'var(--r-sm)',
-                        background: isSelected ? 'var(--surface-2)' : 'transparent',
-                        border: '1px solid ' + (isSelected ? 'var(--amber)' : 'transparent'),
-                        fontSize: 12, cursor: 'pointer', transition: 'all 100ms',
-                      }}>
+                        padding: '9px 12px', borderRadius: 'var(--radius-control)',
+                        background: isSelected ? 'var(--accent-soft)' : 'transparent',
+                        border: '1px solid ' + (isSelected ? 'var(--accent)' : 'transparent'),
+                        fontSize: 12.5, cursor: 'pointer', transition: 'all 130ms',
+                      }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-muted)'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-                        <span style={{ width: 4, height: 24, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
+                        <span style={{ width: 4, height: 26, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
                         <div style={{ overflow: 'hidden', minWidth: 0 }}>
-                          <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>
+                          <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : 400 }}>{a.name}</div>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
                             {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
                           </div>
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: Number(a.balance) >= 0 ? 'var(--ink)' : 'var(--loss)' }}>
+                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 500, color: Number(a.balance) >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>
                           ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); if (confirm(`ลบบัญชี "${a.name}"?`)) deleteAccount(a.id).then(refresh); }}
-                          style={{ color: 'var(--ink-4)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
+                          aria-label={`ลบบัญชี ${a.name}`}
+                          style={{ color: 'var(--text-muted)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
                       </div>
                     </div>
                   );
@@ -455,41 +467,47 @@ export function FinanceView({ scope }) {
                   {goals.length} เป้าหมาย
                 </div>
               </div>
-              <button className="btn btn--ghost btn--sm" onClick={() => setShowGoalForm(true)}>+ เพิ่ม</button>
+              <Button variant="secondary" size="sm" onClick={() => setShowGoalForm(true)}>+ เพิ่ม</Button>
             </div>
             {goals.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '20px 0', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
-                ยังไม่มีเป้าหมาย
-              </div>
+              <EmptyState
+                icon="◎"
+                title="ยังไม่มีเป้าหมายการเงิน"
+                description="เริ่มจาก 1 เป้าหมาย เช่น 'ออมเงินดาวน์บ้าน' หรือ 'ลดหนี้บัตรเครดิต'"
+                actionLabel="เพิ่มเป้าหมายแรก"
+                onAction={() => setShowGoalForm(true)}
+                compact
+              />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {goals.map(g => {
                   const pct = Math.min(Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100), 100);
                   return (
                     <div key={g.id}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                        <div>
-                          <div style={{ fontSize: 13, color: 'var(--ink)' }}>{g.title}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, color: 'var(--text-primary)' }}>{g.title}</div>
                           {g.deadline && (
-                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)', marginTop: 1 }}>
-                              {new Date(g.deadline).toLocaleDateString('th-TH')}
+                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+                              ⌛ {new Date(g.deadline).toLocaleDateString('th-TH')}
                             </div>
                           )}
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-2)' }}>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11.5, color: 'var(--text-secondary)' }}>
                             ฿{Number(g.current_amount).toLocaleString('th')} / ฿{Number(g.target_amount).toLocaleString('th')}
                           </div>
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: pct >= 100 ? 'var(--profit)' : 'var(--amber)' }}>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: pct >= 100 ? 'var(--success)' : 'var(--accent-strong)', fontWeight: 500 }}>
                             {pct}%
                           </div>
                         </div>
                       </div>
-                      <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: pct >= 100 ? 'var(--profit)' : 'var(--amber)' }} />
+                      <div style={{ height: 6, background: 'var(--surface-muted)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: pct >= 100 ? 'var(--success)' : 'var(--accent)', transition: 'width 300ms' }} />
                       </div>
                       <button onClick={() => { if (confirm('ลบเป้าหมายนี้?')) deleteGoal(g.id).then(refresh); }}
-                        style={{ marginTop: 3, color: 'var(--ink-4)', fontSize: 10, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>ลบ</button>
+                        className="focus-ring"
+                        style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 11, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>ลบ</button>
                     </div>
                   );
                 })}
@@ -515,31 +533,31 @@ export function FinanceView({ scope }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn--ghost btn--sm" onClick={() => setShowImporter(true)}>📂 Import</button>
-              <button className="btn btn--ghost btn--sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</button>
+              <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+              <Button variant="secondary" size="sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</Button>
               {txns.length > 0 && (
-                <button className="btn btn--ghost btn--sm"
+                <Button variant="danger" size="sm"
                   onClick={async () => {
                     if (!confirm(`ลบรายการทั้ง ${txns.length} รายการในเดือน ${formatThaiMonth(yearMonth)}?\n(บัญชีจะยังอยู่)`)) return;
                     try { await deleteTransactionsInMonth(yearMonth, scope); refresh(); }
                     catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
-                  }}
-                  style={{ color: 'var(--loss)' }}>
+                  }}>
                   🗑 ล้างเดือนนี้
-                </button>
+                </Button>
               )}
             </div>
           </div>
 
           {txns.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '32px 0' }}>
-              <div style={{ fontSize: 28, marginBottom: 10 }}>📋</div>
-              <div style={{ fontSize: 13 }}>ยังไม่มีรายการเดือนนี้</div>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
-                <button className="btn btn--ghost btn--sm" onClick={() => setShowImporter(true)}>📂 Import จาก Make</button>
-                <button className="btn btn--ghost btn--sm" onClick={() => setShowTxnForm(true)}>+ เพิ่มเอง</button>
-              </div>
-            </div>
+            <EmptyState
+              icon="📋"
+              title="ยังไม่มีรายการเดือนนี้"
+              description="บันทึกรายการเอง หรือ import จาก Make เพื่อสร้าง cash flow และ budget อัตโนมัติ"
+              actionLabel="📂 Import จาก Make"
+              onAction={() => setShowImporter(true)}
+              secondaryLabel="+ เพิ่มเอง"
+              onSecondary={() => setShowTxnForm(true)}
+            />
           ) : (
             <>
               <div style={{

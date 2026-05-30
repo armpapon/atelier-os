@@ -1,5 +1,5 @@
 /**
- * Atelier OS — Badge / Pill
+ * Loop — Badge / Pill
  * Tonal pill for counts, status, tags.
  */
 

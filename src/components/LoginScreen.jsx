@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { signIn, signUp } from '../lib/useAuth.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
+import { LoopMark } from './LoopMark.jsx';
 
 export function LoginScreen() {
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
@@ -37,7 +38,7 @@ export function LoginScreen() {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
-          <div style={styles.brand}><span style={styles.brandMark}>ạ</span> Atelier OS</div>
+          <div style={styles.brand}><LoopMark size={26} /> <span style={{ marginLeft: 10 }}>Loop</span></div>
           <div style={styles.title}>ยังไม่ได้ตั้งค่า Supabase</div>
           <div style={styles.sub}>
             ใส่ <code>VITE_SUPABASE_URL</code> และ <code>VITE_SUPABASE_ANON_KEY</code>
@@ -51,9 +52,7 @@ export function LoginScreen() {
   return (
     <div style={styles.container}>
       <form style={styles.card} onSubmit={handleSubmit}>
-        <div style={styles.brand}>
-          <span style={styles.brandMark}>ạ</span> Atelier OS
-        </div>
+        <div style={styles.brand}><LoopMark size={26} /> <span style={{ marginLeft: 10 }}>Loop</span></div>
         <div style={styles.title}>
           {mode === 'signin' ? 'ยินดีต้อนรับกลับ' : 'สร้างบัญชีใหม่'}
         </div>
@@ -126,12 +125,9 @@ const styles = {
     display: 'flex', flexDirection: 'column', gap: 14,
   },
   brand: {
-    fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--ink)',
-    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
-  },
-  brandMark: {
-    fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 28,
-    color: 'var(--amber)',
+    fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--accent)',
+    fontWeight: 500,
+    display: 'flex', alignItems: 'center', marginBottom: 8,
   },
   title: {
     fontFamily: 'var(--f-display)', fontSize: 26, color: 'var(--ink)',

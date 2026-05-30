@@ -1,17 +1,19 @@
 import { Card, CardHeader, Badge, Button } from './ui/index.js';
+import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
     version: 'v0.5',
     date: '2026-05-30',
-    title: 'Editorial Minimal OS — Design System Refresh',
+    title: 'Rebrand → Loop · Editorial Minimal OS',
     badge: 'Current',
     changes: [
+      'Rebrand จาก Atelier OS → Loop · มีโลโก้ใหม่เป็นวงกลม loop/cycle',
       'Design tokens — warm ivory palette, darker text, premium card surfaces',
       'Shared UI: Button (5 variants), Card, Badge, EmptyState',
       'Preview banner ปรับเป็น sticky status bar สุภาพ',
-      'Sidebar active state เด่นขึ้น พร้อม dot indicator',
-      'Manifest / Life OS widgets ใช้ token system เดียวกัน',
+      'Sidebar active state เด่นขึ้น พร้อม left bar indicator',
+      'Version History timeline เปิดจาก sidebar',
     ],
   },
   {
@@ -49,7 +51,7 @@ export const CHANGELOG = [
   {
     version: 'v0.1',
     date: '2026-05-25',
-    title: 'Atelier OS v1',
+    title: 'First release',
     changes: [
       'แดชบอร์ด · Daily Journal · Trading · Learning · Finance · Family',
       'Supabase backend + Auth + RLS',
@@ -78,7 +80,7 @@ export function VersionHistory({ onClose }) {
               ✦ VERSION HISTORY
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--text-primary)' }}>
-              Atelier OS · Changelog
+              Loop · Changelog
             </div>
           </div>
           <button onClick={onClose} aria-label="ปิด" style={{
@@ -116,7 +118,9 @@ export function VersionHistory({ onClose }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
           fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)',
         }}>
-          <span>ạ Atelier OS</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--accent)' }}>
+            <LoopMark size={14} /> Loop
+          </span>
           <Button variant="outline" size="sm" onClick={onClose}>ปิด</Button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { Icon } from './Icon.jsx';
 import { Badge } from './ui/index.js';
 import { signOut } from '../lib/useAuth.js';
 import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
+import { LoopMark } from './LoopMark.jsx';
 
 export function Sidebar({ active, onChange, user }) {
   const [showVersion, setShowVersion] = useState(false);
@@ -47,14 +48,13 @@ export function Sidebar({ active, onChange, user }) {
           padding: '20px 14px 22px', borderBottom: '1px solid var(--border)',
           marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10,
         }}>
+          <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
+            <LoopMark size={26} />
+          </span>
           <span style={{
-            fontFamily: 'var(--f-display)', fontStyle: 'italic',
-            fontSize: 30, color: 'var(--accent)', lineHeight: 1, letterSpacing: '-0.02em',
-          }}>ạ</span>
-          <span style={{
-            fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 500,
-            color: 'var(--text-primary)',
-          }}>Atelier OS</span>
+            fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 500,
+            color: 'var(--text-primary)', letterSpacing: '-0.005em',
+          }}>Loop</span>
           <button onClick={() => setShowVersion(true)}
             title="Version history" aria-label="Version history"
             style={{

@@ -14,6 +14,7 @@ import { FamilyFinance } from './pages/FamilyFinance.jsx';
 import { Family } from './pages/Family.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
+import { LoopBrand } from './components/LoopMark.jsx';
 
 // ── Preview mode: ?preview=1 in URL bypasses login (for design review) ──────
 // Note: Supabase RLS still blocks all writes & private data — only the
@@ -45,11 +46,9 @@ export default function App() {
       <div style={{
         position: 'fixed', inset: 0, display: 'flex',
         alignItems: 'center', justifyContent: 'center',
-        background: 'var(--bg)', color: 'var(--ink-3)',
-        fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 20,
+        background: 'var(--background)',
       }}>
-        <span style={{ color: 'var(--amber)', fontSize: 32, marginRight: 10 }}>ạ</span>
-        Atelier OS
+        <LoopBrand size="lg" />
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatBaht } from './KPICard.jsx';
+import { Card, CardHeader, EmptyState } from '../ui/index.js';
 
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -21,8 +22,20 @@ function fmtYM(ym) {
 export function CashFlowChart({ data, currentYm, onMonthClick }) {
   const [hoverIdx, setHoverIdx] = useState(null);
 
-  if (!data?.length) {
-    return <EmptyChart label="ยังไม่มีข้อมูล cash flow" />;
+  // Check if there's any real data — avoid showing weird ฿0/฿1 axes
+  const hasData = data?.some(d => d.income > 0 || d.expense > 0);
+  if (!data?.length || !hasData) {
+    return (
+      <Card>
+        <CardHeader eyebrow="Cash Flow · 12 เดือน" title="กระแสรายรับ-รายจ่าย" />
+        <EmptyState
+          icon="📈"
+          title="ยังไม่มีข้อมูลย้อนหลัง"
+          description="เมื่อมีรายรับ-รายจ่ายในเดือนต่าง ๆ จะเห็นกราฟ trend 12 เดือน + อัตราการออม"
+          compact
+        />
+      </Card>
+    );
   }
 
   // Layout
@@ -54,22 +67,19 @@ export function CashFlowChart({ data, currentYm, onMonthClick }) {
   const hover = hoverIdx != null ? data[hoverIdx] : null;
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
-            Cash Flow · 12 เดือนย้อนหลัง
+    <Card>
+      <CardHeader
+        eyebrow="Cash Flow · 12 เดือนย้อนหลัง"
+        title="กระแสรายรับ-รายจ่าย"
+        meta="รายรับ · รายจ่าย · อัตราการออม"
+        action={
+          <div style={{ display: 'flex', gap: 14, fontSize: 11 }}>
+            <Legend color="var(--success)" label="รายรับ" />
+            <Legend color="var(--danger)"  label="รายจ่าย" />
+            <Legend color="var(--accent)"  label="Savings %" dashed />
           </div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-            รายรับ · รายจ่าย · อัตราการออม
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 14, fontSize: 11 }}>
-          <Legend color="var(--profit)" label="รายรับ" />
-          <Legend color="var(--loss)"   label="รายจ่าย" />
-          <Legend color="var(--amber)"  label="Savings %" dashed />
-        </div>
-      </div>
+        }
+      />
 
       <div style={{ position: 'relative' }}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
@@ -155,13 +165,13 @@ export function CashFlowChart({ data, currentYm, onMonthClick }) {
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
 function Legend({ color, label, dashed }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--ink-3)', fontSize: 10.5, fontFamily: 'var(--f-mono)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)', fontSize: 10.5, fontFamily: 'var(--f-mono)' }}>
       {dashed ? (
         <svg width="14" height="3"><line x1="0" y1="1.5" x2="14" y2="1.5" stroke={color} strokeWidth="1.5" strokeDasharray="3 2" /></svg>
       ) : (

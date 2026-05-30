@@ -1,5 +1,5 @@
 /**
- * Atelier OS — EmptyState
+ * Loop — EmptyState
  * Standardized empty state with icon + headline + description + CTA.
  * Use this ANY time a list/card is empty.
  */

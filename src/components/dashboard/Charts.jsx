@@ -1,12 +1,13 @@
 import { formatBaht } from './KPICard.jsx';
+import { Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
 
 const CATEGORY_COLORS = {
-  food:      '#e87f4f',
-  transport: '#6fb8d9',
-  bills:     '#d9a14f',
-  income:    '#5fb878',
-  shop:      '#c884d4',
-  family:    '#e0708f',
+  food:      '#c98558',
+  transport: '#5e91ad',
+  bills:     '#c99a42',
+  income:    'var(--success)',
+  shop:      '#9a6db5',
+  family:    '#b96d7f',
   other:     '#8a8580',
 };
 
@@ -15,30 +16,34 @@ const CATEGORY_ICONS = {
   income: '💰', shop: '🛍', family: '❤️', other: '📦',
 };
 
-// ── Spending by Category (horizontal bars) ───────────────────────────────────
+// ── Spending by Category ────────────────────────────────────────────────────
 export function CategoryBreakdown({ data, totalExpense }) {
-  if (!data?.length) return <EmptyCard label="ไม่มีรายจ่ายในเดือนนี้" />;
+  if (!data?.length) {
+    return (
+      <Card>
+        <CardHeader eyebrow="หมวด" title="รายจ่ายตามหมวด" />
+        <EmptyState
+          icon="🍜"
+          title="ยังไม่มีรายจ่ายเดือนนี้"
+          description="เมื่อมีรายจ่าย จะแบ่งเป็นหมวด เช่น อาหาร เดินทาง บิล ให้อัตโนมัติ"
+          compact
+        />
+      </Card>
+    );
+  }
 
   const top = data.slice(0, 8);
   const maxAmount = top[0]?.amount || 1;
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
-            รายจ่ายตามหมวด
-          </div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-            TOP {top.length} · จาก {data.length} หมวด
-          </div>
-        </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
-          รวม -{formatBaht(totalExpense, { compact: true })}
-        </div>
-      </div>
+    <Card>
+      <CardHeader
+        eyebrow={`หมวด · TOP ${top.length} จาก ${data.length}`}
+        title="รายจ่ายตามหมวด"
+        meta={`รวม -${formatBaht(totalExpense, { compact: true })}`}
+      />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {top.map(row => {
           const pct      = (row.amount / maxAmount) * 100;
           const ofTotal  = totalExpense > 0 ? (row.amount / totalExpense) * 100 : 0;
@@ -46,173 +51,174 @@ export function CategoryBreakdown({ data, totalExpense }) {
           const icon     = CATEGORY_ICONS[row.type]  || CATEGORY_ICONS.other;
           return (
             <div key={row.category}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
-                <span style={{ color: 'var(--ink-2)' }}>
-                  <span style={{ marginRight: 6 }}>{icon}</span>{row.category}
-                  <span style={{ marginLeft: 8, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)', fontSize: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-primary)' }}>
+                  <span style={{ marginRight: 8 }}>{icon}</span>{row.category}
+                  <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', fontSize: 10.5 }}>
                     {row.count} ครั้ง
                   </span>
                 </span>
-                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--ink)' }}>
+                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>
                   ฿{Math.round(row.amount).toLocaleString('th')}
-                  <span style={{ color: 'var(--ink-4)', marginLeft: 6, fontSize: 10 }}>
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 10.5, fontWeight: 400 }}>
                     {ofTotal.toFixed(0)}%
                   </span>
                 </span>
               </div>
-              <div style={{ height: 6, background: 'var(--surface-2)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: 6, background: 'var(--surface-muted)', borderRadius: 3, overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 300ms' }} />
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }
 
-// ── Top 10 Expenses (list) ───────────────────────────────────────────────────
+// ── Top Expenses ────────────────────────────────────────────────────────────
 export function TopExpenses({ data }) {
-  if (!data?.length) return <EmptyCard label="ยังไม่มีรายจ่าย" />;
+  if (!data?.length) {
+    return (
+      <Card>
+        <CardHeader eyebrow="Top 10" title="รายจ่ายใหญ่สุด" />
+        <EmptyState
+          icon="💸"
+          title="ยังไม่มีรายจ่าย"
+          description="เมื่อมีรายการ จะแสดง 10 อันดับรายจ่ายที่ใหญ่ที่สุดของเดือน"
+          compact
+        />
+      </Card>
+    );
+  }
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
-          Top {data.length} รายจ่าย
-        </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-          เรียงจากมากไปน้อย · คลิกเพื่อดูรายละเอียด
-        </div>
-      </div>
+    <Card>
+      <CardHeader
+        eyebrow={`Top ${data.length}`}
+        title="รายจ่ายใหญ่สุด"
+        meta="เรียงจากมากไปน้อย"
+      />
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
         {data.map((t, i) => (
           <div key={t.id || i} style={{
-            display: 'grid', gridTemplateColumns: '20px 60px 1fr auto', gap: 10,
-            padding: '8px 0', alignItems: 'center', fontSize: 12,
-            borderBottom: i < data.length - 1 ? '1px solid var(--line)' : 0,
+            display: 'grid', gridTemplateColumns: '22px 56px 1fr auto', gap: 10,
+            padding: '9px 0', alignItems: 'center', fontSize: 12.5,
+            borderTop: i === 0 ? 'none' : '1px solid var(--border)',
           }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
               {String(i + 1).padStart(2, '0')}
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-secondary)' }}>
               {(t.occurred_at || '').substring(5, 10).replace('-', '/')}
             </div>
-            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
               {t.title}
-              <span style={{ marginLeft: 8, fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>
+              <span style={{ marginLeft: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
                 {t.category}
               </span>
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--loss)', fontWeight: 500 }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--danger)', fontWeight: 500 }}>
               -฿{Math.abs(t.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
-// ── Budget vs Actual ─────────────────────────────────────────────────────────
-export function BudgetProgress({ budgets, categoryActuals }) {
+// ── Budget vs Actual ────────────────────────────────────────────────────────
+export function BudgetProgress({ budgets, categoryActuals, onAddBudget }) {
   if (!budgets?.length) {
     return (
-      <div style={{ background: 'var(--surface)', border: '1px dashed var(--line)', borderRadius: 'var(--r-lg)', padding: '24px 20px' }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', marginBottom: 4 }}>
-          งบรายเดือน
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 16 }}>
-          ยังไม่ได้ตั้งงบเดือนนี้ — ตั้งงบเพื่อ track การใช้จ่ายให้อยู่ในแผน
-        </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>
-          กดปุ่ม "+ บัญชี" ในหน้าการเงินเพื่อเพิ่ม budget ต่อหมวด
-        </div>
-      </div>
+      <Card>
+        <CardHeader eyebrow="งบประมาณ" title="งบ vs จ่ายจริง" />
+        <EmptyState
+          icon="◎"
+          title="ยังไม่ได้ตั้งงบเดือนนี้"
+          description="ตั้งงบต่อหมวด (อาหาร เดินทาง บิล) เพื่อ track การใช้จ่ายให้อยู่ในแผน"
+          actionLabel={onAddBudget ? 'ตั้งงบแรก' : null}
+          onAction={onAddBudget}
+          compact
+        />
+      </Card>
     );
   }
 
-  // Build map of actuals
   const actualMap = {};
   categoryActuals?.forEach(c => { actualMap[c.category] = c.amount; });
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
-          งบ vs จ่ายจริง
-        </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-          {budgets.length} หมวด · แถบเตือนเมื่อใกล้/เกินงบ
-        </div>
-      </div>
+    <Card>
+      <CardHeader
+        eyebrow={`งบประมาณ · ${budgets.length} หมวด`}
+        title="งบ vs จ่ายจริง"
+        meta="แถบเตือนเมื่อใกล้/เกินงบ"
+      />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
         {budgets.map(b => {
           const limit  = Number(b.monthly_limit) || 0;
           const actual = actualMap[b.category] || 0;
           const pct    = limit > 0 ? (actual / limit) * 100 : 0;
-          const tone   = pct >= 100 ? 'loss' : pct >= 80 ? 'amber' : 'profit';
+          const tone   = pct >= 100 ? 'danger' : pct >= 80 ? 'warning' : 'success';
           const colors = {
-            profit: { bg: 'var(--profit)', text: 'var(--profit)' },
-            amber:  { bg: 'var(--amber)',  text: 'var(--amber)'  },
-            loss:   { bg: 'var(--loss)',   text: 'var(--loss)'   },
+            success: { bg: 'var(--success)', text: 'var(--success)' },
+            warning: { bg: 'var(--warning)', text: 'var(--accent-strong)' },
+            danger:  { bg: 'var(--danger)',  text: 'var(--danger)' },
           }[tone];
 
           return (
             <div key={b.id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12 }}>
-                <span style={{ color: 'var(--ink-2)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-primary)' }}>
                   {b.category}
-                  {tone === 'loss' && <span style={{ marginLeft: 6, color: 'var(--loss)' }}>⚠️</span>}
+                  {tone === 'danger' && <Badge tone="danger" size="sm" style={{ marginLeft: 8 }}>เกินงบ</Badge>}
                 </span>
-                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--ink)' }}>
+                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)' }}>
                   ฿{Math.round(actual).toLocaleString('th')}
-                  <span style={{ color: 'var(--ink-4)', margin: '0 4px' }}>/</span>
+                  <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
                   ฿{Math.round(limit).toLocaleString('th')}
-                  <span style={{ color: colors.text, marginLeft: 8, fontSize: 10.5 }}>
+                  <span style={{ color: colors.text, marginLeft: 8, fontSize: 11, fontWeight: 500 }}>
                     {pct.toFixed(0)}%
                   </span>
                 </span>
               </div>
-              <div style={{ height: 8, background: 'var(--surface-2)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+              <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
                 <div style={{
                   width: `${Math.min(100, pct)}%`, height: '100%',
                   background: colors.bg, transition: 'width 300ms',
                 }} />
-                {pct > 100 && (
-                  <div style={{ position: 'absolute', top: 0, right: 0, fontSize: 9, color: 'var(--loss)', padding: '0 4px', fontFamily: 'var(--f-mono)' }}>
-                    +{(pct - 100).toFixed(0)}%
-                  </div>
-                )}
               </div>
             </div>
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }
 
-// ── Net Worth Card (assets - liabilities) ────────────────────────────────────
+// ── Net Worth Card ──────────────────────────────────────────────────────────
 export function NetWorthCard({ accounts }) {
   if (!accounts?.length) {
     return (
-      <div style={{ background: 'var(--surface)', border: '1px dashed var(--line)', borderRadius: 'var(--r-lg)', padding: '24px 20px', height: '100%' }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)', marginBottom: 4 }}>
-          มูลค่าสุทธิ
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-          ยังไม่ได้เพิ่มบัญชี — เพิ่มบัญชี/ทรัพย์สิน/หนี้สินในหน้าการเงิน
-        </div>
-      </div>
+      <Card style={{ height: '100%' }}>
+        <CardHeader eyebrow="มูลค่าสุทธิ" title="Net Worth" />
+        <EmptyState
+          icon="💼"
+          title="ยังไม่มีบัญชี"
+          description="เพิ่มบัญชี/ทรัพย์สิน หรือ import จาก Make จะสร้างให้อัตโนมัติ"
+          compact
+        />
+      </Card>
     );
   }
 
   let assets = 0, liabilities = 0;
   for (const a of accounts) {
-    const bal = Number(a.current_balance) || 0;
+    const bal = Number(a.current_balance ?? a.balance) || 0;
     if (a.type === 'debt' || bal < 0) liabilities += Math.abs(bal);
     else assets += bal;
   }
@@ -220,49 +226,45 @@ export function NetWorthCard({ accounts }) {
   const debtRatio = assets > 0 ? (liabilities / assets) * 100 : 0;
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px', height: '100%' }}>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
-          มูลค่าสุทธิ
-        </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-          {accounts.length} บัญชี · สินทรัพย์ − หนี้สิน
-        </div>
-      </div>
+    <Card style={{ height: '100%' }}>
+      <CardHeader
+        eyebrow={`มูลค่าสุทธิ · ${accounts.length} บัญชี`}
+        title="Net Worth"
+        meta="สินทรัพย์ − หนี้สิน"
+      />
 
       <div style={{
-        fontFamily: 'var(--f-display)', fontSize: 32,
-        color: net >= 0 ? 'var(--ink)' : 'var(--loss)',
-        marginBottom: 12,
+        fontFamily: 'var(--f-display)', fontSize: 34, fontWeight: 500,
+        color: net >= 0 ? 'var(--text-primary)' : 'var(--danger)',
+        marginBottom: 16, letterSpacing: '-0.01em',
       }}>
         ฿{net.toLocaleString('th', { maximumFractionDigits: 0 })}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <NWRow label="สินทรัพย์" value={assets} color="var(--profit)" />
-        <NWRow label="หนี้สิน"    value={liabilities} color="var(--loss)" sign="-" />
-        <div style={{ height: 1, background: 'var(--line)', margin: '4px 0' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-          <span style={{ color: 'var(--ink-3)', fontFamily: 'var(--f-mono)', letterSpacing: '0.1em' }}>DEBT RATIO</span>
-          <span style={{
-            fontFamily: 'var(--f-mono)',
-            color: debtRatio > 50 ? 'var(--loss)' : debtRatio > 30 ? 'var(--amber)' : 'var(--profit)',
-          }}>{debtRatio.toFixed(1)}%</span>
+        <NWRow label="สินทรัพย์" value={assets} color="var(--success)" />
+        <NWRow label="หนี้สิน"    value={liabilities} color="var(--danger)" sign="-" />
+        <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>DEBT RATIO</span>
+          <Badge tone={debtRatio > 50 ? 'danger' : debtRatio > 30 ? 'warning' : 'success'} size="sm">
+            {debtRatio.toFixed(1)}%
+          </Badge>
         </div>
       </div>
 
-      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {accounts.slice(0, 4).map(a => {
-          const bal = Number(a.current_balance) || 0;
+          const bal = Number(a.current_balance ?? a.balance) || 0;
           const isDebt = a.type === 'debt' || bal < 0;
           return (
-            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-              <span style={{ color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+            <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+              <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
                 {a.name}
               </span>
               <span style={{
                 fontFamily: 'var(--f-mono)',
-                color: isDebt ? 'var(--loss)' : 'var(--ink-2)',
+                color: isDebt ? 'var(--danger)' : 'var(--text-primary)',
               }}>
                 {isDebt ? '-' : ''}฿{Math.abs(bal).toLocaleString('th', { maximumFractionDigits: 0 })}
               </span>
@@ -270,32 +272,32 @@ export function NetWorthCard({ accounts }) {
           );
         })}
         {accounts.length > 4 && (
-          <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)', textAlign: 'center', marginTop: 4 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', textAlign: 'center', marginTop: 4 }}>
             +{accounts.length - 4} บัญชี
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
 function NWRow({ label, value, color, sign = '' }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-      <span style={{ color: 'var(--ink-3)' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--f-mono)', color }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+      <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--f-mono)', color, fontWeight: 500 }}>
         {sign}฿{value.toLocaleString('th', { maximumFractionDigits: 0 })}
       </span>
     </div>
   );
 }
 
-// ── Daily Heatmap (calendar grid) ────────────────────────────────────────────
+// ── Daily Heatmap ───────────────────────────────────────────────────────────
 export function DailyHeatmap({ dailyMap, yearMonth }) {
   const [y, m] = yearMonth.split('-').map(Number);
   const firstDay   = new Date(y, m - 1, 1);
   const daysInMon  = new Date(y, m, 0).getDate();
-  const firstWday  = (firstDay.getDay() + 6) % 7; // Mon = 0
+  const firstWday  = (firstDay.getDay() + 6) % 7;
 
   const values = Object.values(dailyMap);
   const max = Math.max(...values, 1);
@@ -319,30 +321,32 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
     return 4;
   };
 
-  const SHADES = ['var(--surface-2)', '#3a2a1f', '#5a3a2a', '#8a4f30', '#c46a3e'];
+  // Warm earth shades — light tints → deeper clay
+  const SHADES = [
+    'var(--surface-muted)',
+    '#f0e0c8',
+    '#e8c896',
+    '#d9a464',
+    'var(--accent-strong)',
+  ];
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--ink)' }}>
-          ปฏิทินรายจ่าย
-        </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.1em' }}>
-          {activeDays} วันที่มีรายจ่าย · เฉลี่ย ฿{Math.round(avg).toLocaleString('th')}/วัน
-        </div>
-      </div>
+    <Card>
+      <CardHeader
+        eyebrow={`ปฏิทินรายจ่าย · ${activeDays} วัน`}
+        title="Daily Spending"
+        meta={`เฉลี่ย ฿${Math.round(avg).toLocaleString('th')}/วัน`}
+      />
 
-      {/* Day-of-week header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
         {['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'].map((d, i) => (
           <div key={i} style={{
-            textAlign: 'center', fontSize: 9.5, color: 'var(--ink-4)',
-            fontFamily: 'var(--f-mono)', letterSpacing: '0.1em',
+            textAlign: 'center', fontSize: 10, color: 'var(--text-muted)',
+            fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', fontWeight: 500,
           }}>{d}</div>
         ))}
       </div>
 
-      {/* Day cells */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
         {cells.map((c, i) => {
           if (!c) return <div key={i} />;
@@ -351,11 +355,11 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
             <div key={i}
               title={c.amount > 0 ? `${c.day}: ฿${Math.round(c.amount).toLocaleString('th')}` : `${c.day}: ไม่มีรายจ่าย`}
               style={{
-                aspectRatio: '1', borderRadius: 4,
+                aspectRatio: '1', borderRadius: 6,
                 background: SHADES[lvl],
-                border: '1px solid ' + (lvl > 0 ? 'transparent' : 'var(--line)'),
+                border: '1px solid ' + (lvl > 0 ? 'transparent' : 'var(--border)'),
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, color: lvl >= 3 ? '#fff' : 'var(--ink-3)',
+                fontSize: 11, color: lvl >= 3 ? 'var(--text-inverse)' : 'var(--text-secondary)',
                 fontFamily: 'var(--f-mono)', cursor: 'default',
                 transition: 'transform 100ms',
               }}>
@@ -365,29 +369,24 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
         })}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>
         <span>น้อย</span>
         {SHADES.map((c, i) => (
-          <div key={i} style={{ width: 14, height: 14, borderRadius: 3, background: c, border: '1px solid ' + (i > 0 ? 'transparent' : 'var(--line)') }} />
+          <div key={i} style={{
+            width: 14, height: 14, borderRadius: 3, background: c,
+            border: '1px solid ' + (i > 0 ? 'transparent' : 'var(--border)'),
+          }} />
         ))}
         <span>มาก</span>
       </div>
-    </div>
+    </Card>
   );
 }
 
-// ── Empty placeholder ────────────────────────────────────────────────────────
 export function EmptyCard({ label }) {
   return (
-    <div style={{
-      background: 'var(--surface)', border: '1px dashed var(--line)',
-      borderRadius: 'var(--r-lg)', padding: '32px 20px',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'var(--ink-3)', fontFamily: 'var(--f-mono)', fontSize: 11,
-      letterSpacing: '0.1em',
-    }}>
-      {label}
-    </div>
+    <Card>
+      <EmptyState description={label} compact />
+    </Card>
   );
 }
