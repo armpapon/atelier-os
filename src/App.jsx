@@ -83,26 +83,36 @@ export default function App() {
       <main className="main" key={active}>
         {previewMode && (
           <div style={{
-            padding: '10px 16px', background: 'var(--amber)',
-            borderBottom: '1px solid var(--amber-deep)', color: '#fff',
-            fontFamily: 'var(--f-mono)', fontSize: 11, textAlign: 'center',
-            letterSpacing: '0.12em', display: 'flex', justifyContent: 'center',
-            alignItems: 'center', gap: 14,
+            position: 'sticky', top: 0, zIndex: 50,
+            height: 32, padding: '0 16px',
+            background: 'var(--warning-soft)',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10,
+            fontSize: 12, color: 'var(--text-secondary)',
           }}>
-            <span>🎨 PREVIEW MODE · โหมดดูดีไซน์ · ไม่มีข้อมูลจริง (RLS protected)</span>
+            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>Preview Mode</span>
+            <span style={{ color: 'var(--text-muted)' }}>·</span>
+            <span>โหมดดูดีไซน์ · ไม่มีข้อมูลจริง</span>
             <a href={window.location.pathname} style={{
-              color: '#fff', textDecoration: 'underline', fontSize: 10.5,
-            }}>ออกจาก preview</a>
+              marginLeft: 6, color: 'var(--text-secondary)',
+              textDecoration: 'underline', textUnderlineOffset: 3,
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>
+              ออกจาก preview
+            </a>
           </div>
         )}
         {demoMode && !previewMode && (
           <div style={{
-            padding: '8px 16px', background: 'var(--paper)',
-            borderBottom: '1px solid var(--paper-2)', color: 'var(--paper-ink)',
-            fontFamily: 'var(--f-mono)', fontSize: 11, textAlign: 'center',
-            letterSpacing: '0.1em',
+            height: 32, padding: '0 16px',
+            background: 'var(--surface-warm)',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            fontSize: 12, color: 'var(--paper-ink)',
           }}>
-            DEMO MODE — Supabase ยังไม่ได้ตั้งค่า • ข้อมูลเป็น mock data
+            <span style={{ fontWeight: 500, marginRight: 8 }}>Demo Mode</span>
+            <span>Supabase ยังไม่ได้ตั้งค่า · ข้อมูลเป็น mock</span>
           </div>
         )}
         <div className="fade-in">{render()}</div>
@@ -112,14 +122,20 @@ export default function App() {
         <button
           onClick={() => setTweaksOpen(true)}
           title="Tweaks"
+          aria-label="เปิด Tweaks"
+          className="focus-ring"
           style={{
-            position: 'fixed', right: 16, bottom: 16, zIndex: 999,
-            width: 40, height: 40, borderRadius: '50%',
-            background: 'var(--amber)', color: '#fff',
+            position: 'fixed', right: 20, bottom: 20, zIndex: 999,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'var(--accent-strong)', color: 'var(--text-inverse)',
             border: 0, cursor: 'pointer', display: 'flex',
             alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 6px 20px rgba(80,60,30,0.18)',
-          }}><Icon name="tweak" size={18} /></button>
+            boxShadow: 'var(--shadow-pop)',
+            transition: 'all 130ms',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.transform = 'scale(1.05)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent-strong)'; e.currentTarget.style.transform = 'scale(1)'; }}
+        ><Icon name="tweak" size={18} /></button>
       )}
 
       <TweaksPanel

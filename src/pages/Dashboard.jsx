@@ -92,18 +92,18 @@ export function Dashboard({ onNav, user }) {
       </div>
 
       {error && (
-        <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+        <div style={{
+          padding: '12px 16px',
+          background: 'var(--danger-soft)', color: 'var(--danger)',
+          border: '1px solid var(--danger)',
+          borderRadius: 'var(--radius-control)', fontSize: 13,
+        }}>
           ⚠️ {error}
           {error.includes('does not exist') && (
-            <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'var(--f-mono)', color: 'var(--ink-3)' }}>
+            <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
               ต้องรัน <code>supabase/migration_add_lifeos.sql</code> ใน Supabase ก่อน
             </div>
           )}
-        </div>
-      )}
-      {loading && (
-        <div style={{ padding: '8px 14px', background: 'var(--surface-2)', color: 'var(--ink-3)', borderRadius: 'var(--r-md)', fontSize: 11, fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', textAlign: 'center' }}>
-          กำลังโหลด Life OS…
         </div>
       )}
 

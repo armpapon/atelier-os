@@ -1,50 +1,86 @@
-/* Atelier OS · LOOP — Light editorial theme, warm earth tones */
-/* Token + font system per design_handoff_loop/README.md */
+/* Atelier OS — Editorial Minimal OS */
+/* Token + component system per UI brief: warm ivory, dark text, clear hierarchy */
 
 @import url('https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  /* Surfaces — warm cream / near-white */
-  --bg:        #f4f0e7;   /* page background */
-  --bg-2:      #ece6d9;   /* sidebar, insets, inputs, bar tracks */
-  --surface:   #fdfbf6;   /* cards */
-  --surface-2: #f4efe4;   /* subtle fill, hover */
-  --surface-3: #ebe4d5;   /* deeper hover */
+  /* ── Surfaces — warm ivory / cream ─────────────────────────────────────── */
+  --background:      #f5f0e7;
+  --background-soft: #fbf8f1;
+  --surface:         #fffdf7;
+  --surface-muted:   #f0eadf;
+  --surface-warm:    #efe3cf;
 
-  /* Paper accent (kraft/manila) for highlight cards & journal */
-  --paper:     #ece1cb;
-  --paper-2:   #dccfb2;
+  /* Aliases (existing components) */
+  --bg:        var(--background);
+  --bg-2:      var(--surface-muted);
+  --surface-2: var(--surface-muted);
+  --surface-3: var(--surface-warm);
+  --paper:     var(--surface-warm);
+  --paper-2:   #dcc9a8;
   --paper-ink: #4a3d2b;
 
-  /* Ink — deep warm charcoal/brown (darkened from README spec for readability) */
-  --ink:   #1a1814;   /* primary text — near-black warm */
-  --ink-2: #3d362c;   /* secondary — espresso */
-  --ink-3: #6b6253;   /* muted / meta */
-  --ink-4: #a59a87;   /* faint */
-  --line:  #e6ded0;
-  --line-2:#d8cebb;
+  /* ── Text — high contrast warm charcoal ────────────────────────────────── */
+  --text-primary:   #2f2923;
+  --text-secondary: #6f6254;
+  --text-muted:     #9a8b7a;
+  --text-inverse:   #fffaf0;
 
-  /* Accents — muted earth */
-  --amber:      #b27a42;   /* PRIMARY — clay/terracotta */
-  --amber-2:    #a06d3a;
-  --amber-deep: #87592c;
-  --brass:      #9c7c4d;
+  --ink:   var(--text-primary);
+  --ink-2: var(--text-secondary);
+  --ink-3: var(--text-muted);
+  --ink-4: #bdb3a2;
 
-  --profit:    #5d8a5e;   --profit-bg: #e8eedf;   /* sage green */
-  --loss:      #bb5f48;   --loss-bg:   #f4e3db;   /* terracotta */
-  --blue:      #59799f;   /* slate */
+  /* ── Borders ───────────────────────────────────────────────────────────── */
+  --border:        #e3d8c8;
+  --border-strong: #cdbda9;
+  --line:   var(--border);
+  --line-2: var(--border-strong);
+
+  /* ── Accent — clay/terracotta, used with discipline ───────────────────── */
+  --accent:        #b98545;
+  --accent-strong: #8a5a2b;
+  --accent-soft:   #ead6b8;
+  --amber:         var(--accent);
+  --amber-2:       var(--accent-strong);
+  --amber-deep:    var(--accent-strong);
+  --brass:         #9c7c4d;
+
+  /* ── Semantic ──────────────────────────────────────────────────────────── */
+  --success:      #5f8a63;   --success-soft: #dcebd8;
+  --danger:       #b76555;   --danger-soft:  #efd7d1;
+  --warning:      #c99a42;   --warning-soft: #f1e2bd;
+
+  --profit:    var(--success);   --profit-bg: var(--success-soft);
+  --loss:      var(--danger);    --loss-bg:   var(--danger-soft);
+  --blue:      #59799f;
   --violet:    #7e6b9c;
   --rose:      #a86d78;
 
-  /* Type — Anuphan geometric Thai sans + JetBrains Mono for numerals */
+  /* ── Type ──────────────────────────────────────────────────────────────── */
   --f-display: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
   --f-body:    'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
   --f-mono:    'JetBrains Mono', ui-monospace, monospace;
 
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 14px;
-  --r-xl: 22px;
+  /* ── Radius / Shadow ───────────────────────────────────────────────────── */
+  --radius-card:    18px;
+  --radius-control: 12px;
+  --radius-pill:    999px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: var(--radius-card);
+  --r-xl: 24px;
+
+  --shadow-soft: 0 10px 30px rgba(66, 48, 28, 0.06);
+  --shadow-card: 0 8px 18px rgba(66, 48, 28, 0.05);
+  --shadow-pop:  0 16px 40px rgba(66, 48, 28, 0.14);
+}
+
+/* ── Shared utility primitives (used by inline components) ─────────────── */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
 }
 
 * { box-sizing: border-box; }

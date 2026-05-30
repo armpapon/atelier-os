@@ -1,7 +1,13 @@
+import { useState } from 'react';
 import { Icon } from './Icon.jsx';
+import { Badge } from './ui/index.js';
 import { signOut } from '../lib/useAuth.js';
+import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
 
 export function Sidebar({ active, onChange, user }) {
+  const [showVersion, setShowVersion] = useState(false);
+  const currentVersion = CHANGELOG[0]?.version || 'v0.5';
+
   const items = [
     { group: 'หลัก', children: [
       { id: 'dashboard', label: 'แดชบอร์ด',    icon: 'home',    badge: null },
@@ -14,16 +20,15 @@ export function Sidebar({ active, onChange, user }) {
       { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
     ]},
     { group: 'ชีวิต', children: [
-      { id: 'family',   label: 'ครอบครัว',    icon: 'family',  badge: '4' },
-      { id: 'goals',    label: 'เป้าหมาย & OKR', icon: 'target',  badge: null },
-      { id: 'brain',    label: 'Second Brain',   icon: 'brain',   badge: '128' },
+      { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },
+      { id: 'goals',  label: 'เป้าหมาย & OKR', icon: 'target', badge: 'Soon' },
+      { id: 'brain',  label: 'Second Brain',   icon: 'brain',  badge: 'Soon' },
     ]},
   ];
 
-  // Display info — prefer logged-in user, fallback to default
-  const displayName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'อาทิตย์';
+  const displayName    = user?.user_metadata?.name || user?.email?.split('@')[0] || 'อาทิตย์';
   const displayInitial = (displayName[0] || 'A').toUpperCase();
-  const subText = user ? user.email : 'ยังไม่ได้ login';
+  const subText        = user ? user.email : 'preview · ไม่ได้ login';
 
   const handleSignOut = async () => {
     if (confirm('ออกจากระบบ?')) {
@@ -32,55 +37,151 @@ export function Sidebar({ active, onChange, user }) {
   };
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar__brand">
-        <span className="sidebar__brand-mark">ạ</span>
-        <span className="sidebar__brand-name">Atelier OS</span>
-        <span className="sidebar__brand-sub">v.0.5</span>
-      </div>
-
-      {items.map((group, gi) => (
-        <div key={gi}>
-          <div className="nav-section-label">{group.group}</div>
-          {group.children.map(item => (
-            <button
-              key={item.id}
-              className={`nav-item ${active === item.id ? 'nav-item--active' : ''}`}
-              onClick={() => onChange(item.id)}
-            >
-              <span className="nav-item__icon"><Icon name={item.icon} size={16} /></span>
-              <span>{item.label}</span>
-              {item.badge && <span className="nav-item__badge">{item.badge}</span>}
-            </button>
-          ))}
-        </div>
-      ))}
-
-      <div className="sidebar__footer">
-        <div className="avatar">{displayInitial}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="sidebar__user-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
-          <div className="sidebar__user-meta" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subText}</div>
-        </div>
-        {user && (
-          <button
-            onClick={handleSignOut}
-            title="ออกจากระบบ"
+    <>
+      <aside className="sidebar" style={{
+        background: 'var(--background-soft)',
+        borderRight: '1px solid var(--border)',
+      }}>
+        {/* Brand */}
+        <div style={{
+          padding: '20px 14px 22px', borderBottom: '1px solid var(--border)',
+          marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span style={{
+            fontFamily: 'var(--f-display)', fontStyle: 'italic',
+            fontSize: 30, color: 'var(--accent)', lineHeight: 1, letterSpacing: '-0.02em',
+          }}>ạ</span>
+          <span style={{
+            fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 500,
+            color: 'var(--text-primary)',
+          }}>Atelier OS</span>
+          <button onClick={() => setShowVersion(true)}
+            title="Version history" aria-label="Version history"
             style={{
-              background: 'transparent', border: 0, color: 'var(--ink-3)',
-              cursor: 'pointer', padding: 4, borderRadius: 4,
+              marginLeft: 'auto', background: 'transparent', border: 'none',
+              fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
+              cursor: 'pointer', padding: '3px 7px', borderRadius: 'var(--radius-pill)',
+              transition: 'all 130ms',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+            {currentVersion}
+          </button>
+        </div>
+
+        {/* Nav groups */}
+        {items.map((group, gi) => (
+          <div key={gi} style={{ marginBottom: 22 }}>
+            <div style={{
+              fontFamily: 'var(--f-mono)', fontSize: 10,
+              letterSpacing: '0.18em', textTransform: 'uppercase',
+              color: 'var(--text-muted)', padding: '0 14px 10px', fontWeight: 500,
+            }}>{group.group}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {group.children.map(item => (
+                <NavItem key={item.id} item={item} active={active === item.id} onClick={() => onChange(item.id)} />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Footer — user */}
+        <div style={{
+          marginTop: 'auto', padding: '14px 12px 12px',
+          borderTop: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'var(--accent-soft)', color: 'var(--accent-strong)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'var(--f-display)', fontSize: 16, fontWeight: 500,
+            flexShrink: 0,
+          }}>{displayInitial}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 13, color: 'var(--text-primary)', fontWeight: 500,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{displayName}</div>
+            <div style={{
+              fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{subText}</div>
+          </div>
+          {user && (
+            <button onClick={handleSignOut} title="ออกจากระบบ" aria-label="ออกจากระบบ" style={{
+              background: 'transparent', border: 0, color: 'var(--text-muted)',
+              cursor: 'pointer', padding: 6, borderRadius: 6,
               display: 'flex', alignItems: 'center',
             }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </button>
-        )}
-      </div>
-    </aside>
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-soft)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {showVersion && <VersionHistory onClose={() => setShowVersion(false)} />}
+    </>
+  );
+}
+
+function NavItem({ item, active, onClick }) {
+  const isSoon = item.badge === 'Soon';
+  return (
+    <button
+      onClick={onClick}
+      className="focus-ring"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 11,
+        width: 'calc(100% - 16px)', margin: '0 8px', padding: '9px 12px',
+        background: active ? 'var(--accent-soft)' : 'transparent',
+        color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+        border: 0, borderRadius: 'var(--radius-control)',
+        fontFamily: 'var(--f-body)', fontSize: 13.5, fontWeight: active ? 500 : 400,
+        cursor: 'pointer', textAlign: 'left', position: 'relative',
+        transition: 'all 130ms',
+      }}
+      onMouseEnter={e => {
+        if (!active) {
+          e.currentTarget.style.background = 'var(--surface-muted)';
+          e.currentTarget.style.color = 'var(--text-primary)';
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.color = 'var(--text-secondary)';
+        }
+      }}>
+      {active && (
+        <span style={{
+          position: 'absolute', left: -8, top: '50%', transform: 'translateY(-50%)',
+          width: 3, height: 18, background: 'var(--accent)', borderRadius: '0 3px 3px 0',
+        }} />
+      )}
+      <span style={{
+        width: 16, height: 16, display: 'inline-flex',
+        alignItems: 'center', justifyContent: 'center',
+        color: active ? 'var(--accent-strong)' : 'var(--text-muted)',
+        flexShrink: 0,
+      }}>
+        <Icon name={item.icon} size={16} />
+      </span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {item.label}
+      </span>
+      {item.badge && (
+        <Badge tone={isSoon ? 'outline' : (active ? 'accent' : 'neutral')} size="sm">
+          {item.badge}
+        </Badge>
+      )}
+    </button>
   );
 }
