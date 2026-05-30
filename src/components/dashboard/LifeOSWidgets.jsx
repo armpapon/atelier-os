@@ -33,12 +33,13 @@ export function ManifestCard({ manifest, onSave }) {
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, var(--surface) 0%, #1f1812 100%)',
-      border: '1px solid var(--line)', borderRadius: 'var(--r-lg)',
+      background: 'var(--paper)',
+      border: '1px solid var(--paper-2)', borderRadius: 'var(--r-lg)',
       padding: '24px 28px', position: 'relative',
+      color: 'var(--paper-ink)',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--amber)', letterSpacing: '0.22em' }}>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--amber-deep)', letterSpacing: '0.22em' }}>
           ⌘ MANIFEST · NORTH STAR
         </div>
         {!editing && (

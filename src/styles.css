@@ -16,11 +16,11 @@
   --paper-2:   #dccfb2;
   --paper-ink: #4a3d2b;
 
-  /* Ink — warm charcoal/brown */
-  --ink:   #33302a;
-  --ink-2: #635b4c;
-  --ink-3: #94897a;
-  --ink-4: #bdb3a2;
+  /* Ink — deep warm charcoal/brown (darkened from README spec for readability) */
+  --ink:   #1a1814;   /* primary text — near-black warm */
+  --ink-2: #3d362c;   /* secondary — espresso */
+  --ink-3: #6b6253;   /* muted / meta */
+  --ink-4: #a59a87;   /* faint */
   --line:  #e6ded0;
   --line-2:#d8cebb;
 
