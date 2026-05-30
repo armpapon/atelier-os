@@ -15,12 +15,22 @@ import { Family } from './pages/Family.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
 
+// ── Preview mode: ?preview=1 in URL bypasses login (for design review) ──────
+// Note: Supabase RLS still blocks all writes & private data — only the
+// shell/skeleton is visible. Safe to share the preview link publicly.
+function isPreviewMode() {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('preview') === '1';
+}
+
 export default function App() {
   const { user, loading } = useAuth();
-  const [active, setActive] = useState(() => localStorage.getItem('atelier:active') || 'dashboard');
-  const [accent, setAccent] = useState(() => localStorage.getItem('atelier:accent') || '#d4a574');
+  const [active, setActive]   = useState(() => localStorage.getItem('atelier:active') || 'dashboard');
+  const [accent, setAccent]   = useState(() => localStorage.getItem('atelier:accent') || '#b27a42');
   const [density, setDensity] = useState(() => localStorage.getItem('atelier:density') || 'comfortable');
   const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  const previewMode = isPreviewMode();
 
   useEffect(() => { localStorage.setItem('atelier:active', active); }, [active]);
   useEffect(() => {
@@ -30,7 +40,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem('atelier:density', density); }, [density]);
 
   // ── Loading state ────────────────────────────────────────────────────────
-  if (loading) {
+  if (loading && !previewMode) {
     return (
       <div style={{
         position: 'fixed', inset: 0, display: 'flex',
@@ -44,13 +54,11 @@ export default function App() {
     );
   }
 
-  // ── ไม่ได้ login → แสดงหน้า Login ─────────────────────────────────────────
-  // (ถ้า Supabase ยังไม่ตั้งค่า — LoginScreen จะแสดง warning เอง)
-  if (isSupabaseConfigured && !user) {
+  // ── Auth gate: skip in preview mode ──────────────────────────────────────
+  if (isSupabaseConfigured && !user && !previewMode) {
     return <LoginScreen />;
   }
 
-  // ── ถ้ายังไม่ได้ตั้ง Supabase — เปิด demo mode พร้อม banner ─────────────────
   const demoMode = !isSupabaseConfigured;
 
   const render = () => {
@@ -73,10 +81,24 @@ export default function App() {
     <div className="app" data-density={density}>
       <Sidebar active={active} onChange={setActive} user={user} />
       <main className="main" key={active}>
-        {demoMode && (
+        {previewMode && (
           <div style={{
-            padding: '8px 16px', background: '#2a2014',
-            borderBottom: '1px solid #4a3a22', color: 'var(--amber)',
+            padding: '10px 16px', background: 'var(--amber)',
+            borderBottom: '1px solid var(--amber-deep)', color: '#fff',
+            fontFamily: 'var(--f-mono)', fontSize: 11, textAlign: 'center',
+            letterSpacing: '0.12em', display: 'flex', justifyContent: 'center',
+            alignItems: 'center', gap: 14,
+          }}>
+            <span>🎨 PREVIEW MODE · โหมดดูดีไซน์ · ไม่มีข้อมูลจริง (RLS protected)</span>
+            <a href={window.location.pathname} style={{
+              color: '#fff', textDecoration: 'underline', fontSize: 10.5,
+            }}>ออกจาก preview</a>
+          </div>
+        )}
+        {demoMode && !previewMode && (
+          <div style={{
+            padding: '8px 16px', background: 'var(--paper)',
+            borderBottom: '1px solid var(--paper-2)', color: 'var(--paper-ink)',
             fontFamily: 'var(--f-mono)', fontSize: 11, textAlign: 'center',
             letterSpacing: '0.1em',
           }}>
@@ -93,10 +115,10 @@ export default function App() {
           style={{
             position: 'fixed', right: 16, bottom: 16, zIndex: 999,
             width: 40, height: 40, borderRadius: '50%',
-            background: 'var(--amber)', color: '#1a1410',
+            background: 'var(--amber)', color: '#fff',
             border: 0, cursor: 'pointer', display: 'flex',
             alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 6px 20px rgba(0,0,0,.4)',
+            boxShadow: '0 6px 20px rgba(80,60,30,0.18)',
           }}><Icon name="tweak" size={18} /></button>
       )}
 
