@@ -170,8 +170,8 @@ export function Trading() {
         )}
       </Card>
 
-      {formOpen && <TradeForm onClose={() => setFormOpen(false)} onSaved={() => { setFormOpen(false); refresh(); }} />}
-      {editing && <TradeForm trade={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
+      {formOpen && <TradeForm open onClose={() => setFormOpen(false)} onSaved={() => { setFormOpen(false); refresh(); }} />}
+      {editing && <TradeForm open initialTrade={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
       {importerOpen && <TradeImporter onImported={refresh} onClose={() => setImporterOpen(false)} />}
       {viewing && <TradeDetailDrawer trade={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />}
     </div>
