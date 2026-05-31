@@ -658,3 +658,205 @@ export async function deleteGoal(id) {
   const { error } = await supabase.from('financial_goals').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  DEBT TRACKER — list debts + per-month payment status + forecast
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function listDebts({ scope, activeOnly = true } = {}) {
+  if (!supabase) return [];
+  let q = supabase.from('debts').select('*').order('monthly_payment', { ascending: false });
+  if (scope)      q = q.eq('scope', scope);
+  if (activeOnly) q = q.eq('is_active', true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createDebt(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('debts').insert({ ...input, user_id: user.id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateDebt(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase
+    .from('debts').update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDebt(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('debts').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** List debt payments for a date range, optionally per debt or scope */
+export async function listDebtPayments({ debtId, startMonth, endMonth } = {}) {
+  if (!supabase) return [];
+  let q = supabase.from('debt_payments').select('*').order('pay_month', { ascending: false });
+  if (debtId)     q = q.eq('debt_id', debtId);
+  if (startMonth) q = q.gte('pay_month', startMonth);
+  if (endMonth)   q = q.lte('pay_month', endMonth);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Record a payment for a debt + auto-update months_paid + remaining_balance.
+ * If transactionId provided, link it; otherwise just a manual mark.
+ */
+export async function recordDebtPayment({ debt_id, pay_month, amount_paid, transaction_id, notes }) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+
+  // Upsert (debt_id, pay_month) is unique — re-marking same month updates
+  const { data, error } = await supabase
+    .from('debt_payments')
+    .upsert({
+      user_id: user.id, debt_id, pay_month,
+      amount_paid, transaction_id: transaction_id || null, notes: notes || null,
+    }, { onConflict: 'debt_id,pay_month' })
+    .select().single();
+  if (error) throw error;
+
+  // Recalculate months_paid + remaining_balance for this debt
+  const { data: payments } = await supabase
+    .from('debt_payments').select('amount_paid').eq('debt_id', debt_id);
+  const monthsPaid = (payments || []).length;
+  const totalPaid  = (payments || []).reduce((s, p) => s + Number(p.amount_paid || 0), 0);
+
+  const { data: debtRow } = await supabase
+    .from('debts').select('total_months, monthly_payment').eq('id', debt_id).single();
+  const totalDue = debtRow ? Number(debtRow.monthly_payment) * Number(debtRow.total_months || 0) : null;
+  const remaining = totalDue ? Math.max(0, totalDue - totalPaid) : null;
+
+  await supabase.from('debts').update({
+    months_paid: monthsPaid,
+    remaining_balance: remaining,
+    updated_at: new Date().toISOString(),
+  }).eq('id', debt_id);
+
+  return data;
+}
+
+export async function deleteDebtPayment(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  // get debt_id first so we can recalc
+  const { data: row } = await supabase.from('debt_payments').select('debt_id').eq('id', id).single();
+  const debtId = row?.debt_id;
+  const { error } = await supabase.from('debt_payments').delete().eq('id', id);
+  if (error) throw error;
+  // Recompute months_paid
+  if (debtId) {
+    const { data: payments } = await supabase
+      .from('debt_payments').select('amount_paid').eq('debt_id', debtId);
+    await supabase.from('debts').update({
+      months_paid: (payments || []).length,
+      updated_at: new Date().toISOString(),
+    }).eq('id', debtId);
+  }
+}
+
+// ── Forecast / Status helpers (pure, client-side) ───────────────────────────
+
+/** For one debt + payment list, return status this month */
+export function getDebtStatus(debt, payments, yearMonth) {
+  const monthKey = yearMonth + '-01';
+  const paid = (payments || []).find(p => (p.pay_month || '').startsWith(yearMonth));
+
+  if (paid) return {
+    status: 'paid',
+    paid_at: paid.paid_at,
+    amount_paid: Number(paid.amount_paid),
+    payment_id: paid.id,
+  };
+
+  // Not paid yet — check if overdue
+  const [y, m] = yearMonth.split('-').map(Number);
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === y && today.getMonth() + 1 === m;
+  const dueDay = debt.due_day || 5;
+
+  if (isCurrentMonth) {
+    if (today.getDate() > dueDay) return { status: 'overdue', dueDay };
+    return { status: 'pending', dueDay };
+  }
+
+  // Past month and not paid → overdue
+  const monthDate = new Date(y, m - 1, dueDay);
+  if (monthDate < today) return { status: 'overdue', dueDay };
+
+  // Future month
+  return { status: 'upcoming', dueDay };
+}
+
+/** Aggregate forecast summary across all debts */
+export function summarizeDebts(debts, payments, yearMonth) {
+  const ym = yearMonth || currentYearMonth();
+  const monthlyBurden = debts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
+  let paidThisMonth = 0, pending = 0, overdue = 0;
+  const statuses = debts.map(d => {
+    const st = getDebtStatus(d, payments.filter(p => p.debt_id === d.id), ym);
+    if (st.status === 'paid')    paidThisMonth += st.amount_paid;
+    if (st.status === 'pending') pending       += Number(d.monthly_payment);
+    if (st.status === 'overdue') overdue       += Number(d.monthly_payment);
+    return { debt: d, status: st };
+  });
+
+  // Remaining balance estimate
+  const totalRemaining = debts.reduce((s, d) => {
+    if (d.remaining_balance != null) return s + Number(d.remaining_balance);
+    if (d.total_months) {
+      const remainingMonths = Math.max(0, Number(d.total_months) - Number(d.months_paid || 0));
+      return s + remainingMonths * Number(d.monthly_payment);
+    }
+    return s;
+  }, 0);
+
+  // Months until everything is paid off (max of all individual debt remaining months)
+  const maxMonthsRemaining = debts.reduce((m, d) => {
+    if (!d.total_months) return m;
+    const rem = Math.max(0, Number(d.total_months) - Number(d.months_paid || 0));
+    return Math.max(m, rem);
+  }, 0);
+
+  return {
+    monthlyBurden, paidThisMonth, pending, overdue,
+    paidCount:    statuses.filter(s => s.status.status === 'paid').length,
+    pendingCount: statuses.filter(s => s.status.status === 'pending').length,
+    overdueCount: statuses.filter(s => s.status.status === 'overdue').length,
+    totalRemaining,
+    maxMonthsRemaining,
+    statuses,
+  };
+}
+
+/** Forecast: month-by-month total outflow + balance projection (next N months) */
+export function forecastDebts(debts, monthsAhead = 12) {
+  const result = [];
+  let cur = currentYearMonth();
+  for (let i = 0; i < monthsAhead; i++) {
+    let totalOutflow = 0;
+    let activeCount = 0;
+    for (const d of debts) {
+      const monthsPaidAtThisPoint = Number(d.months_paid || 0) + i;
+      if (!d.total_months || monthsPaidAtThisPoint < Number(d.total_months)) {
+        totalOutflow += Number(d.monthly_payment);
+        activeCount++;
+      }
+    }
+    result.push({ ym: cur, outflow: totalOutflow, activeCount });
+    cur = nextMonth(cur);
+  }
+  return result;
+}

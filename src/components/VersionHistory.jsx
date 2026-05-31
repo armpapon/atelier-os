@@ -3,10 +3,23 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.6',
+    date: '2026-05-30',
+    title: 'Debt Tracker · จ่ายแล้ว/ยัง + Forecast',
+    badge: 'Current',
+    changes: [
+      'เพิ่ม Debt Tracker บนหน้าการเงิน — list หนี้สินที่ผ่อนรายเดือน',
+      'สถานะแต่ละหนี้: จ่ายแล้ว / รอจ่าย / เกินกำหนด พร้อม Badge สี',
+      'ปุ่ม "บันทึกว่าจ่ายแล้ว" — track ทีละเดือนได้',
+      'Progress bar งวด X / N + เหลือกี่เดือนถึงปลอดหนี้',
+      'Forecast 12 เดือน — แสดงภาระต่อเดือนลดลงเมื่อหนี้แต่ละก้อนผ่อนหมด',
+      'Summary stats: จ่ายแล้ว · รอจ่าย · เกินกำหนด · คงเหลือรวม',
+    ],
+  },
+  {
     version: 'v0.5',
     date: '2026-05-30',
     title: 'Rebrand → Loop · Editorial Minimal OS',
-    badge: 'Current',
     changes: [
       'Rebrand จาก Atelier OS → Loop · มีโลโก้ใหม่เป็นวงกลม loop/cycle',
       'Design tokens — warm ivory palette, darker text, premium card surfaces',

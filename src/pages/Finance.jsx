@@ -9,12 +9,14 @@ import {
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
   deleteTransactionsInMonth,
+  listDebts, listDebtPayments,
 } from '../lib/api/finance.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
 import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
+import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -224,6 +226,8 @@ export function FinanceView({ scope }) {
   const [accounts, setAccounts] = useState([]);
   const [budgets, setBudgets]   = useState([]);
   const [goals, setGoals]       = useState([]);
+  const [debts, setDebts]       = useState([]);
+  const [debtPayments, setDebtPayments] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
 
@@ -247,17 +251,24 @@ export function FinanceView({ scope }) {
       const { start: startTrend } = getMonthBounds(months12[0]);
       const { end:   endTrend   } = getMonthBounds(months12[months12.length - 1]);
 
-      const [t, p, r12, a, b, g] = await Promise.all([
+      // Date range for debt payments (12 months of history + future for forecast)
+      const { start: paymentStart } = getMonthBounds(months12[0]);
+      const { end:   paymentEnd   } = getMonthBounds(months12[months12.length - 1]);
+
+      const [t, p, r12, a, b, g, d, dp] = await Promise.all([
         listTransactions({ yearMonth, scope, limit: 2000 }),
         listTransactions({ yearMonth: prev, scope, limit: 2000 }),
         listTransactionsRange({ startDate: startTrend, endDate: endTrend, scope }),
         listAccounts({ scope }),
         listBudgets(yearMonth, scope),
         listGoals(scope),
+        listDebts({ scope }).catch(() => []),
+        listDebtPayments({ startMonth: paymentStart, endMonth: paymentEnd }).catch(() => []),
       ]);
 
       setTxns(t || []); setPrevTxns(p || []); setTrend12(r12 || []);
       setAccounts(a || []); setBudgets(b || []); setGoals(g || []);
+      setDebts(d || []); setDebtPayments(dp || []);
     } catch (err) {
       setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
     } finally { setLoading(false); }
@@ -376,6 +387,15 @@ export function FinanceView({ scope }) {
 
         {/* Row 4: Budget vs Actual */}
         <BudgetProgress budgets={budgets} categoryActuals={categories} />
+
+        {/* Row 4b: Debt Tracker */}
+        <DebtTracker
+          debts={debts}
+          payments={debtPayments}
+          yearMonth={yearMonth}
+          scope={scope}
+          onChange={refresh}
+        />
 
         {/* Row 5: Net Worth + Heatmap */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 14 }}>
