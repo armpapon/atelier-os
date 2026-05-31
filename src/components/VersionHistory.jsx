@@ -3,10 +3,24 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.11',
+    date: '2026-05-31',
+    title: 'Trading Playbook + ICT Learning Curriculum',
+    badge: 'Current',
+    changes: [
+      '🎯 Trading Playbook card บนหน้า Trading — แสดง session ปัจจุบัน/ถัดไป + countdown',
+      'Daily Schedule 3 killzones (London/NY/Silver Bullet) พร้อม setup target',
+      'Pre-Trade Checklist 5 ข้อ ที่ต้อง tick ก่อน entry',
+      '📜 Hard Rules — ทั้ง KEEP (4 ข้อ) และ STOP (4 ข้อ)',
+      'Auto-detect: ขาดทุน 3 ติด → block 7 วัน · ครบ 2 trade/วัน → warn',
+      '📚 Seed Learning Hub 14 sources เน้น gap จริง — MTF, Confirmation Entry, Judas Swing, Trade Mgmt, Psychology, Position Sizing',
+      'หนังสือ Trading In The Zone + The Disciplined Trader + Best Loser Wins',
+    ],
+  },
+  {
     version: 'v0.10',
     date: '2026-05-30',
     title: 'Trading Journal · Adapt ICT Excel Workflow',
-    badge: 'Current',
     changes: [
       '📊 Excel Importer — รับ Trading-Journal-2026.xlsx ทั้งไฟล์ (sheet "Trade Log")',
       'Auto-map columns ไทย/อังกฤษ + parse DD/MM/YYYY → ISO, Win/Loss/BE → status',

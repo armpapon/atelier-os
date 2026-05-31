@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { TradeForm } from '../components/TradeForm.jsx';
 import { TradeImporter } from '../components/trading/TradeImporter.jsx';
+import { TradingPlaybook } from '../components/trading/TradingPlaybook.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
 import { useAuth } from '../lib/useAuth.js';
@@ -73,6 +74,17 @@ export function Trading() {
 
   const latestBalance = equityPoints.length > 0 ? equityPoints[equityPoints.length - 1].equity : 0;
 
+  // Today's stats for Playbook
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tradesToday  = trades.filter(t => t.trade_date === todayStr).length;
+  // Recent losing streak (last N trades by date desc)
+  const lossesInRow  = useMemo(() => {
+    const sorted = [...trades].sort((a, b) => (b.trade_date || '').localeCompare(a.trade_date || ''));
+    let cnt = 0;
+    for (const t of sorted) { if (t.status === 'LOSS') cnt++; else break; }
+    return cnt;
+  }, [trades]);
+
   return (
     <div className="page-body" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
@@ -100,6 +112,9 @@ export function Trading() {
           ⚠️ {error}
         </div>
       )}
+
+      {/* Playbook — daily schedule + rules + checklist */}
+      <TradingPlaybook tradesToday={tradesToday} lossesInRow={lossesInRow} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} />
