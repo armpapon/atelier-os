@@ -14,15 +14,23 @@ const STATUSES = [
 const today = () => new Date().toISOString().split('T')[0];
 const emptyTrade = {
   trade_date: today(),
-  symbol: '',
+  symbol: 'XAUUSD',
   side: 'long',
   setup: '',
+  entry_price: '',
+  stop_loss: '',
+  take_profit: '',
+  position_size: '',
   rr: '',
   pnl: '',
+  pnl_pct: '',
+  balance_after: '',
   status: 'WIN',
-  session: 'NY',
-  reason: '',
+  session: 'London KZ',
+  setup_detail: '',
   emotion: '',
+  lesson_learned: '',
+  reason: '',
 };
 
 export function TradeForm({ open, onClose, onSaved, initialTrade }) {

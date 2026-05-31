@@ -3,10 +3,25 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.10',
+    date: '2026-05-30',
+    title: 'Trading Journal · Adapt ICT Excel Workflow',
+    badge: 'Current',
+    changes: [
+      '📊 Excel Importer — รับ Trading-Journal-2026.xlsx ทั้งไฟล์ (sheet "Trade Log")',
+      'Auto-map columns ไทย/อังกฤษ + parse DD/MM/YYYY → ISO, Win/Loss/BE → status',
+      'Dedup ด้วย (วันที่+symbol+entry+pnl) ไม่ duplicate ตอน re-import',
+      'Trading page rewrite ใช้ shared UI: 5 KPI cards, Equity Chart, Performance card, Filter pills',
+      'Trade Detail Drawer — คลิกแถวเปิด: Setup Detail + Emotion + 🌟 Lesson Learned',
+      'Trade Log table แสดง: วันที่/symbol/dir/setup+session/RR/P&L+status badge/balance',
+      'Equity Chart SVG พร้อม gradient fill + dot สีตาม win/loss',
+      'TradeForm รองรับ fields ใหม่ครบ: entry/sl/tp/lot/balance/pnl_pct/setup_detail/lesson_learned',
+    ],
+  },
+  {
     version: 'v0.9',
     date: '2026-05-30',
     title: 'Family · Health Profile + Growth Log + Milestones',
-    badge: 'Current',
     changes: [
       '🏥 Health Profile per สมาชิก — เลือดกรุ๊ป, แพ้ยา, โรคประจำตัว, หมอประจำ, ประกัน',
       '💉 Vaccinations log — บันทึกประวัติวัคซีน + เข็มถัดไปครบกำหนดเมื่อไหร่',
