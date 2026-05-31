@@ -105,3 +105,81 @@ export async function deleteFamilyNote(id) {
   const { error } = await supabase.from('family_notes').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ── Vaccinations ─────────────────────────────────────────────────────────────
+export async function listVaccinations(memberId) {
+  if (!supabase || !memberId) return [];
+  const { data, error } = await supabase
+    .from('vaccinations').select('*').eq('member_id', memberId)
+    .order('date_given', { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createVaccination(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('vaccinations').insert({ ...input, user_id: user.id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteVaccination(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('vaccinations').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Growth Records ───────────────────────────────────────────────────────────
+export async function listGrowthRecords(memberId) {
+  if (!supabase || !memberId) return [];
+  const { data, error } = await supabase
+    .from('growth_records').select('*').eq('member_id', memberId)
+    .order('recorded_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createGrowthRecord(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('growth_records').insert({ ...input, user_id: user.id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteGrowthRecord(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('growth_records').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Milestones ───────────────────────────────────────────────────────────────
+export async function listMilestones(memberId) {
+  if (!supabase || !memberId) return [];
+  const { data, error } = await supabase
+    .from('milestones').select('*').eq('member_id', memberId)
+    .order('milestone_date', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createMilestone(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('milestones').insert({ ...input, user_id: user.id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteMilestone(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('milestones').delete().eq('id', id);
+  if (error) throw error;
+}

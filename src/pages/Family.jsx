@@ -7,6 +7,7 @@ import {
   listFamilyNotes, createFamilyNote, deleteFamilyNote,
 } from '../lib/api/family.js';
 import { uploadFamilyAvatar, removeFamilyAvatar } from '../lib/storage.js';
+import { MemberDetail } from '../components/family/MemberDetail.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const AVATAR_COLORS = ['#d4a574', '#7ba7d4', '#a78fcc', '#d49aa5', '#6cbf83', '#e8b84b', '#e07a6e'];
@@ -347,6 +348,7 @@ export function Family() {
 
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [editingMember, setEditingMember]     = useState(null);
+  const [viewingMember, setViewingMember]     = useState(null);
   const [showEventModal, setShowEventModal]   = useState(false);
   const [showNoteDrawer, setShowNoteDrawer]   = useState(false);
 
@@ -452,7 +454,11 @@ export function Family() {
                   : null;
                 const isBirthdayMonth = m.birth_date?.slice(5, 7) === thisMonth;
                 return (
-                  <div key={m.id} className="family-member" style={{ alignItems: 'center' }}>
+                  <div key={m.id} className="family-member"
+                    onClick={() => setViewingMember(m)}
+                    style={{ alignItems: 'center', cursor: 'pointer', transition: 'background 130ms', borderRadius: 'var(--radius-control)' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                     <Avatar member={m} size={48} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--text-primary)' }}>
@@ -462,7 +468,7 @@ export function Family() {
                         {m.role}{age != null ? ` · ${age} ปี` : ''}{m.note ? ` · ${m.note}` : ''}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => setEditingMember(m)} title="แก้ไข" aria-label="แก้ไข"
                         style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', fontSize: 14, padding: '4px 6px', cursor: 'pointer', borderRadius: 6 }}
                         onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
@@ -603,6 +609,13 @@ export function Family() {
           initial={editingMember}
           onSave={refresh}
           onClose={() => { setShowMemberModal(false); setEditingMember(null); }}
+        />
+      )}
+      {viewingMember && (
+        <MemberDetail
+          member={members.find(m => m.id === viewingMember.id) || viewingMember}
+          onClose={() => setViewingMember(null)}
+          onChange={refresh}
         />
       )}
       {showEventModal && <AddEventModal members={members} onSave={refresh} onClose={() => setShowEventModal(false)} />}

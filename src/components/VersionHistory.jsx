@@ -3,10 +3,23 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.9',
+    date: '2026-05-30',
+    title: 'Family · Health Profile + Growth Log + Milestones',
+    badge: 'Current',
+    changes: [
+      '🏥 Health Profile per สมาชิก — เลือดกรุ๊ป, แพ้ยา, โรคประจำตัว, หมอประจำ, ประกัน',
+      '💉 Vaccinations log — บันทึกประวัติวัคซีน + เข็มถัดไปครบกำหนดเมื่อไหร่',
+      '📏 Growth Log — บันทึกส่วนสูง/น้ำหนัก/รอบหัว + กราฟ trend SVG (dual-axis)',
+      '🌟 Milestones — timeline ความทรงจำสำคัญ (เดินครั้งแรก, รางวัล, โรงเรียนใหม่) แบ่งตามปี',
+      'คลิก member row = เปิด detail drawer แบบ slide-in (4 tabs)',
+      'ปุ่ม ✎ บนการ์ดเปิด quick edit modal เหมือนเดิม',
+    ],
+  },
+  {
     version: 'v0.8',
     date: '2026-05-30',
     title: 'Family Photos · รูปสมาชิกครอบครัว',
-    badge: 'Current',
     changes: [
       '📸 อัปโหลดรูปภาพสมาชิกครอบครัวได้ — ใช้ Supabase Storage (bucket "avatars")',
       'Client-side resize เป็น square 480×480 ก่อนอัปโหลด (ไฟล์ < 300KB)',
