@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.debts (
   months_paid int DEFAULT 0,                 -- จ่ายไปแล้วกี่งวด (auto-updated)
   remaining_balance numeric,                 -- ยอดคงเหลือ (optional)
   interest_rate numeric,                     -- ดอกเบี้ย ต่อปี % (optional)
+  original_principal numeric,                -- เงินต้นเดิม (สำหรับคำนวณดอกเบี้ย)
   type text DEFAULT 'loan' CHECK (type IN ('loan','credit_card','mortgage','lease','installment','other')),
   scope text DEFAULT 'personal' CHECK (scope IN ('personal','family')),
   tone text DEFAULT 'rose',                  -- color tag
@@ -25,6 +26,8 @@ CREATE TABLE IF NOT EXISTS public.debts (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+-- For re-runs (in case table already exists from older migration)
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS original_principal numeric;
 CREATE INDEX IF NOT EXISTS debts_user_scope_idx ON public.debts(user_id, scope, is_active);
 
 -- 2. DEBT_PAYMENTS — บันทึกการจ่ายแต่ละเดือน

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardHeader, Badge, Button, EmptyState } from '../ui/index.js';
 import {
   summarizeDebts, forecastDebts, recordDebtPayment, deleteDebtPayment, deleteDebt,
+  calculateDebtMath, simulatePayoff,
 } from '../../lib/api/finance.js';
 
 const TYPE_META = {
@@ -29,9 +30,10 @@ function fmt(n) {
 //  Main DebtTracker
 // ════════════════════════════════════════════════════════════════════════════
 export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
-  const [showAdd, setShowAdd]   = useState(false);
-  const [editing, setEditing]   = useState(null);
+  const [showAdd, setShowAdd]       = useState(false);
+  const [editing, setEditing]       = useState(null);
   const [showForecast, setShowForecast] = useState(false);
+  const [showStrategy, setShowStrategy] = useState(false);
 
   const summary  = useMemo(() => summarizeDebts(debts, payments, yearMonth), [debts, payments, yearMonth]);
   const forecast = useMemo(() => forecastDebts(debts, 12),                    [debts]);
@@ -67,7 +69,12 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
         title="Debt Tracker"
         meta={debts.length > 0 ? `ภาระต่อเดือน ${fmt(summary.monthlyBurden)}` : null}
         action={
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {debts.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => setShowStrategy(s => !s)}>
+                {showStrategy ? '× Strategy' : '⚡ โปะหนี้'}
+              </Button>
+            )}
             {debts.length > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setShowForecast(s => !s)}>
                 {showForecast ? '× Forecast' : '📊 Forecast'}
@@ -140,6 +147,11 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
           <ForecastChart data={forecast} />
         </div>
       )}
+
+      {/* Strategy comparison */}
+      {showStrategy && debts.length > 1 && (
+        <DebtStrategyCard debts={debts} />
+      )}
     </Card>
   );
 }
@@ -156,6 +168,7 @@ function DebtRow({ debt, status, onMarkPaid, onUnmark, onEdit, onDelete }) {
   const progressPct = debt.total_months
     ? Math.min(100, (Number(debt.months_paid || 0) / Number(debt.total_months)) * 100)
     : 0;
+  const math = calculateDebtMath(debt);
 
   return (
     <div style={{
@@ -215,6 +228,22 @@ function DebtRow({ debt, status, onMarkPaid, onUnmark, onEdit, onDelete }) {
         </div>
       )}
 
+      {/* Interest breakdown — only if interest_rate set */}
+      {math.hasInterestData && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
+          padding: '8px 10px', background: 'var(--background-soft)',
+          borderRadius: 'var(--radius-control)', border: '1px solid var(--border)',
+          fontSize: 10.5, fontFamily: 'var(--f-mono)',
+        }}>
+          <MiniStat label="เงินต้น" value={fmt(math.principal)} color="var(--text-primary)" />
+          <MiniStat label="ดอกเบี้ยรวม" value={fmt(math.totalInterest)} color="var(--danger)"
+            sub={`${((math.totalInterest / math.totalPaid) * 100).toFixed(0)}% ของจ่ายรวม`} />
+          <MiniStat label="ดอกเบี้ยที่เหลือ" value={fmt(math.remainingInterest)} color="var(--accent-strong)"
+            sub={`${Number(debt.interest_rate).toFixed(2)}% ต่อปี`} />
+        </div>
+      )}
+
       {/* Actions */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         {status.status === 'paid' ? (
@@ -238,15 +267,17 @@ function DebtRow({ debt, status, onMarkPaid, onUnmark, onEdit, onDelete }) {
 // ════════════════════════════════════════════════════════════════════════════
 function DebtForm({ initial, scope, onSubmit, onCancel }) {
   const [form, setForm] = useState({
-    name:            initial?.name            || '',
-    creditor:        initial?.creditor        || '',
-    monthly_payment: initial?.monthly_payment || '',
-    due_day:         initial?.due_day         || 5,
-    total_months:    initial?.total_months    || '',
-    months_paid:     initial?.months_paid     || 0,
-    type:            initial?.type            || 'loan',
-    start_date:      initial?.start_date      || '',
-    notes:           initial?.notes           || '',
+    name:               initial?.name               || '',
+    creditor:           initial?.creditor           || '',
+    monthly_payment:    initial?.monthly_payment    || '',
+    due_day:            initial?.due_day            || 5,
+    total_months:       initial?.total_months       || '',
+    months_paid:        initial?.months_paid        || 0,
+    interest_rate:      initial?.interest_rate      || '',
+    original_principal: initial?.original_principal || '',
+    type:               initial?.type               || 'loan',
+    start_date:         initial?.start_date         || '',
+    notes:              initial?.notes              || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const [saving, setSaving] = useState(false);
@@ -258,11 +289,13 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
     try {
       const payload = {
         ...form,
-        monthly_payment: Number(form.monthly_payment),
-        due_day:         Number(form.due_day) || 5,
-        total_months:    form.total_months ? Number(form.total_months) : null,
-        months_paid:     Number(form.months_paid) || 0,
-        start_date:      form.start_date || null,
+        monthly_payment:    Number(form.monthly_payment),
+        due_day:            Number(form.due_day) || 5,
+        total_months:       form.total_months       ? Number(form.total_months)       : null,
+        months_paid:        Number(form.months_paid) || 0,
+        interest_rate:      form.interest_rate      ? Number(form.interest_rate)      : null,
+        original_principal: form.original_principal ? Number(form.original_principal) : null,
+        start_date:         form.start_date || null,
         scope,
       };
       if (initial) {
@@ -333,6 +366,35 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
         </div>
       </div>
+
+      {/* Interest rate + original principal — optional for interest math */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <div>
+          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>
+            ดอกเบี้ยต่อปี (%) <span style={{ color: 'var(--text-muted)' }}>· optional</span>
+          </label>
+          <input type="number" min="0" step="0.01" value={form.interest_rate}
+            onChange={e => set('interest_rate', e.target.value)} placeholder="5.5"
+            style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>
+            เงินต้น (฿) <span style={{ color: 'var(--text-muted)' }}>· optional</span>
+          </label>
+          <input type="number" min="0" step="0.01" value={form.original_principal}
+            onChange={e => set('original_principal', e.target.value)} placeholder="1000000"
+            style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
+        </div>
+      </div>
+      {(form.interest_rate || form.original_principal) && (
+        <div style={{
+          padding: '8px 12px', background: 'var(--accent-soft)',
+          borderRadius: 'var(--radius-control)', fontSize: 11, color: 'var(--accent-strong)',
+          fontFamily: 'var(--f-mono)',
+        }}>
+          💡 ใส่อย่างใดอย่างหนึ่งก็พอ — ถ้ามีดอกเบี้ย ระบบจะคำนวณเงินต้นและดอกเบี้ยรวมให้
+        </div>
+      )}
 
       {/* Type chips */}
       <div>
@@ -425,6 +487,174 @@ function ForecastChart({ data }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Mini stat (used inside DebtRow for interest breakdown)
+// ════════════════════════════════════════════════════════════════════════════
+function MiniStat({ label, value, color, sub }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 12, color, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Debt Strategy — Snowball vs Avalanche payoff simulator
+// ════════════════════════════════════════════════════════════════════════════
+function DebtStrategyCard({ debts }) {
+  const [strategy, setStrategy] = useState('snowball'); // 'snowball' | 'avalanche'
+  const [extra, setExtra]       = useState(0);
+
+  const result = useMemo(
+    () => simulatePayoff(debts, strategy, Number(extra) || 0),
+    [debts, strategy, extra]
+  );
+
+  if (!result.debts.length) {
+    return (
+      <div style={{
+        marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)',
+        fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', textAlign: 'center',
+      }}>
+        ต้องการ "งวดทั้งหมด" ในหนี้อย่างน้อย 1 รายการ เพื่อจำลองการโปะหนี้
+      </div>
+    );
+  }
+
+  const desc = {
+    snowball:  'โปะหนี้ก้อนเล็กก่อน → ปิดได้เร็ว สร้างกำลังใจ',
+    avalanche: 'โปะหนี้ดอกเบี้ยสูงก่อน → ประหยัดดอกเบี้ยมากที่สุด',
+  }[strategy];
+
+  return (
+    <div style={{
+      marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+            ⚡ STRATEGY · โปะหนี้
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+            {desc}
+          </div>
+        </div>
+        {/* Strategy toggle */}
+        <div style={{ display: 'flex', gap: 4, background: 'var(--background-soft)', padding: 3, borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}>
+          {[
+            { id: 'snowball',  label: '⛄ Snowball'  },
+            { id: 'avalanche', label: '⛰ Avalanche' },
+          ].map(s => (
+            <button key={s.id} onClick={() => setStrategy(s.id)} className="focus-ring"
+              style={{
+                padding: '5px 12px', borderRadius: 'var(--radius-pill)', border: 0,
+                background: strategy === s.id ? 'var(--surface)' : 'transparent',
+                color: strategy === s.id ? 'var(--accent-strong)' : 'var(--text-muted)',
+                fontSize: 11, fontFamily: 'var(--f-mono)', cursor: 'pointer',
+                boxShadow: strategy === s.id ? '0 1px 3px rgba(80,60,30,.12)' : 'none',
+                fontWeight: strategy === s.id ? 600 : 400,
+              }}>{s.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Extra payment slider */}
+      <div style={{
+        padding: '12px 14px', background: 'var(--background-soft)',
+        border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            💵 โปะเพิ่มต่อเดือน
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>฿</span>
+            <input type="number" min="0" step="500" value={extra}
+              onChange={e => setExtra(e.target.value)}
+              style={{
+                width: 110, background: 'var(--surface)', border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--radius-control)', padding: '6px 10px', textAlign: 'right',
+                fontFamily: 'var(--f-mono)', fontSize: 13, color: 'var(--text-primary)',
+              }} />
+          </div>
+        </div>
+        <input type="range" min="0" max="50000" step="500" value={extra}
+          onChange={e => setExtra(e.target.value)}
+          style={{ accentColor: 'var(--accent)', width: '100%' }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>
+          <span>฿0</span><span>฿25K</span><span>฿50K</span>
+        </div>
+      </div>
+
+      {/* Result comparison */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10,
+        padding: 12, background: result.cashSaved > 0 ? 'var(--success-soft)' : 'var(--surface-muted)',
+        border: '1px solid ' + (result.cashSaved > 0 ? 'var(--success)' : 'var(--border)'),
+        borderRadius: 'var(--radius-control)',
+      }}>
+        <MiniStat label="ปลอดหนี้ใน" value={`${result.totalMonthsWithExtra} เดือน`} color="var(--text-primary)"
+          sub={`ปกติ ${result.totalMonthsBaseline} เดือน`} />
+        <MiniStat label="เร็วขึ้น" value={`${result.monthsSaved} เดือน`}
+          color={result.monthsSaved > 0 ? 'var(--success)' : 'var(--text-muted)'}
+          sub={result.monthsSaved >= 12 ? `~${(result.monthsSaved / 12).toFixed(1)} ปี` : ''} />
+        <MiniStat label="ประหยัด" value={fmt(result.cashSaved)}
+          color={result.cashSaved > 0 ? 'var(--success)' : 'var(--text-muted)'}
+          sub="เทียบกับไม่โปะ" />
+      </div>
+
+      {/* Payoff order */}
+      <div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em', marginBottom: 8 }}>
+          ลำดับการปลอดหนี้
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {result.debts.map((d) => (
+            <div key={d.id} style={{
+              display: 'grid', gridTemplateColumns: '28px 1fr auto auto', gap: 10,
+              padding: '8px 12px', background: 'var(--surface)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+              alignItems: 'center', fontSize: 12,
+            }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: '50%',
+                background: d.payoffOrder === 1 ? 'var(--accent)' : 'var(--surface-muted)',
+                color: d.payoffOrder === 1 ? 'var(--text-inverse)' : 'var(--text-secondary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontFamily: 'var(--f-mono)', fontWeight: 600,
+              }}>{d.payoffOrder}</div>
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
+                {d.name}
+                <span style={{ marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                  {d.interest_rate > 0 ? `· ${d.interest_rate.toFixed(1)}%/ปี` : ''}
+                </span>
+              </div>
+              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+                {d.simMonths} เดือน
+              </div>
+              {d.monthsSaved > 0 && (
+                <Badge tone="success" size="sm">-{d.monthsSaved}เดือน</Badge>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

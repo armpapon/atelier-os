@@ -841,6 +841,195 @@ export function summarizeDebts(debts, payments, yearMonth) {
   };
 }
 
+/**
+ * Calculate interest math for a single debt.
+ * If `original_principal` is set, uses it directly.
+ * Else if `interest_rate` is set, back-calculates principal from PV annuity formula.
+ * Returns { principal, totalPaid, paidSoFar, remainingPaid, totalInterest,
+ *           paidInterest, remainingInterest, monthsRemaining, effectiveAPR }
+ */
+export function calculateDebtMath(debt) {
+  const P    = Number(debt.monthly_payment || 0);
+  const N    = Number(debt.total_months || 0);
+  const paid = Number(debt.months_paid || 0);
+  const aprPct = Number(debt.interest_rate || 0);   // annual %
+  const r    = aprPct / 100 / 12;                   // monthly rate
+
+  const totalPaid     = P * N;
+  const paidSoFar     = P * paid;
+  const remainingPaid = P * Math.max(0, N - paid);
+  const monthsRemaining = Math.max(0, N - paid);
+
+  let principal = debt.original_principal != null ? Number(debt.original_principal) : null;
+  if (!principal && r > 0 && N > 0) {
+    // PV of annuity: PV = P × (1 − (1+r)^−N) / r
+    principal = P * (1 - Math.pow(1 + r, -N)) / r;
+  }
+
+  const totalInterest = principal != null ? Math.max(0, totalPaid - principal) : 0;
+  const interestRatio = totalPaid > 0 ? totalInterest / totalPaid : 0;
+  const paidInterest      = paidSoFar     * interestRatio;
+  const remainingInterest = remainingPaid * interestRatio;
+
+  return {
+    principal, totalPaid, paidSoFar, remainingPaid,
+    totalInterest, paidInterest, remainingInterest,
+    monthsRemaining,
+    hasInterestData: principal != null && totalInterest > 0,
+  };
+}
+
+/**
+ * Match imported transactions to existing debts.
+ * A match requires:
+ *  - amount within 5% of debt.monthly_payment (or ฿50 absolute, whichever is larger)
+ *  - title contains debt.creditor (first 8 chars) OR debt.name (first 6 chars)
+ *  - debt doesn't already have a payment recorded for that month
+ *
+ * Returns: [{ txn, debt, ym, amount, confidence }]
+ *  confidence 60-100. ≥80 = strong, 60-79 = possible.
+ */
+export function suggestDebtPaymentLinks(transactions, debts, existingPayments = []) {
+  if (!debts?.length || !transactions?.length) return [];
+
+  const blocked = new Set(
+    (existingPayments || []).map(p => `${p.debt_id}|${(p.pay_month || '').substring(0, 7)}`)
+  );
+
+  const all = [];
+  for (const txn of transactions) {
+    const amt = Number(txn.amount);
+    if (amt >= 0) continue;                                    // expenses only
+    const absAmt = Math.abs(amt);
+    const ym = (txn.occurred_at || '').substring(0, 7);
+    if (!ym) continue;
+
+    for (const debt of debts) {
+      if (blocked.has(`${debt.id}|${ym}`)) continue;
+      const mp = Number(debt.monthly_payment);
+      if (!mp) continue;
+
+      const tolerance = Math.max(mp * 0.05, 50);
+      const amtDiff   = Math.abs(absAmt - mp);
+      if (amtDiff > tolerance) continue;
+
+      const title    = (txn.title || '').toLowerCase().trim();
+      const creditor = (debt.creditor || '').toLowerCase().trim();
+      const name     = (debt.name || '').toLowerCase().trim();
+
+      let confidence = 50;
+      if (creditor.length >= 4 && title.includes(creditor.substring(0, Math.min(8, creditor.length)))) confidence += 35;
+      if (name.length >= 3     && title.includes(name.substring(0, Math.min(6, name.length))))         confidence += 20;
+      if (amtDiff < 1)                                                                                  confidence += 10;
+
+      if (confidence >= 60) {
+        all.push({ txn, debt, ym, amount: absAmt, confidence });
+      }
+    }
+  }
+
+  // Dedup: keep best suggestion per (txn, ym) pair
+  const best = {};
+  for (const s of all) {
+    const key = `${s.txn._rowIdx ?? s.txn.id ?? s.txn.title}|${s.ym}`;
+    if (!best[key] || s.confidence > best[key].confidence) best[key] = s;
+  }
+  return Object.values(best).sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * Simulate debt payoff under a strategy with an optional extra monthly payment.
+ *
+ * Strategies:
+ *  - 'snowball'  — pay off smallest balance first (psychological wins)
+ *  - 'avalanche' — pay off highest interest rate first (saves most money)
+ *
+ * Returns: {
+ *   debts: enriched list with payoff order + simMonths + monthsSaved,
+ *   totalMonthsBaseline, totalMonthsWithExtra, monthsSaved,
+ *   cashSaved (estimate based on remaining payments × interest portion)
+ * }
+ */
+export function simulatePayoff(debts, strategy = 'snowball', extraPerMonth = 0) {
+  const enriched = (debts || [])
+    .filter(d => d.total_months && Number(d.months_paid || 0) < Number(d.total_months))
+    .map(d => {
+      const P = Number(d.monthly_payment);
+      const N = Number(d.total_months);
+      const paid = Number(d.months_paid || 0);
+      const remaining = N - paid;
+      // Estimate current balance from total payments left (approximation when no principal)
+      const balance = d.original_principal != null
+        ? Math.max(0, Number(d.original_principal) - (P * paid))
+        : P * remaining;
+      return {
+        id: d.id, name: d.name, _P: P, _N: N, _paid: paid,
+        _interest: Number(d.interest_rate || 0),
+        _balance: balance,
+        _baselineMonthsLeft: remaining,
+      };
+    });
+
+  if (!enriched.length) {
+    return { debts: [], totalMonthsBaseline: 0, totalMonthsWithExtra: 0, monthsSaved: 0, cashSaved: 0 };
+  }
+
+  const totalMonthsBaseline = Math.max(...enriched.map(d => d._baselineMonthsLeft));
+
+  // Simulate
+  const sim = enriched.map(d => ({ ...d, _simBalance: d._balance, _simMonths: d._baselineMonthsLeft }));
+  const sortFn = strategy === 'avalanche'
+    ? (a, b) => b._interest - a._interest || a._balance - b._balance
+    : (a, b) => a._simBalance - b._simBalance;
+
+  let active = [...sim];
+  const order = [];
+  let month = 0;
+  const MAX = 600;
+
+  while (active.length && month < MAX) {
+    month++;
+    active.sort(sortFn);
+    for (const d of active) d._simBalance = Math.max(0, d._simBalance - d._P);
+    if (extraPerMonth > 0 && active[0]) {
+      const apply = Math.min(extraPerMonth, active[0]._simBalance);
+      active[0]._simBalance -= apply;
+    }
+    const stillActive = [];
+    for (const d of active) {
+      if (d._simBalance <= 0.01) { d._simMonths = month; order.push(d); }
+      else stillActive.push(d);
+    }
+    active = stillActive;
+  }
+
+  const totalMonthsWithExtra = month;
+  const monthsSaved = Math.max(0, totalMonthsBaseline - totalMonthsWithExtra);
+
+  // Cash saved: baseline vs sim total outflow
+  const baselineCash = sim.reduce((s, d) => s + d._P * d._baselineMonthsLeft, 0);
+  const simCash      = sim.reduce((s, d) => s + d._P * d._simMonths, 0)
+                       + (extraPerMonth * totalMonthsWithExtra);
+  const cashSaved = Math.max(0, baselineCash - simCash);
+
+  return {
+    debts: sim.map(d => ({
+      id: d.id, name: d.name,
+      monthly: d._P,
+      interest_rate: d._interest,
+      balance: d._balance,
+      baselineMonthsLeft: d._baselineMonthsLeft,
+      simMonths: d._simMonths,
+      monthsSaved: Math.max(0, d._baselineMonthsLeft - d._simMonths),
+      payoffOrder: order.findIndex(o => o.id === d.id) + 1 || enriched.length,
+    })).sort((a, b) => a.payoffOrder - b.payoffOrder),
+    totalMonthsBaseline,
+    totalMonthsWithExtra,
+    monthsSaved,
+    cashSaved,
+  };
+}
+
 /** Forecast: month-by-month total outflow + balance projection (next N months) */
 export function forecastDebts(debts, monthsAhead = 12) {
   const result = [];

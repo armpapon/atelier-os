@@ -639,7 +639,7 @@ export function FinanceView({ scope }) {
       {showTxnForm && <TxnForm accounts={accounts} scope={scope} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
       {showAccForm && <AccountModal scope={scope} onSave={refresh} onClose={() => setShowAccForm(false)} />}
       {showGoalForm && <GoalModal scope={scope} onSave={refresh} onClose={() => setShowGoalForm(false)} />}
-      {showImporter && <CSVImporter scope={scope} onImported={refresh} onClose={() => setShowImporter(false)} />}
+      {showImporter && <CSVImporter scope={scope} debts={debts} onImported={refresh} onClose={() => setShowImporter(false)} />}
     </>
   );
 }

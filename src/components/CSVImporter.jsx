@@ -4,6 +4,7 @@ import {
   bulkCreateTransactions, isMakeFormat,
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
   getExistingTxnKeys, txnKey, deleteTransactionsInMonth,
+  suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments,
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
@@ -21,7 +22,7 @@ const POCKET_TONE_BG = {
   rose:   'rgba(168,109,120,0.10)', brass:  'rgba(156,124,77,0.10)',
 };
 
-export function CSVImporter({ scope: defaultScope = 'personal', onImported, onClose }) {
+export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onImported, onClose }) {
   const [tab, setTab]           = useState('csv'); // 'csv' | 'pdf'
   const [step, setStep]         = useState('upload');
 
@@ -145,6 +146,16 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
     [preview, makeFmt]
   );
 
+  // Debt payment auto-link suggestions
+  const debtSuggestions = useMemo(
+    () => suggestDebtPaymentLinks(preview, debts, []),
+    [preview, debts]
+  );
+  const [skippedSuggestions, setSkippedSuggestions] = useState(new Set());
+  const activeSuggestions = debtSuggestions.filter(s =>
+    !skippedSuggestions.has(`${s.txn._rowIdx}|${s.debt.id}|${s.ym}`)
+  );
+
   const handleImport = async () => {
     const selectedRows = preview.filter((_, i) => selected.has(i));
     if (!selectedRows.length) return;
@@ -194,19 +205,46 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
       }
 
       // Step 4: attach account_id from pocket → strip internal _* fields → insert
+      // Keep _rowIdx so we can match inserted rows back to suggestions
+      const rowIndexes = toImport.map(r => r._rowIdx);
       const clean = toImport.map(({ _rowIdx, _pocket, _txtype, _cp_bal, ...r }) => ({
         ...r,
         account_id: pocketIdMap.get(_pocket) || null,
       }));
 
       let inserted = 0;
+      let insertedRows = [];
       if (clean.length) {
-        await bulkCreateTransactions(clean);
-        inserted = clean.length;
+        insertedRows = (await bulkCreateTransactions(clean)) || [];
+        inserted = insertedRows.length || clean.length;
+      }
+
+      // Step 5: auto-link debt payments using suggestions on the still-active rows
+      let debtLinked = 0;
+      if (activeSuggestions.length && insertedRows.length) {
+        // map by natural key (date+amount+title) → inserted id
+        const insertedByKey = new Map();
+        for (let i = 0; i < insertedRows.length; i++) {
+          insertedByKey.set(txnKey(insertedRows[i]), insertedRows[i]);
+        }
+        for (const sug of activeSuggestions) {
+          const inserted = insertedByKey.get(txnKey(sug.txn));
+          if (!inserted) continue;
+          try {
+            await recordDebtPayment({
+              debt_id: sug.debt.id,
+              pay_month: sug.ym + '-01',
+              amount_paid: sug.amount,
+              transaction_id: inserted.id,
+              notes: 'auto-linked from import',
+            });
+            debtLinked++;
+          } catch (_) { /* swallow individual link failures */ }
+        }
       }
 
       setImportStats({
-        inserted, skipped,
+        inserted, skipped, debtLinked,
         accountsCreated: pocketIdMap.size,
         wipedMonths: wipeMonth ? monthArr.length : 0,
       });
@@ -551,6 +589,65 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
                 </div>
               )}
 
+              {/* Debt payment auto-link suggestions */}
+              {debtSuggestions.length > 0 && (
+                <div style={{
+                  background: 'var(--accent-soft)', border: '1px solid var(--accent)',
+                  borderRadius: 'var(--radius-card)', padding: '14px 16px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--accent-strong)', letterSpacing: '0.16em', fontWeight: 600 }}>
+                        🔗 AUTO-LINK · {activeSuggestions.length} / {debtSuggestions.length} รายการ
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 3 }}>
+                        ระบบเจอ transactions ที่น่าจะเป็นการจ่ายหนี้สิน — จะ link อัตโนมัติให้
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {debtSuggestions.map(sug => {
+                      const key = `${sug.txn._rowIdx}|${sug.debt.id}|${sug.ym}`;
+                      const isSkipped = skippedSuggestions.has(key);
+                      const isStrong  = sug.confidence >= 80;
+                      return (
+                        <label key={key} style={{
+                          display: 'grid', gridTemplateColumns: '20px 1fr auto 60px', gap: 10,
+                          padding: '8px 10px',
+                          background: 'var(--surface)', border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-control)',
+                          alignItems: 'center', fontSize: 12, cursor: 'pointer',
+                          opacity: isSkipped ? 0.4 : 1,
+                        }}>
+                          <input type="checkbox" checked={!isSkipped}
+                            onChange={() => setSkippedSuggestions(prev => {
+                              const n = new Set(prev);
+                              isSkipped ? n.delete(key) : n.add(key);
+                              return n;
+                            })}
+                            style={{ accentColor: 'var(--accent)' }} />
+                          <div style={{ overflow: 'hidden' }}>
+                            <span style={{ color: 'var(--text-primary)' }}>{sug.txn.title}</span>
+                            <span style={{ marginLeft: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                              → {sug.debt.name}
+                            </span>
+                          </div>
+                          <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                            ฿{sug.amount.toLocaleString('th', { maximumFractionDigits: 0 })}
+                          </span>
+                          <span style={{
+                            fontFamily: 'var(--f-mono)', fontSize: 10, textAlign: 'right',
+                            color: isStrong ? 'var(--success)' : 'var(--warning)',
+                          }}>
+                            {isStrong ? 'แม่นยำ' : 'น่าจะใช่'} {sug.confidence}%
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Import options */}
               <div style={{
                 background: 'var(--surface)', border: '1px solid var(--line)',
@@ -678,6 +775,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', onImported, onCl
                   )}
                   {importStats?.accountsCreated > 0 && (
                     <StatChip label="บัญชี" value={importStats.accountsCreated} accent="var(--amber)" />
+                  )}
+                  {importStats?.debtLinked > 0 && (
+                    <StatChip label="🔗 จ่ายหนี้ที่ link" value={importStats.debtLinked} accent="var(--accent)" />
                   )}
                   {importStats?.wipedMonths > 0 && (
                     <StatChip label="เดือนที่ล้าง" value={importStats.wipedMonths} accent="var(--loss)" />
