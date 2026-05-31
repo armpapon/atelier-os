@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import {
-  listMembers, createMember, deleteMember,
+  listMembers, createMember, updateMember, deleteMember,
   listEvents, createEvent, deleteEvent,
   listFamilyNotes, createFamilyNote, deleteFamilyNote,
 } from '../lib/api/family.js';
+import { uploadFamilyAvatar, removeFamilyAvatar } from '../lib/storage.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const AVATAR_COLORS = ['#d4a574', '#7ba7d4', '#a78fcc', '#d49aa5', '#6cbf83', '#e8b84b', '#e07a6e'];
@@ -26,82 +27,205 @@ function getInitial(name) {
   return (name || '?').charAt(0).toUpperCase();
 }
 
-// ── Add Member Modal ──────────────────────────────────────────────────────────
-function AddMemberModal({ onSave, onClose }) {
-  const [form, setForm] = useState({ name: '', role: '', color: AVATAR_COLORS[0], birth_date: '', note: '' });
+// Avatar — shows photo if avatar_url, else colored circle with initial
+function Avatar({ member, size = 44, borderColor }) {
+  const initial = member?.initial || getInitial(member?.name);
+  const bg = member?.color || '#d4a574';
+  const baseStyle = {
+    width: size, height: size, borderRadius: '50%',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0, overflow: 'hidden',
+    border: borderColor ? `3px solid ${borderColor}` : 'none',
+    boxShadow: '0 1px 3px rgba(66, 48, 28, 0.08)',
+  };
+  if (member?.avatar_url) {
+    return (
+      <div style={baseStyle}>
+        <img src={member.avatar_url} alt={member.name || ''}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onError={(e) => { e.target.style.display = 'none'; e.target.parentElement.textContent = initial; }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      ...baseStyle, background: bg, color: 'var(--text-inverse)',
+      fontFamily: 'var(--f-display)', fontSize: size * 0.42, fontWeight: 500,
+    }}>{initial}</div>
+  );
+}
+
+// ── Member Modal (add or edit, with photo upload) ─────────────────────────────
+function MemberModal({ initial, onSave, onClose }) {
+  const isEdit = !!initial;
+  const [form, setForm] = useState({
+    name:       initial?.name       || '',
+    role:       initial?.role       || '',
+    color:      initial?.color      || AVATAR_COLORS[0],
+    birth_date: initial?.birth_date || '',
+    note:       initial?.note       || '',
+  });
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(initial?.avatar_url || null);
   const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState('');
+  const fileRef = useRef();
+
+  const handlePhotoPick = (file) => {
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) { alert('กรุณาเลือกไฟล์รูปภาพ'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('ไฟล์ใหญ่เกินไป (สูงสุด 10MB)'); return; }
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = e => setPhotoPreview(e.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!confirm('ลบรูปภาพ?')) return;
+    if (isEdit && initial.avatar_url) {
+      try { await removeFamilyAvatar(initial.id); } catch (e) { alert(e.message); return; }
+    }
+    setPhotoFile(null);
+    setPhotoPreview(null);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return;
     setSaving(true);
+    setProgress('กำลังบันทึก...');
     try {
-      await createMember({
+      const payload = {
         name: form.name.trim(),
         role: form.role.trim() || null,
         color: form.color,
         initial: getInitial(form.name),
         birth_date: form.birth_date || null,
         note: form.note.trim() || null,
-      });
+      };
+      const saved = isEdit
+        ? await updateMember(initial.id, payload)
+        : await createMember(payload);
+
+      if (photoFile && saved?.id) {
+        setProgress('กำลังอัปโหลดรูป...');
+        await uploadFamilyAvatar(photoFile, saved.id);
+      }
       onSave(); onClose();
-    } catch (err) { alert(err.message); } finally { setSaving(false); }
+    } catch (err) {
+      alert('บันทึกไม่สำเร็จ: ' + err.message);
+    } finally { setSaving(false); setProgress(''); }
+  };
+
+  // Preview member object for Avatar
+  const previewMember = {
+    name: form.name, initial: getInitial(form.name),
+    color: form.color, avatar_url: photoPreview,
   };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
       <form onSubmit={handleSubmit} style={{
-        position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
-        borderRadius: 'var(--r-xl)', padding: 32, width: 380, display: 'flex', flexDirection: 'column', gap: 16,
+        position: 'relative', background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-card)', padding: 28, width: 420,
+        boxShadow: 'var(--shadow-pop)',
+        display: 'flex', flexDirection: 'column', gap: 14, maxHeight: '90vh', overflow: 'auto',
       }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>เพิ่มสมาชิก</div>
-
-        {/* Preview avatar */}
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <div className="family-avatar" style={{ background: form.color, width: 64, height: 64, fontSize: 30 }}>
-            {getInitial(form.name || '?')}
-          </div>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, fontWeight: 500, color: 'var(--text-primary)' }}>
+          {isEdit ? 'แก้ไขสมาชิก' : 'เพิ่มสมาชิก'}
         </div>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อ *</span>
+        {/* Photo upload zone */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 14, alignItems: 'center' }}>
+          <div onClick={() => fileRef.current?.click()}
+            style={{ cursor: 'pointer', position: 'relative' }}>
+            <Avatar member={previewMember} size={88} />
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: '50%',
+              background: 'rgba(0,0,0,0.45)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              opacity: 0, transition: 'opacity 130ms', fontSize: 11,
+              fontFamily: 'var(--f-mono)', letterSpacing: '0.1em',
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = 1}
+            onMouseLeave={e => e.currentTarget.style.opacity = 0}>
+              เปลี่ยนรูป
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <button type="button" onClick={() => fileRef.current?.click()}
+              style={{
+                padding: '7px 14px', background: 'var(--accent-soft)', color: 'var(--accent-strong)',
+                border: 0, borderRadius: 'var(--radius-pill)', fontSize: 12,
+                fontFamily: 'var(--f-body)', cursor: 'pointer',
+              }}>
+              📸 {photoPreview ? 'เปลี่ยนรูป' : 'เพิ่มรูปภาพ'}
+            </button>
+            {photoPreview && (
+              <button type="button" onClick={handleRemovePhoto}
+                style={{
+                  padding: '5px 12px', background: 'transparent', color: 'var(--text-muted)',
+                  border: 0, fontSize: 11, fontFamily: 'var(--f-body)', cursor: 'pointer',
+                }}>
+                × ลบรูป
+              </button>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={e => handlePhotoPick(e.target.files?.[0])} />
+        </div>
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ชื่อ *</span>
           <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อสมาชิก" autoFocus required />
         </label>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ความสัมพันธ์</span>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ความสัมพันธ์</span>
           <input className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="แม่, ภรรยา, ลูกสาว, ลูกชาย" />
         </label>
 
-        {/* Color picker */}
+        {/* Color picker — used as fallback when no photo */}
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>สี Avatar</div>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
+            สี Avatar <span style={{ color: 'var(--text-muted)' }}>· ใช้เมื่อไม่มีรูป</span>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {AVATAR_COLORS.map(c => (
               <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
                 style={{
                   width: 28, height: 28, borderRadius: '50%', background: c,
-                  border: `3px solid ${form.color === c ? 'var(--ink)' : 'transparent'}`,
+                  border: `3px solid ${form.color === c ? 'var(--text-primary)' : 'transparent'}`,
                   cursor: 'pointer',
                 }} />
             ))}
           </div>
         </div>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันเกิด</span>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>วันเกิด</span>
           <input className="input" type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
         </label>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>โน้ต (ไม่บังคับ)</span>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>โน้ต (ไม่บังคับ)</span>
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="ข้อมูลเพิ่มเติม" />
         </label>
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        {progress && (
+          <div style={{
+            padding: '8px 12px', background: 'var(--accent-soft)', color: 'var(--accent-strong)',
+            borderRadius: 'var(--radius-control)', fontSize: 12, fontFamily: 'var(--f-mono)', textAlign: 'center',
+          }}>{progress}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : '+ เพิ่มสมาชิก'}</button>
+          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>
+            {saving ? '...' : (isEdit ? '💾 บันทึก' : '+ เพิ่มสมาชิก')}
+          </button>
         </div>
       </form>
     </div>
@@ -222,8 +346,9 @@ export function Family() {
   const [loading, setLoading] = useState(true);
 
   const [showMemberModal, setShowMemberModal] = useState(false);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [showNoteDrawer, setShowNoteDrawer] = useState(false);
+  const [editingMember, setEditingMember]     = useState(null);
+  const [showEventModal, setShowEventModal]   = useState(false);
+  const [showNoteDrawer, setShowNoteDrawer]   = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -284,13 +409,12 @@ export function Family() {
             </div>
             <div style={{ display: 'flex', flexShrink: 0 }}>
               {members.slice(0, 5).map((m, i) => (
-                <div key={m.id} className="family-avatar" style={{
-                  background: m.color || AVATAR_COLORS[i % AVATAR_COLORS.length],
-                  marginLeft: i === 0 ? 0 : -12,
-                  border: '3px solid var(--paper)',
+                <div key={m.id} style={{
+                  marginLeft: i === 0 ? 0 : -14,
                   position: 'relative', zIndex: 5 - i,
-                  width: 52, height: 52, fontSize: 22,
-                }}>{m.initial || getInitial(m.name)}</div>
+                }}>
+                  <Avatar member={m} size={56} borderColor="var(--paper)" />
+                </div>
               ))}
             </div>
           </div>
@@ -328,20 +452,31 @@ export function Family() {
                   : null;
                 const isBirthdayMonth = m.birth_date?.slice(5, 7) === thisMonth;
                 return (
-                  <div key={m.id} className="family-member">
-                    <div className="family-avatar" style={{ background: m.color || 'var(--amber)', width: 44, height: 44, fontSize: 20 }}>
-                      {m.initial || getInitial(m.name)}
-                    </div>
-                    <div>
-                      <div style={{ fontFamily: 'var(--f-display)', fontSize: 16 }}>
+                  <div key={m.id} className="family-member" style={{ alignItems: 'center' }}>
+                    <Avatar member={m} size={48} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--text-primary)' }}>
                         {m.name} {isBirthdayMonth && '🎂'}
                       </div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 }}>
+                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {m.role}{age != null ? ` · ${age} ปี` : ''}{m.note ? ` · ${m.note}` : ''}
                       </div>
                     </div>
-                    <button onClick={() => { if (confirm(`ลบ ${m.name} ออกจากครอบครัว?`)) { deleteMember(m.id).then(refresh); } }}
-                      style={{ color: 'var(--ink-4)', fontSize: 13, padding: '4px 6px' }}>×</button>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => setEditingMember(m)} title="แก้ไข" aria-label="แก้ไข"
+                        style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', fontSize: 14, padding: '4px 6px', cursor: 'pointer', borderRadius: 6 }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                        ✎
+                      </button>
+                      <button onClick={() => { if (confirm(`ลบ ${m.name} ออกจากครอบครัว?`)) { deleteMember(m.id).then(refresh); } }}
+                        title="ลบ" aria-label="ลบ"
+                        style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', fontSize: 14, padding: '4px 6px', cursor: 'pointer', borderRadius: 6 }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                        ×
+                      </button>
+                    </div>
                   </div>
                 );
               })
@@ -463,7 +598,13 @@ export function Family() {
         </div>
       </div>
 
-      {showMemberModal && <AddMemberModal onSave={refresh} onClose={() => setShowMemberModal(false)} />}
+      {(showMemberModal || editingMember) && (
+        <MemberModal
+          initial={editingMember}
+          onSave={refresh}
+          onClose={() => { setShowMemberModal(false); setEditingMember(null); }}
+        />
+      )}
       {showEventModal && <AddEventModal members={members} onSave={refresh} onClose={() => setShowEventModal(false)} />}
       {showNoteDrawer && <AddNoteDrawer onSave={refresh} onClose={() => setShowNoteDrawer(false)} />}
     </>

@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.8',
+    date: '2026-05-30',
+    title: 'Family Photos · รูปสมาชิกครอบครัว',
+    badge: 'Current',
+    changes: [
+      '📸 อัปโหลดรูปภาพสมาชิกครอบครัวได้ — ใช้ Supabase Storage (bucket "avatars")',
+      'Client-side resize เป็น square 480×480 ก่อนอัปโหลด (ไฟล์ < 300KB)',
+      'Avatar component — แสดงรูปถ้ามี, ถ้าไม่มีก็ fallback เป็นวงกลมสี + อักษรย่อ',
+      'Edit mode สำหรับสมาชิก — กดปุ่ม ✎ บนการ์ดเพื่อแก้ข้อมูล/รูป',
+      'Hover avatar = "เปลี่ยนรูป" overlay; ปุ่ม × ลบรูปได้',
+    ],
+  },
+  {
     version: 'v0.7',
     date: '2026-05-30',
     title: 'Debt Tracker · Auto-link + Interest + Snowball/Avalanche',
-    badge: 'Current',
     changes: [
       '🔗 Auto-link: ตอน import CSV ระบบ match transactions กับหนี้สินอัตโนมัติ (โดยจำนวน + ชื่อผู้รับ)',
       '📊 Interest math: คำนวณเงินต้น + ดอกเบี้ยรวม + ดอกเบี้ยที่เหลือ จาก rate + งวด',
