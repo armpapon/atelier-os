@@ -17,6 +17,7 @@ import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
+import { CashboxCard } from '../components/dashboard/CashboxCard.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -320,7 +321,10 @@ export function FinanceView({ scope }) {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <MonthNav value={yearMonth} onChange={setYearMonth} />
-            <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+            {/* Import button only shown on Personal scope — auto-imports both scopes */}
+            {scope === 'personal' && (
+              <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ บัญชี</Button>
             <Button variant="primary" size="md" onClick={() => setShowTxnForm(true)}>
               <Icon name="plus" size={14}/> บันทึกรายการ
@@ -379,6 +383,9 @@ export function FinanceView({ scope }) {
         {/* Row 2: Cash Flow chart */}
         <CashFlowChart data={trendData} currentYm={yearMonth} onMonthClick={setYearMonth} />
 
+        {/* Row 2b: Cashbox flow — เฉพาะ scope ส่วนตัว (Cashbox เป็น personal pocket) */}
+        {scope === 'personal' && <CashboxCard txns={txns} accounts={accounts} yearMonth={yearMonth} />}
+
         {/* Row 3: Categories + Top 10 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
@@ -430,11 +437,13 @@ export function FinanceView({ scope }) {
               <EmptyState
                 icon="💼"
                 title="ยังไม่มีบัญชี"
-                description="import CSV จาก Make จะสร้างบัญชี (Cloud Pockets) ให้อัตโนมัติ พร้อมยอดล่าสุด"
-                actionLabel="📂 Import จาก Make"
-                onAction={() => setShowImporter(true)}
-                secondaryLabel="+ สร้างเอง"
-                onSecondary={() => setShowAccForm(true)}
+                description={scope === 'personal'
+                  ? 'import CSV จาก Make จะสร้างบัญชี (Cloud Pockets) ให้อัตโนมัติ พร้อมยอดล่าสุด'
+                  : 'บัญชีครอบครัว (เช่น "กองทุนครอบครัว", "เงินเพื่อน้องอคิน") จะถูกสร้างอัตโนมัติเมื่อ Import CSV ที่หน้าการเงินส่วนตัว'}
+                actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ สร้างเอง'}
+                onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowAccForm(true)}
+                secondaryLabel={scope === 'personal' ? '+ สร้างเอง' : null}
+                onSecondary={scope === 'personal' ? () => setShowAccForm(true) : null}
                 compact
               />
             ) : (
@@ -553,7 +562,9 @@ export function FinanceView({ scope }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+              {scope === 'personal' && (
+                <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+              )}
               <Button variant="secondary" size="sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</Button>
               {txns.length > 0 && (
                 <Button variant="danger" size="sm"
@@ -572,11 +583,13 @@ export function FinanceView({ scope }) {
             <EmptyState
               icon="📋"
               title="ยังไม่มีรายการเดือนนี้"
-              description="บันทึกรายการเอง หรือ import จาก Make เพื่อสร้าง cash flow และ budget อัตโนมัติ"
-              actionLabel="📂 Import จาก Make"
-              onAction={() => setShowImporter(true)}
-              secondaryLabel="+ เพิ่มเอง"
-              onSecondary={() => setShowTxnForm(true)}
+              description={scope === 'personal'
+                ? 'บันทึกรายการเอง หรือ import จาก Make — ระบบจะ auto-split ทั้ง ส่วนตัว + ครอบครัว ให้พร้อม'
+                : 'รายการครอบครัวจะมาจาก: (1) Import CSV ที่หน้า "การเงินส่วนตัว" — ระบบ auto-split scope · (2) บันทึกเองที่นี่'}
+              actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ เพิ่มเอง'}
+              onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowTxnForm(true)}
+              secondaryLabel={scope === 'personal' ? '+ เพิ่มเอง' : null}
+              onSecondary={scope === 'personal' ? () => setShowTxnForm(true) : null}
             />
           ) : (
             <>

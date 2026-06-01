@@ -20,6 +20,12 @@ export function getMonthBounds(yearMonth) {
 /** Pockets that belong to family scope */
 const FAMILY_POCKETS = ['กองทุนครอบครัว', 'เงินเพื่อน้องอคิน'];
 
+/** "กล่องกลาง" — เงินเข้ามาที่นี่ก่อนเสมอ (Make app constraint) */
+const CASHBOX_POCKET = 'Cashbox';
+
+/** Pockets ที่เป็น auto-saving feature ของ Make — skip ทั้งหมด */
+const AUTO_SAVE_POCKETS = ['แอบออมอัตโนมัติ'];
+
 /** Map Make CSV categories → internal { category, type } */
 const MAKE_CATEGORY_MAP = {
   'อาหาร':                 { category: 'อาหาร',              type: 'food'      },
@@ -181,15 +187,9 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
     if (makeFmt) {
       const pocket = (row[pocketCol] || '').trim();
       const txType = (row[txTypeCol] || '').trim();
-
-      // Skip internal pocket transfers — only real transactions matter
-      if (txType === 'Move Money') return [];
-
+      const memo   = (memoCol ? row[memoCol] : '').trim();
       const amount = parseAmount(row[txnCol]);
       if (amount === null || amount === 0) return [];
-
-      // Auto-detect scope from pocket name
-      const scope = FAMILY_POCKETS.includes(pocket) ? 'family' : 'personal';
 
       const dateStr  = parseThaiDate(row[dateCol] || '');
       const timePart = timeCol && row[timeCol] ? row[timeCol].substring(0, 5) : '00:00';
@@ -197,9 +197,50 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
         ? `${dateStr}T${timePart}:00+07:00`
         : new Date().toISOString();
 
+      // ── Move Money rows — handle Cashbox ↔ Family allocations ──────────
+      if (txType === 'Move Money') {
+        // Skip auto-save rounding entirely (both sides)
+        if (AUTO_SAVE_POCKETS.includes(pocket) || memo.includes('แอบออมอัตโนมัติ')) return [];
+
+        // Inbound to family pocket → track as family income (allocation in)
+        if (FAMILY_POCKETS.includes(pocket) && amount > 0) {
+          return [{
+            _rowIdx: i, _pocket: pocket, _txtype: txType,
+            _cp_bal: cpBalCol ? parseAmount(row[cpBalCol]) : null,
+            title:     'รับเงินจากกองกลาง (Cashbox)',
+            occurred_at, amount,
+            category:  'รายรับ',
+            type:      'income',
+            scope:     'family',
+            note:      memo || null,
+            account_id: null,
+          }];
+        }
+
+        // Outbound from Cashbox → track as personal "allocation" (negative)
+        if (pocket === CASHBOX_POCKET && amount < 0) {
+          return [{
+            _rowIdx: i, _pocket: pocket, _txtype: txType,
+            _cp_bal: cpBalCol ? parseAmount(row[cpBalCol]) : null,
+            title:     'แบ่งงบไปกองทุนครอบครัว',
+            occurred_at, amount,            // negative
+            category:  'แบ่งงบ',
+            type:      'other',             // not 'food'/'bills' — special bucket
+            scope:     'personal',
+            note:      memo || null,
+            account_id: null,
+          }];
+        }
+
+        // Any other Move Money (Cashbox → 🍚กินอยู่, internal personal moves) → skip
+        return [];
+      }
+
+      // ── Regular transactions (Payment, Deposit, Transfer Withdraw, etc.) ─
+      const scope = FAMILY_POCKETS.includes(pocket) ? 'family' : 'personal';
+
       // Title: Note (merchant) > Memo (user note) > pocket name
       const merchant = (noteCol ? row[noteCol] : '').trim();
-      const memo     = (memoCol ? row[memoCol]  : '').trim();
       const title    = merchant || memo || pocket || '(ไม่มีชื่อ)';
 
       // Category: from CSV first, then fallback

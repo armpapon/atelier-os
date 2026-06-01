@@ -3,10 +3,24 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.13',
+    date: '2026-05-31',
+    title: 'Finance · Cashbox Flow + Import เหลือที่เดียว',
+    badge: 'Current',
+    changes: [
+      '💰 CashboxCard ใหม่บนหน้าการเงินส่วนตัว — แสดง "เงินเข้า / แบ่งไปครอบครัว / ใช้ตรงจาก Cashbox / คงเหลือ"',
+      '🔁 Parser track Move Money เฉพาะ Cashbox ↔ Family pocket (เคสจริงที่ user ทำทุกเดือน)',
+      'Family scope จะเห็น "+80,000 รับเงินจากกองกลาง" เป็น income แล้ว · Personal เห็น "-80,000 แบ่งงบไปครอบครัว"',
+      'Skip "แอบออมอัตโนมัติ" + Move Money อื่น ๆ (internal personal moves) เหมือนเดิม',
+      '🗑 ลบปุ่ม Import จากหน้าครอบครัว — เหลือที่เดียวที่ส่วนตัว · auto-split ทั้ง 2 scope',
+      'Family page hint: "Import ที่หน้าการเงินส่วนตัว ระบบจะ auto-split scope"',
+      'ป้ายเตือนเมื่อมีเงินค้าง Cashbox > 10% ของรายรับ → suggest โอนเข้ากองทุน',
+    ],
+  },
+  {
     version: 'v0.12',
     date: '2026-05-31',
     title: 'Learning · Study Sessions + Timer + Understanding Score',
-    badge: 'Current',
     changes: [
       '⏱ Reading Timer — stopwatch จับเวลาตอนอ่าน/ดู หยุดได้ ดึงเวลามาบันทึก auto',
       '📖 Book tracking: ใส่จำนวนหน้าทั้งหมด, หน้าเริ่ม → หน้าจบ → auto-compute pages_read',
