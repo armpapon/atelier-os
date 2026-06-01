@@ -197,44 +197,9 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
         ? `${dateStr}T${timePart}:00+07:00`
         : new Date().toISOString();
 
-      // ── Move Money rows — handle Cashbox ↔ Family allocations ──────────
-      if (txType === 'Move Money') {
-        // Skip auto-save rounding entirely (both sides)
-        if (AUTO_SAVE_POCKETS.includes(pocket) || memo.includes('แอบออมอัตโนมัติ')) return [];
-
-        // Inbound to family pocket → track as family income (allocation in)
-        if (FAMILY_POCKETS.includes(pocket) && amount > 0) {
-          return [{
-            _rowIdx: i, _pocket: pocket, _txtype: txType,
-            _cp_bal: cpBalCol ? parseAmount(row[cpBalCol]) : null,
-            title:     'รับเงินจากกองกลาง (Cashbox)',
-            occurred_at, amount,
-            category:  'รายรับ',
-            type:      'income',
-            scope:     'family',
-            note:      memo || null,
-            account_id: null,
-          }];
-        }
-
-        // Outbound from Cashbox → track as personal "allocation" (negative)
-        if (pocket === CASHBOX_POCKET && amount < 0) {
-          return [{
-            _rowIdx: i, _pocket: pocket, _txtype: txType,
-            _cp_bal: cpBalCol ? parseAmount(row[cpBalCol]) : null,
-            title:     'แบ่งงบไปกองทุนครอบครัว',
-            occurred_at, amount,            // negative
-            category:  'แบ่งงบ',
-            type:      'other',             // not 'food'/'bills' — special bucket
-            scope:     'personal',
-            note:      memo || null,
-            account_id: null,
-          }];
-        }
-
-        // Any other Move Money (Cashbox → 🍚กินอยู่, internal personal moves) → skip
-        return [];
-      }
+      // Skip ALL Move Money rows — internal pocket transfers
+      // (user will handle allocation tracking manually)
+      if (txType === 'Move Money') return [];
 
       // ── Regular transactions (Payment, Deposit, Transfer Withdraw, etc.) ─
       const scope = FAMILY_POCKETS.includes(pocket) ? 'family' : 'personal';

@@ -3,10 +3,21 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.15',
+    date: '2026-05-31',
+    title: 'Revert · Skip Move Money + ลบ CashboxCard',
+    badge: 'Current',
+    changes: [
+      '🔙 กลับไป behavior เดิม — Parser skip Move Money ทั้งหมด (เหมือนก่อน v0.13)',
+      'ไม่มี "แบ่งงบไปครอบครัว" / "รับเงินจากกองกลาง" auto-generated อีกแล้ว',
+      'ลบ CashboxCard ออกจากหน้า Finance — user จะ track allocation เอง',
+      'แก้ปัญหา "งบ พ.ค. รวน" จาก allocation transactions ที่บวก/ลบ stats ผิด',
+    ],
+  },
+  {
     version: 'v0.14',
     date: '2026-05-31',
     title: 'Finance · Recurring + Forecast + Emergency Fund',
-    badge: 'Current',
     changes: [
       '📅 Recurring Tracker — list บิลประจำ + auto-detect จากประวัติ transactions (เจอตัวที่ซ้ำใน ≥2 เดือน + amount นิ่ง)',
       'Status เดือนนี้: จ่ายแล้ว / รอจ่าย / เกินกำหนด — match กับ transaction title + amount auto',

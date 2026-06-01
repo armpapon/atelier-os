@@ -18,7 +18,6 @@ import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
-import { CashboxCard } from '../components/dashboard/CashboxCard.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
@@ -411,9 +410,6 @@ export function FinanceView({ scope }) {
 
         {/* Row 2: Cash Flow chart */}
         <CashFlowChart data={trendData} currentYm={yearMonth} onMonthClick={setYearMonth} />
-
-        {/* Row 2b: Cashbox flow — เฉพาะ scope ส่วนตัว (Cashbox เป็น personal pocket) */}
-        {scope === 'personal' && <CashboxCard txns={txns} accounts={accounts} yearMonth={yearMonth} />}
 
         {/* Row 2c: Cash Flow Forecast 3 เดือนข้างหน้า */}
         <CashFlowForecastCard forecast={forecast} />
