@@ -8,6 +8,7 @@ import {
   extractVideoId, getYouTubeEmbedUrl, getYouTubeThumbnail,
   translateText,
 } from '../lib/api/learning.js';
+import { StudyDrawer } from '../components/learning/StudyDrawer.jsx';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SOURCE_TYPES = [
@@ -503,23 +504,8 @@ export function Learning() {
   const inProgress = sources.filter(s => s.progress > 0 && s.status !== 'completed').length;
   const featured = sources.find(s => s.progress > 0 && s.progress < 100) || sources[0];
 
-  // Study mode
-  if (studySource) {
-    return (
-      <>
-        <div style={{ padding: '12px 40px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--amber)' }}>Study Mode</span>
-          <span style={{ color: 'var(--line)', fontSize: 14 }}>·</span>
-          <span style={{ fontFamily: 'var(--f-display)', fontSize: 15, color: 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 400 }}>{studySource.title}</span>
-        </div>
-        <StudyMode
-          source={studySource}
-          onBack={() => setStudySource(null)}
-          onUpdate={() => { refresh(); setStudySource(prev => sources.find(s => s.id === prev?.id) || prev); }}
-        />
-      </>
-    );
-  }
+  // Study drawer (replaces old full-page StudyMode — opens as right drawer overlay)
+  // StudyMode component kept available for backward compat but no longer auto-rendered
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--ink-3)' }}>
@@ -612,6 +598,13 @@ export function Learning() {
       </div>
 
       {showAddForm && <AddSourceForm onSave={refresh} onClose={() => setShowAddForm(false)} />}
+      {studySource && (
+        <StudyDrawer
+          source={sources.find(s => s.id === studySource.id) || studySource}
+          onClose={() => setStudySource(null)}
+          onChange={refresh}
+        />
+      )}
     </>
   );
 }

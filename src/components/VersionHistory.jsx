@@ -3,10 +3,26 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.12',
+    date: '2026-05-31',
+    title: 'Learning · Study Sessions + Timer + Understanding Score',
+    badge: 'Current',
+    changes: [
+      '⏱ Reading Timer — stopwatch จับเวลาตอนอ่าน/ดู หยุดได้ ดึงเวลามาบันทึก auto',
+      '📖 Book tracking: ใส่จำนวนหน้าทั้งหมด, หน้าเริ่ม → หน้าจบ → auto-compute pages_read',
+      '🔁 บันทึก reading_count — กดปุ่ม "อ่านจบรอบที่ N" รีเซ็ต current_page',
+      '⭐ Understanding Score 1-5 ต่อ session — งง/ยังไม่ค่อย/พอเข้าใจ/เข้าใจดี/แม่นมาก',
+      '✨ Summary + Notes ต่อ session — บันทึก key takeaway ทุกครั้ง',
+      '💡 Smart Hints — ระบบแนะนำตาม pattern: ดูซ้ำถ้าคะแนนต่ำ, สรุปด้วยคำตัวเองถ้าซ้ำหน้าเดิม 3 ครั้ง, พักสายตาถ้าต่อเนื่อง 60+ นาที, teach back ถ้าเข้าใจสูง',
+      '📜 Sessions timeline — ดูประวัติทั้งหมดต่อ source พร้อม ★ rating',
+      '📊 Stats tab — sessions/เวลารวม/หน้ารวม/avg score/หน้าต่อชม./reading count',
+      'Auto-update progress: % จาก current_page/total_pages หรือ video position/duration',
+    ],
+  },
+  {
     version: 'v0.11',
     date: '2026-05-31',
     title: 'Trading Playbook + ICT Learning Curriculum',
-    badge: 'Current',
     changes: [
       '🎯 Trading Playbook card บนหน้า Trading — แสดง session ปัจจุบัน/ถัดไป + countdown',
       'Daily Schedule 3 killzones (London/NY/Silver Bullet) พร้อม setup target',
