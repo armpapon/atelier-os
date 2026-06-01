@@ -10,6 +10,7 @@ import {
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
   deleteTransactionsInMonth,
   listDebts, listDebtPayments,
+  listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
 } from '../lib/api/finance.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
@@ -18,6 +19,7 @@ import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { CashboxCard } from '../components/dashboard/CashboxCard.jsx';
+import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -229,6 +231,7 @@ export function FinanceView({ scope }) {
   const [goals, setGoals]       = useState([]);
   const [debts, setDebts]       = useState([]);
   const [debtPayments, setDebtPayments] = useState([]);
+  const [recurring, setRecurring] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
 
@@ -256,7 +259,7 @@ export function FinanceView({ scope }) {
       const { start: paymentStart } = getMonthBounds(months12[0]);
       const { end:   paymentEnd   } = getMonthBounds(months12[months12.length - 1]);
 
-      const [t, p, r12, a, b, g, d, dp] = await Promise.all([
+      const [t, p, r12, a, b, g, d, dp, rec] = await Promise.all([
         listTransactions({ yearMonth, scope, limit: 2000 }),
         listTransactions({ yearMonth: prev, scope, limit: 2000 }),
         listTransactionsRange({ startDate: startTrend, endDate: endTrend, scope }),
@@ -265,11 +268,13 @@ export function FinanceView({ scope }) {
         listGoals(scope),
         listDebts({ scope }).catch(() => []),
         listDebtPayments({ startMonth: paymentStart, endMonth: paymentEnd }).catch(() => []),
+        listRecurring({ scope }).catch(() => []),
       ]);
 
       setTxns(t || []); setPrevTxns(p || []); setTrend12(r12 || []);
       setAccounts(a || []); setBudgets(b || []); setGoals(g || []);
       setDebts(d || []); setDebtPayments(dp || []);
+      setRecurring(rec || []);
     } catch (err) {
       setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
     } finally { setLoading(false); }
@@ -290,6 +295,30 @@ export function FinanceView({ scope }) {
   const categories = useMemo(() => aggregateByCategory(txns), [txns]);
   const top10      = useMemo(() => topExpenses(txns, 10),      [txns]);
   const dailyMap   = useMemo(() => aggregateByDay(txns, yearMonth), [txns, yearMonth]);
+
+  // Cash Flow Forecast — uses avg of last 3 months for variable expense
+  const forecast = useMemo(() => {
+    const recurringTotal = recurring.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const trendAgg = aggregateByMonth(trend12).slice(-3);
+    const avgIncome   = trendAgg.length ? trendAgg.reduce((s, x) => s + x.income, 0) / trendAgg.length : 0;
+    const avgExpense  = trendAgg.length ? trendAgg.reduce((s, x) => s + x.expense, 0) / trendAgg.length : 0;
+    const debtTotal   = debts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
+    // variable = avg expense − recurring − debt (what's left is variable)
+    const avgVariable = Math.max(0, avgExpense - recurringTotal - debtTotal);
+    return forecastCashFlow({
+      monthlyIncome: Math.round(avgIncome),
+      recurring, debts,
+      avgVariableExpense: Math.round(avgVariable),
+      monthsAhead: 3,
+    });
+  }, [recurring, debts, trend12]);
+
+  // Emergency fund coverage
+  const emergencyFund = useMemo(() => {
+    const trendAgg = aggregateByMonth(trend12).slice(-3);
+    const avgExpense = trendAgg.length ? trendAgg.reduce((s, x) => s + x.expense, 0) / trendAgg.length : thisSum.expense;
+    return computeEmergencyFundCoverage(accounts, avgExpense);
+  }, [accounts, trend12, thisSum.expense]);
 
   const deltas = useMemo(() => {
     const pct = (cur, prev) => prev > 0 ? ((cur - prev) / prev) * 100 : (cur > 0 ? 100 : 0);
@@ -386,6 +415,9 @@ export function FinanceView({ scope }) {
         {/* Row 2b: Cashbox flow — เฉพาะ scope ส่วนตัว (Cashbox เป็น personal pocket) */}
         {scope === 'personal' && <CashboxCard txns={txns} accounts={accounts} yearMonth={yearMonth} />}
 
+        {/* Row 2c: Cash Flow Forecast 3 เดือนข้างหน้า */}
+        <CashFlowForecastCard forecast={forecast} />
+
         {/* Row 3: Categories + Top 10 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
@@ -394,6 +426,10 @@ export function FinanceView({ scope }) {
 
         {/* Row 4: Budget vs Actual */}
         <BudgetProgress budgets={budgets} categoryActuals={categories} />
+
+        {/* Row 4a: Recurring Expenses */}
+        <RecurringTracker recurring={recurring} transactions={txns}
+          yearMonth={yearMonth} scope={scope} onChange={refresh} />
 
         {/* Row 4b: Debt Tracker */}
         <DebtTracker
@@ -404,9 +440,10 @@ export function FinanceView({ scope }) {
           onChange={refresh}
         />
 
-        {/* Row 5: Net Worth + Heatmap */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 14 }}>
+        {/* Row 5: Net Worth + Emergency Fund + Heatmap */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 14 }}>
           <NetWorthCard accounts={accounts} />
+          <EmergencyFundCard coverage={emergencyFund} accounts={accounts} onAccountToggle={refresh} />
           <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
         </div>
 

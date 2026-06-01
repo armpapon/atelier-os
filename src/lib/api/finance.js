@@ -1090,3 +1090,175 @@ export function forecastDebts(debts, monthsAhead = 12) {
   }
   return result;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  RECURRING EXPENSES (subscriptions, bills)
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function listRecurring({ scope, activeOnly = true } = {}) {
+  if (!supabase) return [];
+  let q = supabase.from('recurring_expenses').select('*').order('amount', { ascending: false });
+  if (scope)      q = q.eq('scope', scope);
+  if (activeOnly) q = q.eq('is_active', true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createRecurring(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('recurring_expenses').insert({ ...input, user_id: user.id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateRecurring(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase
+    .from('recurring_expenses').update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteRecurring(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('recurring_expenses').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Auto-detect recurring from transactions. Returns suggestions with confidence. */
+export function detectRecurringFromTransactions(transactions) {
+  if (!transactions?.length) return [];
+  const groups = {};
+  for (const t of transactions) {
+    const amt = Number(t.amount);
+    if (amt >= 0) continue;
+    if (t.category === 'แบ่งงบ') continue;
+    const key = normalizeTitle(t.title) + '|' + Math.round(Math.abs(amt) / 100) * 100;
+    if (!groups[key]) groups[key] = { title: t.title, txns: [] };
+    groups[key].txns.push(t);
+  }
+  const recurring = [];
+  for (const k in groups) {
+    const g = groups[k];
+    const months = new Set(g.txns.map(t => (t.occurred_at || '').substring(0, 7)));
+    if (months.size < 2) continue;
+    const amounts = g.txns.map(t => Math.abs(Number(t.amount)));
+    const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const stdDev = Math.sqrt(amounts.reduce((s, x) => s + (x - avg) ** 2, 0) / amounts.length);
+    const variance = avg > 0 ? stdDev / avg : 1;
+    if (variance > 0.20) continue;
+    const lastTxn = [...g.txns].sort((a, b) => (b.occurred_at || '').localeCompare(a.occurred_at || ''))[0];
+    recurring.push({
+      title:      g.title,
+      vendor:     g.title,
+      avgAmount:  Math.round(avg),
+      monthsCount: months.size,
+      lastDate:   lastTxn.occurred_at,
+      variance,
+      scope:      lastTxn.scope || 'personal',
+      sampleTxn:  lastTxn,
+    });
+  }
+  return recurring.sort((a, b) => b.avgAmount - a.avgAmount);
+}
+
+function normalizeTitle(t) {
+  return (t || '').toLowerCase().trim().replace(/\s+/g, ' ').substring(0, 40);
+}
+
+/** Check whether a recurring expense has been paid for a given month. */
+export function checkRecurringStatus(recurring, transactions, yearMonth) {
+  const ym = yearMonth || currentYearMonth();
+  const tolerance = Math.max(50, Number(recurring.amount) * 0.10);
+  const vendor = (recurring.vendor || recurring.name || '').toLowerCase();
+  const vendorKey = vendor.substring(0, Math.min(8, vendor.length));
+
+  const match = (transactions || []).find(t => {
+    if ((t.occurred_at || '').substring(0, 7) !== ym) return false;
+    if (Number(t.amount) >= 0) return false;
+    if (Math.abs(Math.abs(Number(t.amount)) - Number(recurring.amount)) > tolerance) return false;
+    const title = (t.title || '').toLowerCase();
+    return vendorKey.length >= 4 && title.includes(vendorKey);
+  });
+  if (match) return { status: 'paid', txn: match };
+
+  const [y, m] = ym.split('-').map(Number);
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === y && today.getMonth() + 1 === m;
+  const dueDay = recurring.due_day || 5;
+  if (isCurrentMonth) {
+    if (today.getDate() > dueDay) return { status: 'overdue', dueDay };
+    return { status: 'pending', dueDay };
+  }
+  const isPastMonth = (y < today.getFullYear()) || (y === today.getFullYear() && m < today.getMonth() + 1);
+  return { status: isPastMonth ? 'overdue' : 'upcoming', dueDay };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CASH FLOW FORECAST + EMERGENCY FUND
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Forecast cash flow for next N months. Pure calculation. */
+export function forecastCashFlow({ monthlyIncome = 0, recurring = [], debts = [], avgVariableExpense = 0, monthsAhead = 3 }) {
+  const monthlyize = (r) => {
+    const a = Number(r.amount || 0);
+    if (r.frequency === 'yearly')    return a / 12;
+    if (r.frequency === 'quarterly') return a / 3;
+    if (r.frequency === 'weekly')    return a * 4.33;
+    return a; // monthly or unknown
+  };
+  const fixedExpense = recurring.reduce((s, r) => s + monthlyize(r), 0);
+
+  const projection = [];
+  let cumulative = 0;
+  let curYM = currentYearMonth();
+  for (let i = 0; i < monthsAhead; i++) {
+    curYM = nextMonth(curYM);
+    const activeDebts = debts.filter(d => {
+      const paid = Number(d.months_paid || 0) + i + 1;
+      return !d.total_months || paid <= Number(d.total_months);
+    });
+    const debtPayment = activeDebts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
+    const totalOut = fixedExpense + debtPayment + avgVariableExpense;
+    const net = monthlyIncome - totalOut;
+    cumulative += net;
+    projection.push({
+      ym: curYM, income: monthlyIncome,
+      fixed: fixedExpense, debt: debtPayment, variable: avgVariableExpense,
+      totalOut, net, cumulative,
+      activeDebtsCount: activeDebts.length,
+    });
+  }
+  const debtNow = debts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
+  return {
+    monthlyIncome, fixedExpense, avgVariableExpense,
+    debtPaymentNow: debtNow,
+    monthlyNetNow: monthlyIncome - fixedExpense - debtNow - avgVariableExpense,
+    projection,
+  };
+}
+
+/** Compute emergency fund months-of-coverage. */
+export function computeEmergencyFundCoverage(accounts, avgMonthlyExpense) {
+  const emergencyAccounts = (accounts || []).filter(a => a.is_emergency_fund);
+  const total = emergencyAccounts.reduce((s, a) => s + Number(a.balance || 0), 0);
+  const months = avgMonthlyExpense > 0 ? total / avgMonthlyExpense : 0;
+  let status = 'critical', message = '';
+  if (months >= 6)      { status = 'safe';     message = 'ปลอดภัย — เพียงพอ 6+ เดือน'; }
+  else if (months >= 3) { status = 'warning';  message = 'พอใช้ได้ — ควรขยายให้ถึง 6 เดือน'; }
+  else if (months >= 1) { status = 'critical'; message = 'น้อย — ควรขยายให้ถึงอย่างน้อย 3 เดือน'; }
+  else                  { status = 'critical'; message = avgMonthlyExpense > 0 ? 'ยังไม่มีกองทุนฉุกเฉิน — เริ่มเก็บทันที' : 'ตั้งบัญชี emergency fund (toggle ในการ์ดบัญชี)'; }
+  return {
+    total, months, status, message,
+    accountsCount: emergencyAccounts.length,
+    accounts: emergencyAccounts,
+    target3: avgMonthlyExpense * 3,
+    target6: avgMonthlyExpense * 6,
+    targetGap6: Math.max(0, avgMonthlyExpense * 6 - total),
+  };
+}

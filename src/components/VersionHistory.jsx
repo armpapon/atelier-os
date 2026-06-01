@@ -3,10 +3,26 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.14',
+    date: '2026-05-31',
+    title: 'Finance · Recurring + Forecast + Emergency Fund',
+    badge: 'Current',
+    changes: [
+      '📅 Recurring Tracker — list บิลประจำ + auto-detect จากประวัติ transactions (เจอตัวที่ซ้ำใน ≥2 เดือน + amount นิ่ง)',
+      'Status เดือนนี้: จ่ายแล้ว / รอจ่าย / เกินกำหนด — match กับ transaction title + amount auto',
+      '🔮 Cash Flow Forecast 3 เดือนข้างหน้า — รายรับเฉลี่ย − recurring − ผ่อนหนี้ − ใช้ทั่วไป',
+      'แสดงตาราง 3 เดือนพร้อม net + cumulative · warning ถ้าจะติดลบ',
+      'Auto-compute "active debts" — หนี้ที่ผ่อนหมดในเดือนถัดไปไม่นับใน forecast',
+      '🛡 Emergency Fund Gauge — conic-gradient ring 0-6 เดือน · safe/warning/critical tiers',
+      'Toggle "ใช้บัญชีนี้เป็นกองทุนฉุกเฉิน" ในการ์ด · auto-compute coverage = balance/avg expense',
+      'แสดง "ขาดอีก X เพื่อ 6 เดือน coverage"',
+      'Schema: recurring_expenses table + accounts.is_emergency_fund column',
+    ],
+  },
+  {
     version: 'v0.13',
     date: '2026-05-31',
     title: 'Finance · Cashbox Flow + Import เหลือที่เดียว',
-    badge: 'Current',
     changes: [
       '💰 CashboxCard ใหม่บนหน้าการเงินส่วนตัว — แสดง "เงินเข้า / แบ่งไปครอบครัว / ใช้ตรงจาก Cashbox / คงเหลือ"',
       '🔁 Parser track Move Money เฉพาะ Cashbox ↔ Family pocket (เคสจริงที่ user ทำทุกเดือน)',
