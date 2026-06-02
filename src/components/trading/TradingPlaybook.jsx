@@ -1,33 +1,63 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, Badge, Button } from '../ui/index.js';
 
-// ─── Session schedule (UTC+7) ───────────────────────────────────────────────
-const SESSIONS = [
+// ─── Session schedule — DST-aware (NY time auto-converted to UTC+7) ──────
+// Base times defined in NY local time (EST/EDT auto-adjusts via Intl).
+// Killzone definitions are anchored to NY market hours, not arbitrary BKK times.
+const NY_SESSIONS = [
   {
-    id: 'London',
-    label: '🇬🇧 London KZ',
-    start: '14:00', end: '17:00',
-    startMin: 14*60, endMin: 17*60,
+    id: 'London', label: '🇬🇧 London KZ',
+    nyStart: '02:00', nyEnd: '05:00',
     setup: 'Judas Swing — sweep Asia High แล้ว reverse SHORT',
     color: 'var(--blue)',
   },
   {
-    id: 'NY',
-    label: '🇺🇸 NY KZ',
-    start: '19:00', end: '22:00',
-    startMin: 19*60, endMin: 22*60,
+    id: 'NY', label: '🇺🇸 NY KZ',
+    nyStart: '07:00', nyEnd: '10:00',
     setup: 'Asia Low Sweep + Reclaim → LONG (หรือ High → SHORT)',
     color: 'var(--accent-strong)',
   },
   {
-    id: 'Silver',
-    label: '⚡ Silver Bullet',
-    start: '22:00', end: '23:00',
-    startMin: 22*60, endMin: 23*60,
+    id: 'Silver', label: '⚡ Silver Bullet',
+    nyStart: '10:00', nyEnd: '11:00',
     setup: 'Quick scalp setup เหมือน NY แต่ TF เล็กลง',
     color: 'var(--violet)',
   },
 ];
+
+/** Check if New York is currently in Daylight Saving Time (EDT = UTC-4). */
+function isNYInDST() {
+  try {
+    const tz = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', timeZoneName: 'short',
+    }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value;
+    return tz === 'EDT'; // EDT = summer (DST). EST = winter (no DST).
+  } catch { return false; }
+}
+
+/** Convert NY time string 'HH:MM' to Bangkok 'HH:MM' depending on DST. */
+function nyToBangkok(nyTime, isDST) {
+  // EST (UTC-5) → BKK is +12 hours · EDT (UTC-4) → BKK is +11 hours
+  const offset = isDST ? 11 : 12;
+  const [h, m] = nyTime.split(':').map(Number);
+  let bkkH = (h + offset) % 24;
+  return `${String(bkkH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Build SESSIONS array adjusted for current DST. */
+function buildSessions(isDST) {
+  return NY_SESSIONS.map(s => {
+    const start = nyToBangkok(s.nyStart, isDST);
+    const end   = nyToBangkok(s.nyEnd, isDST);
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    return {
+      ...s, start, end,
+      startMin: sh * 60 + sm,
+      endMin:   eh * 60 + em,
+    };
+  });
+}
 
 const CHECKLIST = [
   { id: 'asia',    text: 'Asia ปิดสมบูรณ์แล้ว (หลัง 14:00)' },
@@ -48,16 +78,16 @@ const RULES = [
   { tone: 'danger',  icon: '🛑', text: 'ขาดทุน 3 ครั้งติด = พัก 7 วัน' },
 ];
 
-function getCurrentSession() {
+function getCurrentSession(sessions) {
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
-  return SESSIONS.find(s => mins >= s.startMin && mins < s.endMin);
+  return sessions.find(s => mins >= s.startMin && mins < s.endMin);
 }
 
-function timeToNextSession() {
+function timeToNextSession(sessions) {
   const now = new Date();
   const mins = now.getHours() * 60 + now.getMinutes();
-  const next = SESSIONS.find(s => s.startMin > mins);
+  const next = sessions.find(s => s.startMin > mins);
   if (!next) return null;
   const diff = next.startMin - mins;
   return { session: next, hrs: Math.floor(diff / 60), mins: diff % 60 };
@@ -81,8 +111,11 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
     localStorage.setItem('atelier:trading:playbook-collapsed', collapsed ? '1' : '0');
   }, [collapsed]);
 
-  const current = getCurrentSession();
-  const next = timeToNextSession();
+  // DST-aware sessions (recompute when 'now' changes — covers crossing DST boundary)
+  const isDST    = isNYInDST();
+  const SESSIONS = buildSessions(isDST);
+  const current  = getCurrentSession(SESSIONS);
+  const next     = timeToNextSession(SESSIONS);
   const today = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'long' });
   const time  = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
@@ -96,6 +129,16 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
       <CardHeader
         eyebrow={`🎯 TRADING PLAYBOOK · ${today} · ${time}`}
         title="วันนี้เทรดอะไรได้บ้าง"
+        meta={
+          <span>
+            NY ตอนนี้: <Badge tone={isDST ? 'warning' : 'neutral'} size="sm">
+              {isDST ? 'EDT · ฤดูร้อน (UTC-4)' : 'EST · ฤดูหนาว (UTC-5)'}
+            </Badge>
+            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+              · เวลา killzone {isDST ? 'เลื่อนเร็วขึ้น 1 ชม.' : 'มาตรฐาน'} จาก winter
+            </span>
+          </span>
+        }
         action={<Button variant="ghost" size="sm" onClick={() => setCollapsed(c => !c)}>
           {collapsed ? '▾ ขยาย' : '▴ ย่อ'}
         </Button>}

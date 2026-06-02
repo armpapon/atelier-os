@@ -3,10 +3,23 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.16',
+    date: '2026-05-31',
+    title: 'Trading Playbook · DST-Aware Killzone Times',
+    badge: 'Current',
+    changes: [
+      '⏰ Killzone times now auto-shift ตาม DST ของ NY (EDT vs EST)',
+      'ฤดูหนาว (พ.ย.-มี.ค.) · London 14-17, NY 19-22, Silver 22-23 (เหมือนเดิม)',
+      'ฤดูร้อน (เม.ย.-ต.ค.) · London 13-16, NY 18-21, Silver 21-22 (เลื่อนเร็วขึ้น 1 ชม.)',
+      'Anchor เวลาที่ NY market hours จริง (02-05, 07-10, 10-11 NY) → คำนวณ BKK auto',
+      'Badge บอกชัด: "EDT · ฤดูร้อน (UTC-4)" หรือ "EST · ฤดูหนาว (UTC-5)"',
+      'ใช้ Intl.DateTimeFormat API detect DST status ของ America/New_York',
+    ],
+  },
+  {
     version: 'v0.15',
     date: '2026-05-31',
     title: 'Revert · Skip Move Money + ลบ CashboxCard',
-    badge: 'Current',
     changes: [
       '🔙 กลับไป behavior เดิม — Parser skip Move Money ทั้งหมด (เหมือนก่อน v0.13)',
       'ไม่มี "แบ่งงบไปครอบครัว" / "รับเงินจากกองกลาง" auto-generated อีกแล้ว',
