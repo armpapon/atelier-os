@@ -307,6 +307,14 @@ export async function bulkCreateTransactions(rows) {
   return data;
 }
 
+export async function updateTransaction(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase
+    .from('transactions').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteTransaction(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('transactions').delete().eq('id', id);

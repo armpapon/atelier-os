@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon.jsx';
 import { CSVImporter } from '../components/CSVImporter.jsx';
 import { toneColor } from '../lib/helpers.js';
 import {
-  listTransactions, listTransactionsRange, createTransaction, deleteTransaction,
+  listTransactions, listTransactionsRange, createTransaction, updateTransaction, deleteTransaction,
   listAccounts, createAccount, deleteAccount, updateAccount,
   listBudgets, listGoals, createGoal, deleteGoal,
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
@@ -45,12 +45,26 @@ function txDate(iso) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Add Transaction Drawer
+//  Transaction Form Drawer (add + edit)
 // ════════════════════════════════════════════════════════════════════════════
-function TxnForm({ accounts, scope, onSave, onClose }) {
-  const [form, setForm] = useState({
-    title: '', amount: '', type: 'food', account_id: accounts[0]?.id || '',
-    note: '', occurred_at: new Date().toISOString().split('T')[0],
+function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
+  const isEdit = !!initialTxn;
+  const [form, setForm] = useState(() => {
+    if (initialTxn) {
+      const amt = Math.abs(Number(initialTxn.amount));
+      return {
+        title:       initialTxn.title || '',
+        amount:      String(amt || ''),
+        type:        initialTxn.type || 'food',
+        account_id:  initialTxn.account_id || '',
+        note:        initialTxn.note || '',
+        occurred_at: (initialTxn.occurred_at || '').split('T')[0] || new Date().toISOString().split('T')[0],
+      };
+    }
+    return {
+      title: '', amount: '', type: 'food', account_id: accounts[0]?.id || '',
+      note: '', occurred_at: new Date().toISOString().split('T')[0],
+    };
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState(null);
@@ -63,14 +77,16 @@ function TxnForm({ accounts, scope, onSave, onClose }) {
     setSaving(true); setError(null);
     try {
       const amount = Number(form.amount) * (isIncome ? 1 : -1);
-      await createTransaction({
+      const payload = {
         title: form.title.trim(), amount, type: form.type,
         category: CATEGORIES.find(c => c.id === form.type)?.label || form.type,
         account_id: form.account_id || null,
         note: form.note.trim() || null,
         occurred_at: form.occurred_at,
         scope,
-      });
+      };
+      if (isEdit) await updateTransaction(initialTxn.id, payload);
+      else        await createTransaction(payload);
       onSave(); onClose();
     } catch (err) { setError(err.message); } finally { setSaving(false); }
   };
@@ -80,7 +96,9 @@ function TxnForm({ accounts, scope, onSave, onClose }) {
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
       <form onSubmit={handleSubmit} style={{ position: 'relative', width: 440, height: '100%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>บันทึกรายการ</div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>
+            {isEdit ? '✎ แก้ไขรายการ' : 'บันทึกรายการ'}
+          </div>
           <button type="button" onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 18, background: 'none', border: 0, cursor: 'pointer' }}>×</button>
         </div>
         <div>
@@ -122,7 +140,7 @@ function TxnForm({ accounts, scope, onSave, onClose }) {
         {error && <div style={{ padding: '10px 12px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
           <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
-          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : '💾 บันทึก'}</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : (isEdit ? '💾 บันทึกการแก้ไข' : '💾 บันทึก')}</Button>
         </div>
       </form>
     </div>
@@ -235,6 +253,7 @@ export function FinanceView({ scope }) {
   const [error, setError]       = useState(null);
 
   const [showTxnForm, setShowTxnForm]   = useState(false);
+  const [editingTxn,  setEditingTxn]    = useState(null);
   const [showAccForm, setShowAccForm]   = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
@@ -627,7 +646,7 @@ export function FinanceView({ scope }) {
           ) : (
             <>
               <div style={{
-                display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 32px', gap: 10,
+                display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 60px', gap: 10,
                 padding: '6px 12px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
                 textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)',
               }}>
@@ -639,7 +658,7 @@ export function FinanceView({ scope }) {
                   const isIn = t.amount > 0;
                   return (
                     <div key={t.id} style={{
-                      display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 32px', gap: 10,
+                      display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 60px', gap: 10,
                       padding: '9px 12px', borderBottom: '1px solid var(--line)',
                       alignItems: 'center', fontSize: 12.5,
                     }}>
@@ -661,8 +680,27 @@ export function FinanceView({ scope }) {
                       }}>
                         {isIn ? '+' : ''}฿{Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
                       </div>
-                      <button onClick={() => { if (confirm('ลบรายการนี้?')) deleteTransaction(t.id).then(refresh); }}
-                        style={{ color: 'var(--ink-4)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
+                      <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                        <button onClick={() => setEditingTxn(t)} title="แก้ไข" aria-label="แก้ไข"
+                          style={{
+                            color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0,
+                            cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'all 130ms',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                          ✎
+                        </button>
+                        <button onClick={() => { if (confirm('ลบรายการนี้?')) deleteTransaction(t.id).then(refresh); }}
+                          title="ลบ" aria-label="ลบ"
+                          style={{
+                            color: 'var(--text-muted)', fontSize: 14, background: 'none', border: 0,
+                            cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'all 130ms',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                          ×
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -683,6 +721,7 @@ export function FinanceView({ scope }) {
       </div>
 
       {showTxnForm && <TxnForm accounts={accounts} scope={scope} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
+      {editingTxn  && <TxnForm accounts={accounts} scope={scope} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
       {showAccForm && <AccountModal scope={scope} onSave={refresh} onClose={() => setShowAccForm(false)} />}
       {showGoalForm && <GoalModal scope={scope} onSave={refresh} onClose={() => setShowGoalForm(false)} />}
       {showImporter && <CSVImporter scope={scope} debts={debts} onImported={refresh} onClose={() => setShowImporter(false)} />}

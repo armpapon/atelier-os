@@ -3,10 +3,21 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.17',
+    date: '2026-05-31',
+    title: 'Finance · แก้ไขรายการธุรกรรมได้แล้ว',
+    badge: 'Current',
+    changes: [
+      '✎ ปุ่ม edit ในรายการธุรกรรม — เปลี่ยน วันที่/ชื่อ/จำนวน/หมวด/บัญชี/โน้ต ได้ทุกอย่าง',
+      'TxnForm รองรับทั้ง add + edit mode — title เปลี่ยน "บันทึกรายการ" / "✎ แก้ไขรายการ" อัตโนมัติ',
+      'ปุ่มลบ × hover เป็นสีแดงชัดเจน · ปุ่มแก้ ✎ hover เป็นสี accent',
+      'API ใหม่: updateTransaction(id, patch)',
+    ],
+  },
+  {
     version: 'v0.16',
     date: '2026-05-31',
     title: 'Trading Playbook · DST-Aware Killzone Times',
-    badge: 'Current',
     changes: [
       '⏰ Killzone times now auto-shift ตาม DST ของ NY (EDT vs EST)',
       'ฤดูหนาว (พ.ย.-มี.ค.) · London 14-17, NY 19-22, Silver 22-23 (เหมือนเดิม)',
