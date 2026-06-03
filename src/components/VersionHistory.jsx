@@ -3,10 +3,27 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.19',
+    date: '2026-05-31',
+    title: 'Trading · HTML Playbook + Daily Plan + Chart Upload',
+    badge: 'Current',
+    changes: [
+      '📖 Playbook HTML standalone — เปิดที่ /playbook.html · 14 sections · personalized จาก 16 trades ของคุณ',
+      'มี 3 Setups (A Bullish · B Bearish · C Trend Continuation ⭐ ตัวใหม่) · 8-item checklist · 4 entry models · ATR-based SL · risk control · 15 mistakes',
+      'ปุ่ม "📖 Playbook" บนหัว Trading page · เปิด new tab',
+      '📋 Daily Trading Plan card บนหน้า Trading — กรอกเองทุกวัน',
+      'Weekly Bias (bullish/bearish/neutral + reason + key levels) · ใช้ร่วมระหว่างวัน',
+      'Daily Bias (H4/H1 reason + invalidation + Asia/PDH/PDL key levels)',
+      'News/Events + Session Plan (London/NY/Silver Bullet) free text',
+      '📸 Upload chart images (multiple, resize เป็น 1200px max) — เก็บใน Supabase Storage',
+      '🌙 End of Day reflection: Bias ถูก/ผิด + สรุปวันนี้',
+      'Date navigator: ‹ วันก่อน · วันนี้ · วันหน้า ›',
+    ],
+  },
+  {
     version: 'v0.18',
     date: '2026-05-31',
     title: 'Finance · Scope Transfer (1 click = 2 รายการ)',
-    badge: 'Current',
     changes: [
       '💸 ปุ่ม "โอน scope" ที่หัวหน้า Finance — เปิด modal สำหรับโอนเงินระหว่าง personal ↔ family',
       '1 form → สร้าง 2 transactions อัตโนมัติ: -X ฝั่งจาก, +X ฝั่งรับ',

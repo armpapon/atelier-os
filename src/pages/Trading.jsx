@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { TradeForm } from '../components/TradeForm.jsx';
 import { TradeImporter } from '../components/trading/TradeImporter.jsx';
 import { TradingPlaybook } from '../components/trading/TradingPlaybook.jsx';
+import { DailyPlanCard } from '../components/trading/DailyPlanCard.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
 import { useAuth } from '../lib/useAuth.js';
@@ -100,8 +101,12 @@ export function Trading() {
             XAUUSD · Pepperstone · London KZ / NY KZ / Silver Bullet
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button variant="ghost"     onClick={refresh}>🔄 Refresh</Button>
+          <a href="/playbook.html" target="_blank" rel="noreferrer"
+            style={{ textDecoration: 'none' }}>
+            <Button variant="ghost" type="button">📖 Playbook</Button>
+          </a>
           <Button variant="secondary" onClick={() => setImporterOpen(true)}>📊 Import Excel</Button>
           <Button variant="primary"   onClick={() => setFormOpen(true)}>+ Log Trade</Button>
         </div>
@@ -115,6 +120,9 @@ export function Trading() {
 
       {/* Playbook — daily schedule + rules + checklist */}
       <TradingPlaybook tradesToday={tradesToday} lossesInRow={lossesInRow} />
+
+      {/* Daily Trading Plan — Weekly bias + Daily bias + charts */}
+      <DailyPlanCard />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} />
