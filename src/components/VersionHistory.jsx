@@ -3,10 +3,23 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.18',
+    date: '2026-05-31',
+    title: 'Finance · Scope Transfer (1 click = 2 รายการ)',
+    badge: 'Current',
+    changes: [
+      '💸 ปุ่ม "โอน scope" ที่หัวหน้า Finance — เปิด modal สำหรับโอนเงินระหว่าง personal ↔ family',
+      '1 form → สร้าง 2 transactions อัตโนมัติ: -X ฝั่งจาก, +X ฝั่งรับ',
+      'Direction toggle (↻ สลับ) · auto title: "โอนไปครอบครัว" / "รับจากส่วนตัว"',
+      'Live preview: เห็นทั้ง 2 รายการที่จะถูกสร้างก่อนกดบันทึก',
+      'Default from scope = current page · ทำที่ส่วนตัวก็ default ส่วนตัว → ครอบครัว',
+      'ลดเวลาจาก 2 หน้า · 2 ฟอร์ม → 1 ฟอร์ม · ~10 วินาที',
+    ],
+  },
+  {
     version: 'v0.17',
     date: '2026-05-31',
     title: 'Finance · แก้ไขรายการธุรกรรมได้แล้ว',
-    badge: 'Current',
     changes: [
       '✎ ปุ่ม edit ในรายการธุรกรรม — เปลี่ยน วันที่/ชื่อ/จำนวน/หมวด/บัญชี/โน้ต ได้ทุกอย่าง',
       'TxnForm รองรับทั้ง add + edit mode — title เปลี่ยน "บันทึกรายการ" / "✎ แก้ไขรายการ" อัตโนมัติ',

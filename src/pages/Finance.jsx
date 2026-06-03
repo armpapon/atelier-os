@@ -19,6 +19,7 @@ import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
+import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -256,6 +257,7 @@ export function FinanceView({ scope }) {
   const [editingTxn,  setEditingTxn]    = useState(null);
   const [showAccForm, setShowAccForm]   = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
 
   useEffect(() => { localStorage.setItem(`atelier:fin:ym:${scope}`, yearMonth); }, [scope, yearMonth]);
@@ -372,6 +374,9 @@ export function FinanceView({ scope }) {
             {scope === 'personal' && (
               <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
             )}
+            <Button variant="ghost" size="sm" onClick={() => setShowTransfer(true)} title="โอนระหว่าง scope">
+              💸 โอน scope
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ บัญชี</Button>
             <Button variant="primary" size="md" onClick={() => setShowTxnForm(true)}>
               <Icon name="plus" size={14}/> บันทึกรายการ
@@ -722,6 +727,13 @@ export function FinanceView({ scope }) {
 
       {showTxnForm && <TxnForm accounts={accounts} scope={scope} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
       {editingTxn  && <TxnForm accounts={accounts} scope={scope} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
+      {showTransfer && (
+        <ScopeTransferModal
+          defaultFromScope={scope}
+          onSaved={refresh}
+          onClose={() => setShowTransfer(false)}
+        />
+      )}
       {showAccForm && <AccountModal scope={scope} onSave={refresh} onClose={() => setShowAccForm(false)} />}
       {showGoalForm && <GoalModal scope={scope} onSave={refresh} onClose={() => setShowGoalForm(false)} />}
       {showImporter && <CSVImporter scope={scope} debts={debts} onImported={refresh} onClose={() => setShowImporter(false)} />}

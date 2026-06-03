@@ -1,0 +1,196 @@
+import { useState } from 'react';
+import { Card, CardHeader, Button, Badge } from '../ui/index.js';
+import { createScopeTransfer } from '../../lib/api/finance.js';
+
+const SCOPE_META = {
+  personal: { label: 'ส่วนตัว',  icon: '👤', color: 'var(--accent)' },
+  family:   { label: 'ครอบครัว', icon: '❤️', color: 'var(--violet)' },
+};
+
+export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onClose }) {
+  const [fromScope, setFromScope] = useState(defaultFromScope);
+  const [toScope,   setToScope]   = useState(defaultFromScope === 'personal' ? 'family' : 'personal');
+  const [amount,    setAmount]    = useState('');
+  const [date,      setDate]      = useState(new Date().toISOString().split('T')[0]);
+  const [title,     setTitle]     = useState('');
+  const [note,      setNote]      = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState(null);
+
+  const fromMeta = SCOPE_META[fromScope];
+  const toMeta   = SCOPE_META[toScope];
+
+  const swap = () => {
+    setFromScope(toScope);
+    setToScope(fromScope);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!amount || Number(amount) <= 0) { setError('ใส่จำนวนเงิน'); return; }
+    setSaving(true); setError(null);
+    try {
+      await createScopeTransfer({
+        from_scope: fromScope,
+        to_scope:   toScope,
+        amount:     Number(amount),
+        occurred_at: date,
+        title:      title.trim() || null,
+        note:       note.trim() || null,
+      });
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'บันทึกไม่สำเร็จ');
+    } finally { setSaving(false); }
+  };
+
+  const amt = Number(amount) || 0;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
+      <form onSubmit={handleSubmit} style={{
+        position: 'relative', width: '90vw', maxWidth: 520,
+        background: 'var(--background)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
+        padding: 28, display: 'flex', flexDirection: 'column', gap: 16,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em' }}>
+              💸 SCOPE TRANSFER
+            </div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
+              โอนเงินระหว่าง scope
+            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+              สร้าง 2 transactions อัตโนมัติ — ออกจากฝั่งหนึ่ง · เข้าอีกฝั่ง
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="ปิด"
+            style={{ background: 'none', border: 0, color: 'var(--text-muted)', fontSize: 22, cursor: 'pointer', padding: 4 }}>×</button>
+        </div>
+
+        {/* Direction visualization */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 16px', background: 'var(--background-soft)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+        }}>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>จาก</div>
+            <div style={{ fontSize: 22, marginTop: 4 }}>{fromMeta.icon}</div>
+            <Badge tone="danger" size="sm" style={{ marginTop: 4 }}>
+              -{fmt(amt)}
+            </Badge>
+            <div style={{ fontSize: 11, color: fromMeta.color, fontWeight: 500, marginTop: 4, fontFamily: 'var(--f-mono)' }}>
+              {fromMeta.label}
+            </div>
+          </div>
+
+          <button type="button" onClick={swap} title="สลับทิศทาง" aria-label="สลับทิศทาง"
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'var(--surface)', border: '1px solid var(--border-strong)',
+              cursor: 'pointer', fontSize: 16, color: 'var(--accent-strong)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 130ms',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-soft)'; e.currentTarget.style.transform = 'rotate(180deg)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.transform = 'rotate(0deg)'; }}>
+            →
+          </button>
+
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>ไป</div>
+            <div style={{ fontSize: 22, marginTop: 4 }}>{toMeta.icon}</div>
+            <Badge tone="success" size="sm" style={{ marginTop: 4 }}>
+              +{fmt(amt)}
+            </Badge>
+            <div style={{ fontSize: 11, color: toMeta.color, fontWeight: 500, marginTop: 4, fontFamily: 'var(--f-mono)' }}>
+              {toMeta.label}
+            </div>
+          </div>
+        </div>
+
+        {/* Amount */}
+        <Field label="จำนวนเงิน (บาท)">
+          <input type="number" min="0" step="0.01" value={amount}
+            onChange={e => setAmount(e.target.value)} placeholder="80000"
+            autoFocus required
+            style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 16 }} />
+        </Field>
+
+        {/* Date */}
+        <Field label="วันที่">
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
+        </Field>
+
+        {/* Title — optional, has smart defaults */}
+        <Field label='ชื่อรายการ (ปล่อยว่างก็ได้ — auto: "โอนไปครอบครัว" / "รับจากส่วนตัว")'>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+            placeholder='เช่น "โอนงบครอบครัว มิ.ย."'
+            style={inputStyle} />
+        </Field>
+
+        {/* Note — optional */}
+        <Field label="โน้ต (ถ้ามี)">
+          <input type="text" value={note} onChange={e => setNote(e.target.value)}
+            placeholder="หมายเหตุเพิ่มเติม"
+            style={inputStyle} />
+        </Field>
+
+        {/* Preview */}
+        {amt > 0 && (
+          <div style={{
+            padding: '10px 14px', background: 'var(--accent-soft)',
+            border: '1px solid var(--accent)', borderRadius: 'var(--radius-control)',
+            fontSize: 11.5, color: 'var(--text-primary)', fontFamily: 'var(--f-mono)',
+            lineHeight: 1.7,
+          }}>
+            <div style={{ fontSize: 10, color: 'var(--accent-strong)', letterSpacing: '0.14em', marginBottom: 4 }}>
+              จะสร้าง 2 รายการ:
+            </div>
+            <div>👤 <strong>{fromMeta.label}</strong> · -{fmt(amt)} · "{title.trim() || `โอนไป${toMeta.label}`}"</div>
+            <div>❤️ <strong>{toMeta.label}</strong> · +{fmt(amt)} · "{title.trim() || `รับจาก${fromMeta.label}`}"</div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{ padding: '10px 14px', background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)', fontSize: 13 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <Button type="button" variant="ghost" onClick={onClose}>ยกเลิก</Button>
+          <Button type="submit" variant="primary" disabled={saving || !amount}>
+            {saving ? 'กำลังบันทึก...' : '💾 โอน 2 ฝั่ง'}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.12em' }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  background: 'var(--surface)', border: '1px solid var(--border-strong)',
+  borderRadius: 'var(--radius-control)', padding: '9px 12px',
+  color: 'var(--text-primary)', fontSize: 13, width: '100%',
+};
+
+function fmt(n) {
+  if (!n) return '฿0';
+  return '฿' + Math.abs(n).toLocaleString('th', { maximumFractionDigits: 0 });
+}

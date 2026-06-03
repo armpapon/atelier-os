@@ -315,6 +315,58 @@ export async function updateTransaction(id, patch) {
   return data;
 }
 
+/**
+ * Create a pair of transactions representing money moving between scopes.
+ * E.g. transfer ฿80,000 from personal Cashbox to family fund:
+ *   personal: -80,000 (out)  ·  family: +80,000 (in)
+ *
+ * Both rows inserted atomically. Title is shared (with directional suffix
+ * if not customized). Useful for monthly allocation between scopes.
+ */
+export async function createScopeTransfer({ from_scope, to_scope, amount, occurred_at, title, note }) {
+  if (!supabase) throw new Error('Supabase not configured');
+  if (from_scope === to_scope) throw new Error('From และ To scope ห้ามเหมือนกัน');
+  if (!amount || Number(amount) <= 0)  throw new Error('จำนวนต้องมากกว่า 0');
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+
+  const baseTitle = (title || '').trim();
+  const fromLabel = from_scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว';
+  const toLabel   = to_scope   === 'family' ? 'ครอบครัว' : 'ส่วนตัว';
+  const outTitle  = baseTitle || `โอนไป${toLabel}`;
+  const inTitle   = baseTitle || `รับจาก${fromLabel}`;
+
+  const amt = Math.abs(Number(amount));
+  const rows = [
+    {
+      user_id: user.id,
+      title:    outTitle,
+      amount:   -amt,
+      category: 'โอนระหว่าง scope',
+      type:     'other',
+      scope:    from_scope,
+      occurred_at,
+      note: note || null,
+    },
+    {
+      user_id: user.id,
+      title:    inTitle,
+      amount:   amt,
+      category: 'รายรับ',
+      type:     'income',
+      scope:    to_scope,
+      occurred_at,
+      note: note || null,
+    },
+  ];
+
+  const { data, error } = await supabase
+    .from('transactions').insert(rows).select();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteTransaction(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('transactions').delete().eq('id', id);
