@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.21',
+    date: '2026-06-04',
+    title: 'Transaction Table · Notes column + inline edit + auto-focus',
+    badge: 'Current',
+    changes: [
+      '✏️ เพิ่ม column "โน้ต" ในตารางรายการธุรกรรม — คลิกแก้ไขได้ทันทีในตาราง (ไม่ต้องเปิด form)',
+      'Enter = บันทึก · Esc = ยกเลิก · click blur = save',
+      'note ที่ดึงมาจาก CSV (memo field) แสดงในคอลัมน์ใหม่ — แก้ไขใน-line ได้',
+      '🎯 แก้ปัญหา "ต้องเลื่อนขึ้นบนสุดเพื่อหาจุดกรอก" — auto-focus + scroll-to-top ทุกครั้งที่เปิด edit form',
+      'ปุ่ม ✎ บนแถว transaction = เปิด full drawer + cursor อยู่ที่ช่อง "รายการ" พร้อมพิมพ์',
+    ],
+  },
+  {
     version: 'v0.20',
     date: '2026-06-01',
     title: '🐛 Bug Fix · Debt months_paid ไม่รีเซ็ตเป็น 1 อีก',
-    badge: 'Current',
     changes: [
       '🐛 BUG: เดิม recordDebtPayment COUNT(debt_payments) แล้วเขียนทับ months_paid ทำให้ค่าเริ่มต้นที่ user ตั้งไว้ (เช่น "จ่ายไปแล้ว 12 งวด") หายไป',
       '✅ FIX: ตรวจสอบก่อนว่าเป็นเดือนใหม่ไหม — ถ้าใช่ → +1 · ถ้าซ้ำ → ไม่แตะ months_paid',

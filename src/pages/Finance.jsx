@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { CSVImporter } from '../components/CSVImporter.jsx';
 import { toneColor } from '../lib/helpers.js';
@@ -48,8 +48,68 @@ function txDate(iso) {
 // ════════════════════════════════════════════════════════════════════════════
 //  Transaction Form Drawer (add + edit)
 // ════════════════════════════════════════════════════════════════════════════
+// Inline editable note cell — single click to edit, Enter/blur to save, Esc to cancel
+function InlineNote({ txn, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue]     = useState(txn.note || '');
+
+  const save = async () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed === (txn.note || '')) return;
+    try {
+      await updateTransaction(txn.id, { note: trimmed || null });
+      onSave?.();
+    } catch (e) {
+      alert('บันทึกโน้ตไม่สำเร็จ: ' + e.message);
+      setValue(txn.note || '');
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onBlur={save}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === 'Escape') { setValue(txn.note || ''); setEditing(false); }
+        }}
+        placeholder="พิมพ์โน้ต..."
+        style={{
+          width: '100%', background: 'var(--surface-2)',
+          border: '1px solid var(--amber)', borderRadius: 4,
+          padding: '4px 7px', fontSize: 11, color: 'var(--ink)',
+          fontFamily: 'inherit', outline: 'none',
+        }}
+      />
+    );
+  }
+  return (
+    <div
+      onClick={() => setEditing(true)}
+      title="คลิกเพื่อแก้ไขโน้ต"
+      style={{
+        fontSize: 11, color: txn.note ? 'var(--ink-2)' : 'var(--ink-4)',
+        cursor: 'text', padding: '4px 7px', borderRadius: 4,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        border: '1px dashed transparent', transition: 'all 130ms',
+        fontStyle: txn.note ? 'normal' : 'italic',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.border = '1px dashed var(--line)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+      onMouseLeave={e => { e.currentTarget.style.border = '1px dashed transparent'; e.currentTarget.style.background = 'transparent'; }}
+    >
+      {txn.note || '+ เพิ่มโน้ต'}
+    </div>
+  );
+}
+
 function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   const isEdit = !!initialTxn;
+  const formRef     = useRef(null);
+  const firstInputRef = useRef(null);
   const [form, setForm] = useState(() => {
     if (initialTxn) {
       const amt = Math.abs(Number(initialTxn.amount));
@@ -71,6 +131,16 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   const [error, setError]   = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isIncome = form.type === 'income';
+
+  // Auto-focus first input + scroll drawer to top when it opens
+  // (so you never have to "เลื่อนขึ้นไปบน" to find the input area)
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      formRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      firstInputRef.current?.focus({ preventScroll: true });
+      firstInputRef.current?.select?.();
+    });
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -95,7 +165,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
-      <form onSubmit={handleSubmit} style={{ position: 'relative', width: 440, height: '100%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <form ref={formRef} onSubmit={handleSubmit} style={{ position: 'relative', width: 440, maxWidth: '100%', height: '100%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>
             {isEdit ? '✎ แก้ไขรายการ' : 'บันทึกรายการ'}
@@ -115,7 +185,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รายการ</span>
-          <input className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="เช่น ข้าวกลางวัน, ค่าน้ำมัน" required />
+          <input ref={firstInputRef} className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="เช่น ข้าวกลางวัน, ค่าน้ำมัน" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>จำนวน (บาท) {isIncome ? '— รายรับ (+)' : '— รายจ่าย (-)'}</span>
@@ -651,11 +721,11 @@ export function FinanceView({ scope }) {
           ) : (
             <>
               <div style={{
-                display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 60px', gap: 10,
+                display: 'grid', gridTemplateColumns: '32px 60px 1.2fr 1fr 90px 70px 110px 60px', gap: 10,
                 padding: '6px 12px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
                 textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)',
               }}>
-                <div/><div>วันที่</div><div>รายการ</div><div>หมวด</div><div>ประเภท</div>
+                <div/><div>วันที่</div><div>รายการ</div><div>โน้ต</div><div>หมวด</div><div>ประเภท</div>
                 <div style={{ textAlign: 'right' }}>จำนวน</div><div/>
               </div>
               <div style={{ maxHeight: 600, overflow: 'auto' }}>
@@ -663,7 +733,7 @@ export function FinanceView({ scope }) {
                   const isIn = t.amount > 0;
                   return (
                     <div key={t.id} style={{
-                      display: 'grid', gridTemplateColumns: '32px 70px 1fr 110px 100px 110px 60px', gap: 10,
+                      display: 'grid', gridTemplateColumns: '32px 60px 1.2fr 1fr 90px 70px 110px 60px', gap: 10,
                       padding: '9px 12px', borderBottom: '1px solid var(--line)',
                       alignItems: 'center', fontSize: 12.5,
                     }}>
@@ -673,10 +743,8 @@ export function FinanceView({ scope }) {
                         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
                       }}>{CAT_ICON[t.type] || '📦'}</div>
                       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{txDate(t.occurred_at)}</div>
-                      <div>
-                        <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                        {t.note && <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.note}</div>}
-                      </div>
+                      <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                      <InlineNote txn={t} onSave={refresh} />
                       <div style={{ fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.category}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)' }}>{t.type}</div>
                       <div style={{
