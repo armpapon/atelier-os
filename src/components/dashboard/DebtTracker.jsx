@@ -101,12 +101,9 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
         </div>
       )}
 
-      {/* Add/edit form */}
+      {/* Add form (shows at top — only for new debts) */}
       {showAdd && (
         <DebtForm scope={scope} onSubmit={async () => { setShowAdd(false); onChange?.(); }} onCancel={() => setShowAdd(false)} />
-      )}
-      {editing && (
-        <DebtForm initial={editing} scope={scope} onSubmit={async () => { setEditing(null); onChange?.(); }} onCancel={() => setEditing(null)} />
       )}
 
       {/* Empty state */}
@@ -120,18 +117,28 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
           compact
         />
       ) : (
-        /* Debt list */
+        /* Debt list — edit form renders inline below the active row */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {summary.statuses.map(({ debt, status }) => (
-            <DebtRow
-              key={debt.id}
-              debt={debt}
-              status={status}
-              onMarkPaid={() => markPaid(debt)}
-              onUnmark={() => unmarkPaid(status.payment_id)}
-              onEdit={() => setEditing(debt)}
-              onDelete={() => handleDelete(debt)}
-            />
+            <div key={debt.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <DebtRow
+                debt={debt}
+                status={status}
+                isEditing={editing?.id === debt.id}
+                onMarkPaid={() => markPaid(debt)}
+                onUnmark={() => unmarkPaid(status.payment_id)}
+                onEdit={() => setEditing(editing?.id === debt.id ? null : debt)}
+                onDelete={() => handleDelete(debt)}
+              />
+              {editing?.id === debt.id && (
+                <DebtForm
+                  initial={editing}
+                  scope={scope}
+                  onSubmit={async () => { setEditing(null); onChange?.(); }}
+                  onCancel={() => setEditing(null)}
+                />
+              )}
+            </div>
           ))}
         </div>
       )}
@@ -159,7 +166,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  Debt Row
 // ════════════════════════════════════════════════════════════════════════════
-function DebtRow({ debt, status, onMarkPaid, onUnmark, onEdit, onDelete }) {
+function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDelete }) {
   const typeMeta   = TYPE_META[debt.type]      || TYPE_META.other;
   const statusMeta = STATUS_META[status.status] || STATUS_META.upcoming;
   const monthsRemaining = debt.total_months
@@ -255,7 +262,7 @@ function DebtRow({ debt, status, onMarkPaid, onUnmark, onEdit, onDelete }) {
             ✓ บันทึกว่าจ่ายแล้ว
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onEdit}>แก้ไข</Button>
+        <Button variant="ghost" size="sm" onClick={onEdit}>{isEditing ? '× ปิด' : 'แก้ไข'}</Button>
         <Button variant="ghost" size="sm" onClick={onDelete}>ลบ</Button>
       </div>
     </div>
