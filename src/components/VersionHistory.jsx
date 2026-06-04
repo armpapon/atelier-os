@@ -3,16 +3,26 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
-    version: 'v0.21',
+    version: 'v0.22',
     date: '2026-06-04',
-    title: 'Transaction Table · Notes column + inline edit + auto-focus',
+    title: 'Transaction Table · Full inline editing (click any cell)',
     badge: 'Current',
     changes: [
-      '✏️ เพิ่ม column "โน้ต" ในตารางรายการธุรกรรม — คลิกแก้ไขได้ทันทีในตาราง (ไม่ต้องเปิด form)',
-      'Enter = บันทึก · Esc = ยกเลิก · click blur = save',
-      'note ที่ดึงมาจาก CSV (memo field) แสดงในคอลัมน์ใหม่ — แก้ไขใน-line ได้',
-      '🎯 แก้ปัญหา "ต้องเลื่อนขึ้นบนสุดเพื่อหาจุดกรอก" — auto-focus + scroll-to-top ทุกครั้งที่เปิด edit form',
-      'ปุ่ม ✎ บนแถว transaction = เปิด full drawer + cursor อยู่ที่ช่อง "รายการ" พร้อมพิมพ์',
+      '✏️ ทุก cell ในตารางรายการธุรกรรมแก้ไขได้ inline — ไม่ต้องเปิด drawer ไม่ต้อง scroll',
+      'แก้ได้: วันที่ · ชื่อรายการ · โน้ต · หมวด (dropdown) · จำนวน — คลิกเลย',
+      'Enter หรือ blur = save · Esc = ยกเลิก · เครื่องหมาย +/- คงเดิมตอนแก้จำนวน',
+      'รวม column "หมวด/ประเภท" เป็นอันเดียว (ลดความซ้ำซ้อน)',
+      'ปุ่ม ✎ เปลี่ยนเป็น ⋯ = เปิด drawer เต็ม (ใช้ตอนต้องการแก้บัญชี/ตั้งค่าเต็ม)',
+      'Drawer ไม่ auto-scroll-to-top แล้ว — เปิดที่เดิมตามที่ user อยู่',
+    ],
+  },
+  {
+    version: 'v0.21',
+    date: '2026-06-04',
+    title: 'Transaction Table · Notes column + auto-focus drawer',
+    changes: [
+      '✏️ เพิ่ม column "โน้ต" ในตารางรายการธุรกรรม + inline edit',
+      '🎯 Auto-focus + scroll-to-top edit form (ภายหลังถูกแทนที่ใน v0.22)',
     ],
   },
   {

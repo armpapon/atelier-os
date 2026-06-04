@@ -48,60 +48,107 @@ function txDate(iso) {
 // ════════════════════════════════════════════════════════════════════════════
 //  Transaction Form Drawer (add + edit)
 // ════════════════════════════════════════════════════════════════════════════
-// Inline editable note cell — single click to edit, Enter/blur to save, Esc to cancel
-function InlineNote({ txn, onSave }) {
+// ════════════════════════════════════════════════════════════════════════════
+//  Inline-edit cells — click any cell to edit, Enter/blur to save, Esc to cancel
+// ════════════════════════════════════════════════════════════════════════════
+function InlineEdit({ value, onSave, type = 'text', display, placeholder, cellStyle, inputStyle, hint = 'คลิกเพื่อแก้ไข' }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue]     = useState(txn.note || '');
+  const [draft, setDraft]     = useState(value ?? '');
+  useEffect(() => { setDraft(value ?? ''); }, [value]);
 
   const save = async () => {
     setEditing(false);
-    const trimmed = value.trim();
-    if (trimmed === (txn.note || '')) return;
-    try {
-      await updateTransaction(txn.id, { note: trimmed || null });
-      onSave?.();
-    } catch (e) {
-      alert('บันทึกโน้ตไม่สำเร็จ: ' + e.message);
-      setValue(txn.note || '');
-    }
+    const next = type === 'number' ? (draft === '' ? null : Number(draft))
+              : (typeof draft === 'string' ? draft.trim() : draft);
+    if (next === value || (next === '' && !value) || (next === null && !value)) return;
+    try { await onSave(next); }
+    catch (e) { alert(e.message); setDraft(value ?? ''); }
   };
 
   if (editing) {
     return (
       <input
         autoFocus
-        value={value}
-        onChange={e => setValue(e.target.value)}
+        type={type}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
         onBlur={save}
         onKeyDown={e => {
-          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-          if (e.key === 'Escape') { setValue(txn.note || ''); setEditing(false); }
+          if (e.key === 'Enter')  { e.preventDefault(); e.currentTarget.blur(); }
+          if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false); }
         }}
-        placeholder="พิมพ์โน้ต..."
+        placeholder={placeholder}
         style={{
           width: '100%', background: 'var(--surface-2)',
           border: '1px solid var(--amber)', borderRadius: 4,
-          padding: '4px 7px', fontSize: 11, color: 'var(--ink)',
-          fontFamily: 'inherit', outline: 'none',
+          padding: '3px 6px', fontSize: 12, color: 'var(--ink)',
+          fontFamily: 'inherit', outline: 'none', ...inputStyle,
         }}
       />
     );
   }
+  const isEmpty = value === null || value === undefined || value === '';
   return (
     <div
-      onClick={() => setEditing(true)}
-      title="คลิกเพื่อแก้ไขโน้ต"
+      onClick={() => setEditing(true)} title={hint}
       style={{
-        fontSize: 11, color: txn.note ? 'var(--ink-2)' : 'var(--ink-4)',
-        cursor: 'text', padding: '4px 7px', borderRadius: 4,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        cursor: 'text', padding: '3px 6px', borderRadius: 4,
         border: '1px dashed transparent', transition: 'all 130ms',
-        fontStyle: txn.note ? 'normal' : 'italic',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        fontStyle: isEmpty ? 'italic' : 'normal',
+        color: isEmpty ? 'var(--ink-4)' : undefined,
+        ...cellStyle,
       }}
       onMouseEnter={e => { e.currentTarget.style.border = '1px dashed var(--line)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
       onMouseLeave={e => { e.currentTarget.style.border = '1px dashed transparent'; e.currentTarget.style.background = 'transparent'; }}
     >
-      {txn.note || '+ เพิ่มโน้ต'}
+      {display ?? (isEmpty ? (placeholder || '—') : value)}
+    </div>
+  );
+}
+
+function InlineSelect({ value, options, onSave, cellStyle }) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        value={value}
+        onChange={async e => {
+          const next = e.target.value;
+          setEditing(false);
+          if (next === value) return;
+          try { await onSave(next); } catch (err) { alert(err.message); }
+        }}
+        onBlur={() => setEditing(false)}
+        style={{
+          width: '100%', background: 'var(--surface-2)',
+          border: '1px solid var(--amber)', borderRadius: 4,
+          padding: '2px 5px', fontSize: 11, color: 'var(--ink)',
+          fontFamily: 'inherit', outline: 'none',
+        }}
+      >
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.icon ? o.icon + ' ' : ''}{o.label}</option>
+        ))}
+      </select>
+    );
+  }
+  const cur = options.find(o => o.value === value);
+  return (
+    <div
+      onClick={() => setEditing(true)} title="คลิกเพื่อเปลี่ยนหมวด"
+      style={{
+        cursor: 'pointer', padding: '3px 6px', borderRadius: 4,
+        border: '1px dashed transparent', transition: 'all 130ms',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        fontSize: 11, color: 'var(--ink-3)', ...cellStyle,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.border = '1px dashed var(--line)'; e.currentTarget.style.background = 'var(--surface-2)'; }}
+      onMouseLeave={e => { e.currentTarget.style.border = '1px dashed transparent'; e.currentTarget.style.background = 'transparent'; }}
+    >
+      {cur?.icon} {cur?.label || value}
     </div>
   );
 }
@@ -132,13 +179,12 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isIncome = form.type === 'income';
 
-  // Auto-focus first input + scroll drawer to top when it opens
-  // (so you never have to "เลื่อนขึ้นไปบน" to find the input area)
+  // Drawer is now only used for + เพิ่มใหม่ or ⋯ full edit.
+  // No auto-scroll — most edits happen inline in the table.
+  // Just focus first input quietly for typing convenience.
   useEffect(() => {
     requestAnimationFrame(() => {
-      formRef.current?.scrollTo({ top: 0, behavior: 'auto' });
       firstInputRef.current?.focus({ preventScroll: true });
-      firstInputRef.current?.select?.();
     });
   }, []);
 
@@ -721,11 +767,11 @@ export function FinanceView({ scope }) {
           ) : (
             <>
               <div style={{
-                display: 'grid', gridTemplateColumns: '32px 60px 1.2fr 1fr 90px 70px 110px 60px', gap: 10,
+                display: 'grid', gridTemplateColumns: '32px 90px 1.3fr 1.2fr 130px 110px 60px', gap: 10,
                 padding: '6px 12px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
                 textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)',
               }}>
-                <div/><div>วันที่</div><div>รายการ</div><div>โน้ต</div><div>หมวด</div><div>ประเภท</div>
+                <div/><div>วันที่</div><div>รายการ</div><div>โน้ต</div><div>หมวด</div>
                 <div style={{ textAlign: 'right' }}>จำนวน</div><div/>
               </div>
               <div style={{ maxHeight: 600, overflow: 'auto' }}>
@@ -733,7 +779,7 @@ export function FinanceView({ scope }) {
                   const isIn = t.amount > 0;
                   return (
                     <div key={t.id} style={{
-                      display: 'grid', gridTemplateColumns: '32px 60px 1.2fr 1fr 90px 70px 110px 60px', gap: 10,
+                      display: 'grid', gridTemplateColumns: '32px 90px 1.3fr 1.2fr 130px 110px 60px', gap: 10,
                       padding: '9px 12px', borderBottom: '1px solid var(--line)',
                       alignItems: 'center', fontSize: 12.5,
                     }}>
@@ -742,26 +788,77 @@ export function FinanceView({ scope }) {
                         background: 'var(--surface-2)', border: '1px solid var(--line)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
                       }}>{CAT_ICON[t.type] || '📦'}</div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{txDate(t.occurred_at)}</div>
-                      <div style={{ color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                      <InlineNote txn={t} onSave={refresh} />
-                      <div style={{ fontSize: 11, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.category}</div>
-                      <div style={{ fontSize: 10.5, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)' }}>{t.type}</div>
-                      <div style={{
-                        textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13,
-                        color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 500,
-                      }}>
-                        {isIn ? '+' : ''}฿{Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
-                      </div>
+                      {/* DATE — inline editable */}
+                      <InlineEdit
+                        value={t.occurred_at ? t.occurred_at.split('T')[0] : ''}
+                        type="date"
+                        display={txDate(t.occurred_at)}
+                        hint="คลิกเพื่อแก้ไขวันที่"
+                        onSave={async date => {
+                          const time = (t.occurred_at || '').split('T')[1] || '12:00:00+07:00';
+                          await updateTransaction(t.id, { occurred_at: `${date}T${time}` });
+                          refresh();
+                        }}
+                        cellStyle={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}
+                      />
+                      {/* TITLE — inline editable */}
+                      <InlineEdit
+                        value={t.title}
+                        hint="คลิกเพื่อแก้ไขชื่อรายการ"
+                        onSave={async title => {
+                          await updateTransaction(t.id, { title });
+                          refresh();
+                        }}
+                        cellStyle={{ color: 'var(--ink)', fontSize: 12.5 }}
+                      />
+                      {/* NOTE — inline editable */}
+                      <InlineEdit
+                        value={t.note}
+                        placeholder="+ เพิ่มโน้ต"
+                        hint="คลิกเพื่อแก้ไขโน้ต"
+                        onSave={async note => {
+                          await updateTransaction(t.id, { note: note || null });
+                          refresh();
+                        }}
+                        cellStyle={{ fontSize: 11, color: t.note ? 'var(--ink-2)' : 'var(--ink-4)' }}
+                      />
+                      {/* CATEGORY — inline dropdown */}
+                      <InlineSelect
+                        value={t.type}
+                        options={CATEGORIES.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
+                        onSave={async newType => {
+                          const cat = CATEGORIES.find(c => c.id === newType);
+                          await updateTransaction(t.id, { type: newType, category: cat?.label || newType });
+                          refresh();
+                        }}
+                      />
+                      {/* AMOUNT — inline editable, preserves sign */}
+                      <InlineEdit
+                        value={Math.abs(Number(t.amount))}
+                        type="number"
+                        display={`${isIn ? '+' : ''}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
+                        hint="คลิกเพื่อแก้ไขจำนวน (เครื่องหมายจะคงเดิม)"
+                        onSave={async v => {
+                          const sign = Number(t.amount) < 0 ? -1 : 1;
+                          await updateTransaction(t.id, { amount: Math.abs(Number(v)) * sign });
+                          refresh();
+                        }}
+                        cellStyle={{
+                          textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13,
+                          color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 500,
+                        }}
+                        inputStyle={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13 }}
+                      />
+                      {/* ACTIONS — delete + full-edit drawer */}
                       <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                        <button onClick={() => setEditingTxn(t)} title="แก้ไข" aria-label="แก้ไข"
+                        <button onClick={() => setEditingTxn(t)} title="แก้ไขทุก field (เปิด form)" aria-label="แก้ไขเต็ม"
                           style={{
-                            color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0,
-                            cursor: 'pointer', padding: '4px 6px', borderRadius: 6, transition: 'all 130ms',
+                            color: 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
+                            cursor: 'pointer', padding: '4px 5px', borderRadius: 6, transition: 'all 130ms',
                           }}
                           onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
                           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
-                          ✎
+                          ⋯
                         </button>
                         <button onClick={() => { if (confirm('ลบรายการนี้?')) deleteTransaction(t.id).then(refresh); }}
                           title="ลบ" aria-label="ลบ"
