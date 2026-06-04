@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.20',
+    date: '2026-06-01',
+    title: '🐛 Bug Fix · Debt months_paid ไม่รีเซ็ตเป็น 1 อีก',
+    badge: 'Current',
+    changes: [
+      '🐛 BUG: เดิม recordDebtPayment COUNT(debt_payments) แล้วเขียนทับ months_paid ทำให้ค่าเริ่มต้นที่ user ตั้งไว้ (เช่น "จ่ายไปแล้ว 12 งวด") หายไป',
+      '✅ FIX: ตรวจสอบก่อนว่าเป็นเดือนใหม่ไหม — ถ้าใช่ → +1 · ถ้าซ้ำ → ไม่แตะ months_paid',
+      'deleteDebtPayment ก็แก้คู่กัน — ลด 1 (clamp ที่ 0)',
+      'remaining_balance คำนวณจาก (total_months - months_paid) × monthly_payment',
+      '⚠️ User ต้อง edit หนี้ที่โดน reset → ใส่ months_paid กลับเป็นค่าจริง (เช่น 13 ถ้าตั้งไว้ 12 แล้วกดจ่าย 1 ครั้ง)',
+    ],
+  },
+  {
     version: 'v0.19',
     date: '2026-05-31',
     title: 'Trading · HTML Playbook + Daily Plan + Chart Upload',
-    badge: 'Current',
     changes: [
       '📖 Playbook HTML standalone — เปิดที่ /playbook.html · 14 sections · personalized จาก 16 trades ของคุณ',
       'มี 3 Setups (A Bullish · B Bearish · C Trend Continuation ⭐ ตัวใหม่) · 8-item checklist · 4 entry models · ATR-based SL · risk control · 15 mistakes',

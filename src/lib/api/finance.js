@@ -785,7 +785,24 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
 
-  // Upsert (debt_id, pay_month) is unique — re-marking same month updates
+  // ── BUG FIX (v0.20) ─────────────────────────────────────────────────────
+  // Previously this function COUNT'd all debt_payments and overwrote
+  // months_paid — which destroyed the user's initial "already paid X" value
+  // (e.g. if they entered 12 months paid pre-Loop, marking 1 in Loop reset
+  // it to 1 instead of 13).
+  //
+  // Fix: increment months_paid by +1 ONLY when this is a genuinely new month
+  // (no existing payment row for that pay_month yet). Re-marking same month
+  // = no change to months_paid.
+  // ────────────────────────────────────────────────────────────────────────
+
+  // Check if a payment already exists for this month
+  const { data: existing } = await supabase
+    .from('debt_payments').select('id')
+    .eq('debt_id', debt_id).eq('pay_month', pay_month).maybeSingle();
+  const isNewMonth = !existing;
+
+  // Upsert the payment row
   const { data, error } = await supabase
     .from('debt_payments')
     .upsert({
@@ -795,39 +812,42 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
     .select().single();
   if (error) throw error;
 
-  // Recalculate months_paid + remaining_balance for this debt
-  const { data: payments } = await supabase
-    .from('debt_payments').select('amount_paid').eq('debt_id', debt_id);
-  const monthsPaid = (payments || []).length;
-  const totalPaid  = (payments || []).reduce((s, p) => s + Number(p.amount_paid || 0), 0);
-
-  const { data: debtRow } = await supabase
-    .from('debts').select('total_months, monthly_payment').eq('id', debt_id).single();
-  const totalDue = debtRow ? Number(debtRow.monthly_payment) * Number(debtRow.total_months || 0) : null;
-  const remaining = totalDue ? Math.max(0, totalDue - totalPaid) : null;
-
-  await supabase.from('debts').update({
-    months_paid: monthsPaid,
-    remaining_balance: remaining,
-    updated_at: new Date().toISOString(),
-  }).eq('id', debt_id);
+  // Only increment debt counters for genuinely new months
+  if (isNewMonth) {
+    const { data: debtRow } = await supabase
+      .from('debts').select('months_paid, total_months, monthly_payment').eq('id', debt_id).single();
+    const newMonthsPaid = (Number(debtRow?.months_paid) || 0) + 1;
+    const remaining = debtRow?.total_months
+      ? Math.max(0, (Number(debtRow.total_months) - newMonthsPaid) * Number(debtRow.monthly_payment))
+      : null;
+    await supabase.from('debts').update({
+      months_paid: newMonthsPaid,
+      remaining_balance: remaining,
+      updated_at: new Date().toISOString(),
+    }).eq('id', debt_id);
+  }
 
   return data;
 }
 
 export async function deleteDebtPayment(id) {
   if (!supabase) throw new Error('Supabase not configured');
-  // get debt_id first so we can recalc
   const { data: row } = await supabase.from('debt_payments').select('debt_id').eq('id', id).single();
   const debtId = row?.debt_id;
   const { error } = await supabase.from('debt_payments').delete().eq('id', id);
   if (error) throw error;
-  // Recompute months_paid
+
+  // Decrement (clamp at 0) — opposite of recordDebtPayment increment
   if (debtId) {
-    const { data: payments } = await supabase
-      .from('debt_payments').select('amount_paid').eq('debt_id', debtId);
+    const { data: debtRow } = await supabase
+      .from('debts').select('months_paid, total_months, monthly_payment').eq('id', debtId).single();
+    const newMonthsPaid = Math.max(0, (Number(debtRow?.months_paid) || 0) - 1);
+    const remaining = debtRow?.total_months
+      ? Math.max(0, (Number(debtRow.total_months) - newMonthsPaid) * Number(debtRow.monthly_payment))
+      : null;
     await supabase.from('debts').update({
-      months_paid: (payments || []).length,
+      months_paid: newMonthsPaid,
+      remaining_balance: remaining,
       updated_at: new Date().toISOString(),
     }).eq('id', debtId);
   }
