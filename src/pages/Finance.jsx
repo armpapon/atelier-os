@@ -472,9 +472,10 @@ export function FinanceView({ scope }) {
   const [showImporter, setShowImporter] = useState(false);
 
   // Custom categories (saved in localStorage, merged with defaults)
+  // Named "allCategories" to avoid collision with the aggregation `categories` below.
   const [customCats, setCustomCats] = useState(loadCustomCats);
-  const categories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCats], [customCats]);
-  const catIconOf  = useCallback(id => categories.find(c => c.id === id)?.icon || '📦', [categories]);
+  const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCats], [customCats]);
+  const catIconOf  = useCallback(id => allCategories.find(c => c.id === id)?.icon || '📦', [allCategories]);
   const addCategory = useCallback((cat) => {
     // Dedupe by id; if duplicate, leave existing as-is
     setCustomCats(prev => {
@@ -941,9 +942,9 @@ export function FinanceView({ scope }) {
                       {/* CATEGORY — inline dropdown */}
                       <InlineSelect
                         value={t.type}
-                        options={categories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
+                        options={allCategories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
                         onSave={async newType => {
-                          const cat = categories.find(c => c.id === newType);
+                          const cat = allCategories.find(c => c.id === newType);
                           await updateTransaction(t.id, { type: newType, category: cat?.label || newType });
                           refresh();
                         }}
@@ -1013,8 +1014,8 @@ export function FinanceView({ scope }) {
         </div>
       </div>
 
-      {showTxnForm && <TxnForm accounts={accounts} scope={scope} categories={categories} onAddCategory={addCategory} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
-      {editingTxn  && <TxnForm accounts={accounts} scope={scope} categories={categories} onAddCategory={addCategory} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
+      {showTxnForm && <TxnForm accounts={accounts} scope={scope} categories={allCategories} onAddCategory={addCategory} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
+      {editingTxn  && <TxnForm accounts={accounts} scope={scope} categories={allCategories} onAddCategory={addCategory} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
       {showTransfer && (
         <ScopeTransferModal
           defaultFromScope={scope}
