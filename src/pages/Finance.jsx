@@ -133,7 +133,17 @@ function InlineSelect({ value, options, onSave, onAdd, cellStyle }) {
     try {
       await onAdd?.(cat);
       await onSave(id);
-    } catch (err) { alert(err.message); }
+    } catch (err) {
+      if (String(err.message || '').includes('transactions_type_check')) {
+        alert(
+          'หมวดใหม่บันทึกไม่ได้ — DB ยังมี constraint เก่าอยู่\n\n' +
+          'แก้: ไป Supabase SQL Editor รัน 1 บรรทัด:\n\n' +
+          'ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;'
+        );
+      } else {
+        alert(err.message);
+      }
+    }
   };
 
   if (editing) {
