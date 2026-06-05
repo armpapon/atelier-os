@@ -3,10 +3,21 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.25',
+    date: '2026-06-04',
+    title: 'Popup · Zone-aligned positioning (อยู่ล่างก็โผล่ล่าง)',
+    badge: 'Current',
+    changes: [
+      '🎯 Popup top อยู่ติด row top — ถ้า user อยู่ล่าง popup ก็โผล่ล่าง',
+      'ไม่ flip ไปบนอีกแล้ว (เดิม v0.24 flip ทำให้ดูเหมือนอยู่กลาง)',
+      'Popup compress สูงน้อยลงเมื่อใกล้ขอบล่าง — scroll ใน popup ได้',
+      'min 340px / max 560px — ใช้งานได้สบายในทุก zone',
+    ],
+  },
+  {
     version: 'v0.24',
     date: '2026-06-04',
-    title: 'TxnForm · Anchor-positioned popup (เด้งติดปุ่มที่กด)',
-    badge: 'Current',
+    title: 'TxnForm · Anchor-positioned popup',
     changes: [
       '📍 Edit popup โผล่ติดกับปุ่ม ⋯ ที่กด — ไม่ต้องเลื่อนสายตา',
       'Smart placement: ถ้าด้านล่างพอ (320px+) → โผล่ล่าง · ถ้าไม่พอ → โผล่บน',

@@ -211,31 +211,23 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   };
 
   // ── Anchor-based positioning ──────────────────────────────────────────────
-  // If initialTxn._anchorRect was passed (from ⋯ button click), position the
-  // popup next to the clicked row. Otherwise (e.g. + เพิ่ม), center on viewport.
-  const POPUP_W = 460, POPUP_H_MAX = 560, MARGIN = 14;
+  // Goal: popup should appear *where the user is looking* — same vertical zone
+  // as the clicked row. If row is at bottom of viewport, popup stays at bottom
+  // (compressing if needed, scrolling internally). Never jumps to a different
+  // zone away from where the user clicked.
+  const POPUP_W = 460, POPUP_H_MAX = 560, MIN_POPUP_H = 340, MARGIN = 14;
   const anchor  = initialTxn?._anchorRect;
   const popupPos = (() => {
     if (!anchor) return null;
     const vw = window.innerWidth, vh = window.innerHeight;
-    const spaceBelow = vh - anchor.bottom - MARGIN;
-    const spaceAbove = anchor.top - MARGIN;
 
-    // Vertical: prefer below if there's at least 320px of room, otherwise above
-    let top;
-    if (spaceBelow >= 320) {
-      top = anchor.bottom + 8;
-    } else if (spaceAbove >= 320) {
-      const popH = Math.min(POPUP_H_MAX, spaceAbove);
-      top = anchor.top - popH - 8;
-    } else {
-      // Both cramped — pin to top, popup will scroll internally
-      top = MARGIN;
-    }
-    top = Math.max(MARGIN, top);
+    // Vertical: pin popup's top near the row's top so it stays in the same
+    // viewport zone. Clamp so popup still has at least MIN_POPUP_H visible.
+    let top = anchor.top;
+    top = Math.max(MARGIN, Math.min(top, vh - MIN_POPUP_H - MARGIN));
     const maxH = Math.min(POPUP_H_MAX, vh - top - MARGIN);
 
-    // Horizontal: align popup's RIGHT edge with anchor button's right side
+    // Horizontal: align popup's RIGHT edge with the clicked ⋯ button
     let left = anchor.right - POPUP_W;
     left = Math.max(MARGIN, Math.min(left, vw - POPUP_W - MARGIN));
 
