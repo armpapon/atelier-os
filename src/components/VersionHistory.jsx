@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.24',
+    date: '2026-06-04',
+    title: 'TxnForm · Anchor-positioned popup (เด้งติดปุ่มที่กด)',
+    badge: 'Current',
+    changes: [
+      '📍 Edit popup โผล่ติดกับปุ่ม ⋯ ที่กด — ไม่ต้องเลื่อนสายตา',
+      'Smart placement: ถ้าด้านล่างพอ (320px+) → โผล่ล่าง · ถ้าไม่พอ → โผล่บน',
+      'Auto-clamp ขอบจอ — popup ไม่ออกนอกจอแน่นอน',
+      'Backdrop จาง ๆ (0.25 alpha) ไม่บัง row อื่น — เห็น context เดิม',
+      'ปุ่ม "+ เพิ่ม" ยังเป็น popup กลางจอเหมือนเดิม (ไม่มี anchor)',
+    ],
+  },
+  {
     version: 'v0.23',
     date: '2026-06-04',
-    title: 'TxnForm · Centered popup (no more side drawer)',
-    badge: 'Current',
+    title: 'TxnForm · Centered popup (replaces side drawer)',
     changes: [
       '🪟 เปลี่ยน edit form จาก side drawer (เลื่อนเข้ามาจากขวา) → popup กลางจอ',
       'Backdrop blur + scale animation 160ms (pops in นุ่ม ๆ)',

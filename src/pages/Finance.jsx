@@ -210,18 +210,59 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
     } catch (err) { setError(err.message); } finally { setSaving(false); }
   };
 
+  // ── Anchor-based positioning ──────────────────────────────────────────────
+  // If initialTxn._anchorRect was passed (from ⋯ button click), position the
+  // popup next to the clicked row. Otherwise (e.g. + เพิ่ม), center on viewport.
+  const POPUP_W = 460, POPUP_H_MAX = 560, MARGIN = 14;
+  const anchor  = initialTxn?._anchorRect;
+  const popupPos = (() => {
+    if (!anchor) return null;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const spaceBelow = vh - anchor.bottom - MARGIN;
+    const spaceAbove = anchor.top - MARGIN;
+
+    // Vertical: prefer below if there's at least 320px of room, otherwise above
+    let top;
+    if (spaceBelow >= 320) {
+      top = anchor.bottom + 8;
+    } else if (spaceAbove >= 320) {
+      const popH = Math.min(POPUP_H_MAX, spaceAbove);
+      top = anchor.top - popH - 8;
+    } else {
+      // Both cramped — pin to top, popup will scroll internally
+      top = MARGIN;
+    }
+    top = Math.max(MARGIN, top);
+    const maxH = Math.min(POPUP_H_MAX, vh - top - MARGIN);
+
+    // Horizontal: align popup's RIGHT edge with anchor button's right side
+    let left = anchor.right - POPUP_W;
+    left = Math.max(MARGIN, Math.min(left, vw - POPUP_W - MARGIN));
+
+    return { top, left, maxH };
+  })();
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 400,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 20, animation: 'fadeIn 120ms ease-out',
+      display: popupPos ? 'block' : 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      padding: popupPos ? 0 : 20, animation: 'fadeIn 120ms ease-out',
     }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} />
+      <div onClick={onClose} style={{
+        position: 'absolute', inset: 0,
+        background: popupPos ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.55)',
+        backdropFilter: popupPos ? 'none' : 'blur(2px)',
+      }} />
       <form ref={formRef} onSubmit={handleSubmit} style={{
-        position: 'relative', width: 480, maxWidth: '100%', maxHeight: '88vh',
+        position: popupPos ? 'absolute' : 'relative',
+        top:   popupPos ? popupPos.top  : undefined,
+        left:  popupPos ? popupPos.left : undefined,
+        width: POPUP_W, maxWidth: 'calc(100vw - 28px)',
+        maxHeight: popupPos ? popupPos.maxH : '88vh',
         background: 'var(--surface)', border: '1px solid var(--line)',
-        borderRadius: 'var(--r-xl)', padding: 28,
-        overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16,
+        borderRadius: 'var(--r-xl)', padding: 22,
+        overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 14,
         boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
         animation: 'popIn 160ms cubic-bezier(.2,.9,.3,1.2)',
       }}>
@@ -864,7 +905,7 @@ export function FinanceView({ scope }) {
                       />
                       {/* ACTIONS — delete + full-edit drawer */}
                       <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                        <button onClick={() => setEditingTxn(t)} title="แก้ไขทุก field (เปิด form)" aria-label="แก้ไขเต็ม"
+                        <button onClick={(e) => setEditingTxn({ ...t, _anchorRect: e.currentTarget.getBoundingClientRect() })} title="แก้ไขทุก field (popup ตรงนี้)" aria-label="แก้ไขเต็ม"
                           style={{
                             color: 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
                             cursor: 'pointer', padding: '4px 5px', borderRadius: 6, transition: 'all 130ms',
