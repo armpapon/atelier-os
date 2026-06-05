@@ -211,24 +211,25 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   };
 
   // ── Anchor-based positioning ──────────────────────────────────────────────
-  // Rule (kept dead simple):
-  //   Center the popup on the clicked row, then clamp to the viewport.
-  // - Click near top    → popup near top
-  // - Click in middle   → popup centered
-  // - Click near bottom → popup near bottom
-  // Horizontal: always centered on viewport (most readable).
+  // Rule:
+  //   Popup vertical center = clicked ROW vertical center (clamp to viewport).
+  //   Popup horizontal center = clicked ROW horizontal center (clamp to viewport).
+  // Anchor is the row's bounding rect (not just the ⋯ button) — so the popup
+  // sits over the table area, not over the sidebar.
   const POPUP_W = 460, POPUP_H_EST = 480, MARGIN = 14;
   const anchor  = initialTxn?._anchorRect;
   const popupPos = (() => {
     if (!anchor) return null;
     const vw = window.innerWidth, vh = window.innerHeight;
 
-    const rowMidY = (anchor.top + anchor.bottom) / 2;
-    let top = rowMidY - POPUP_H_EST / 2;
-    top = Math.max(MARGIN, Math.min(top, vh - POPUP_H_EST - MARGIN));
+    const rowMidY = (anchor.top  + anchor.bottom) / 2;
+    const rowMidX = (anchor.left + anchor.right)  / 2;
 
-    let left = (vw - POPUP_W) / 2;
-    left = Math.max(MARGIN, left);
+    let top  = rowMidY - POPUP_H_EST / 2;
+    top  = Math.max(MARGIN, Math.min(top,  vh - POPUP_H_EST - MARGIN));
+
+    let left = rowMidX - POPUP_W / 2;
+    left = Math.max(MARGIN, Math.min(left, vw - POPUP_W - MARGIN));
 
     const maxH = Math.min(POPUP_H_EST + 80, vh - top - MARGIN);
     return { top, left, maxH };
@@ -824,7 +825,7 @@ export function FinanceView({ scope }) {
                 {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).map(t => {
                   const isIn = t.amount > 0;
                   return (
-                    <div key={t.id} style={{
+                    <div key={t.id} data-txn-row style={{
                       display: 'grid', gridTemplateColumns: '32px 90px 1.3fr 1.2fr 130px 110px 60px', gap: 10,
                       padding: '9px 12px', borderBottom: '1px solid var(--line)',
                       alignItems: 'center', fontSize: 12.5,
@@ -897,7 +898,13 @@ export function FinanceView({ scope }) {
                       />
                       {/* ACTIONS — delete + full-edit drawer */}
                       <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                        <button onClick={(e) => setEditingTxn({ ...t, _anchorRect: e.currentTarget.getBoundingClientRect() })} title="แก้ไขทุก field (popup ตรงนี้)" aria-label="แก้ไขเต็ม"
+                        <button onClick={(e) => {
+                          // Anchor to the whole ROW (not just the button) so the popup
+                          // centers over the transaction table, not over the sidebar.
+                          const row = e.currentTarget.closest('[data-txn-row]');
+                          const rect = (row || e.currentTarget).getBoundingClientRect();
+                          setEditingTxn({ ...t, _anchorRect: rect });
+                        }} title="แก้ไขทุก field (popup ตรงนี้)" aria-label="แก้ไขเต็ม"
                           style={{
                             color: 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
                             cursor: 'pointer', padding: '4px 5px', borderRadius: 6, transition: 'all 130ms',

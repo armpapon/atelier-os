@@ -3,10 +3,20 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.27',
+    date: '2026-06-04',
+    title: 'Popup · Centered over the table (not the viewport)',
+    badge: 'Current',
+    changes: [
+      '🎯 Anchor ใช้ row จริง (closest data-txn-row) แทนปุ่ม ⋯',
+      'Popup center → ทั้ง vertical และ horizontal ตรงกับ row จริง',
+      'ไม่ทับ sidebar อีก — โผล่ตรงโซนตารางที่กด',
+    ],
+  },
+  {
     version: 'v0.26',
     date: '2026-06-04',
-    title: 'Popup · Center on click row (simple rule)',
-    badge: 'Current',
+    title: 'Popup · Center on click row',
     changes: [
       '🎯 Rule เดียว: popup center = row center (กดที่ไหน popup อยู่ตรงนั้น)',
       'กดบน → popup บน · กดกลาง → กลาง · กดล่าง → ล่าง',
