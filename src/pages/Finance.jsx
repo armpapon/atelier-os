@@ -459,7 +459,10 @@ function GoalModal({ scope, onSave, onClose }) {
 export function FinanceView({ scope }) {
   const meta = SCOPE_META[scope] || SCOPE_META.personal;
 
-  const [yearMonth, setYearMonth] = useState(() => localStorage.getItem(`atelier:fin:ym:${scope}`) || currentYearMonth());
+  // Always default to today's month on page open.
+  // (User can still navigate to other months via MonthNav during the session
+  // — but we no longer persist that across sessions / page reloads.)
+  const [yearMonth, setYearMonth] = useState(() => currentYearMonth());
   const [accountFilter, setAccountFilter] = useState(null);   // account_id or null
 
   const [txns, setTxns]         = useState([]);
@@ -503,7 +506,9 @@ export function FinanceView({ scope }) {
     });
   }, []);
 
-  useEffect(() => { localStorage.setItem(`atelier:fin:ym:${scope}`, yearMonth); }, [scope, yearMonth]);
+  // (Removed: localStorage persistence for yearMonth — user wants page
+  //  to default to today's month every time it opens, not stick to the
+  //  last viewed month.)
 
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {

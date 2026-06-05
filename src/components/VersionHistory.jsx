@@ -3,10 +3,20 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.29',
+    date: '2026-06-05',
+    title: 'Finance · เปิดมาทีไรเป็นเดือนนี้เสมอ',
+    badge: 'Current',
+    changes: [
+      '📅 หน้าการเงินเปิดมา default = เดือนปัจจุบัน เสมอ',
+      'เดิม remember เดือนสุดท้ายที่ดู (localStorage) → เปิดมาเจอเดือนเก่า',
+      'ยังเลื่อนไปดูเดือนอื่นใน session ได้ปกติ — แค่ไม่ค้าง',
+    ],
+  },
+  {
     version: 'v0.28',
     date: '2026-06-04',
     title: 'Categories · เพิ่มหมวดเองได้แล้ว',
-    badge: 'Current',
     changes: [
       '➕ Dropdown หมวดมี "+ เพิ่มหมวดใหม่..." ที่ปลายสุด',
       'เพิ่ม emoji + ชื่อ → save → ใช้งานได้ทันที (+ auto-set ให้ row ที่กด)',
