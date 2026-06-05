@@ -562,3 +562,7 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 /* ====== Tweaks Panel reset ====== */
 .fade-in { animation: fade-in 280ms ease-out both; }
 @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ====== Modal popup animations ====== */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn  { from { opacity: 0; transform: scale(.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }

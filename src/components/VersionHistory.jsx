@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.23',
+    date: '2026-06-04',
+    title: 'TxnForm · Centered popup (no more side drawer)',
+    badge: 'Current',
+    changes: [
+      '🪟 เปลี่ยน edit form จาก side drawer (เลื่อนเข้ามาจากขวา) → popup กลางจอ',
+      'Backdrop blur + scale animation 160ms (pops in นุ่ม ๆ)',
+      'ขนาด 480px × max 88vh — เห็นทุก field โดยไม่ต้อง scroll',
+      'คลิก backdrop = ปิด เหมือนเดิม · Esc ก็ปิดได้',
+      'แก้ปัญหา "ตอนแก้ไขยังต้อง scroll ไปบน" — popup โผล่ตรงกลางจอเสมอ',
+    ],
+  },
+  {
     version: 'v0.22',
     date: '2026-06-04',
     title: 'Transaction Table · Full inline editing (click any cell)',
-    badge: 'Current',
     changes: [
       '✏️ ทุก cell ในตารางรายการธุรกรรมแก้ไขได้ inline — ไม่ต้องเปิด drawer ไม่ต้อง scroll',
       'แก้ได้: วันที่ · ชื่อรายการ · โน้ต · หมวด (dropdown) · จำนวน — คลิกเลย',

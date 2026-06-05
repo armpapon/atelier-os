@@ -179,14 +179,16 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isIncome = form.type === 'income';
 
-  // Drawer is now only used for + เพิ่มใหม่ or ⋯ full edit.
-  // No auto-scroll — most edits happen inline in the table.
-  // Just focus first input quietly for typing convenience.
+  // Popup is now only used for + เพิ่มใหม่ or ⋯ full edit.
+  // Auto-focus first input + close on Esc.
   useEffect(() => {
     requestAnimationFrame(() => {
       firstInputRef.current?.focus({ preventScroll: true });
     });
-  }, []);
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -209,9 +211,20 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
-      <form ref={formRef} onSubmit={handleSubmit} style={{ position: 'relative', width: 440, maxWidth: '100%', height: '100%', background: 'var(--surface)', borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 400,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 20, animation: 'fadeIn 120ms ease-out',
+    }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }} />
+      <form ref={formRef} onSubmit={handleSubmit} style={{
+        position: 'relative', width: 480, maxWidth: '100%', maxHeight: '88vh',
+        background: 'var(--surface)', border: '1px solid var(--line)',
+        borderRadius: 'var(--r-xl)', padding: 28,
+        overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16,
+        boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
+        animation: 'popIn 160ms cubic-bezier(.2,.9,.3,1.2)',
+      }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>
             {isEdit ? '✎ แก้ไขรายการ' : 'บันทึกรายการ'}
