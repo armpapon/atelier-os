@@ -3,10 +3,23 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.28',
+    date: '2026-06-04',
+    title: 'Categories · เพิ่มหมวดเองได้แล้ว',
+    badge: 'Current',
+    changes: [
+      '➕ Dropdown หมวดมี "+ เพิ่มหมวดใหม่..." ที่ปลายสุด',
+      'เพิ่ม emoji + ชื่อ → save → ใช้งานได้ทันที (+ auto-set ให้ row ที่กด)',
+      'TxnForm chip selector ก็มีปุ่ม "+ เพิ่มหมวด" เหมือนกัน',
+      'Custom cats เก็บใน localStorage (loop:custom-categories) — ใช้ข้าม session',
+      'Default 7 หมวดยังอยู่ + custom ที่คุณเพิ่มจะ merge เข้ามาในทุก dropdown',
+      'พร้อมวิเคราะห์ร่วมกัน: หมวดเองจะอยู่ใน DB transactions แล้ว query ได้ปกติ',
+    ],
+  },
+  {
     version: 'v0.27',
     date: '2026-06-04',
-    title: 'Popup · Centered over the table (not the viewport)',
-    badge: 'Current',
+    title: 'Popup · Centered over the table',
     changes: [
       '🎯 Anchor ใช้ row จริง (closest data-txn-row) แทนปุ่ม ⋯',
       'Popup center → ทั้ง vertical และ horizontal ตรงกับ row จริง',

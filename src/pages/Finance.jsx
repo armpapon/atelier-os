@@ -23,7 +23,7 @@ import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.j
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   { id: 'food',      label: 'อาหาร',    icon: '🍜', type: 'food' },
   { id: 'transport', label: 'เดินทาง',  icon: '🚗', type: 'transport' },
   { id: 'bills',     label: 'บิล',      icon: '💡', type: 'bills' },
@@ -32,7 +32,20 @@ const CATEGORIES = [
   { id: 'family',    label: 'ครอบครัว', icon: '❤️', type: 'family' },
   { id: 'other',     label: 'อื่น ๆ',   icon: '📦', type: 'other' },
 ];
-const CAT_ICON = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
+const CUSTOM_CATS_KEY = 'loop:custom-categories';
+
+function loadCustomCats() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_CATS_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveCustomCats(arr) {
+  localStorage.setItem(CUSTOM_CATS_KEY, JSON.stringify(arr));
+}
+function slugify(label) {
+  return (label || '').toLowerCase().trim()
+    .replace(/[^a-z0-9ก-๙\s_-]/g, '')
+    .replace(/\s+/g, '_') || ('cat_' + Date.now());
+}
 
 const SCOPE_META = {
   personal: { label: 'ส่วนตัว',  accent: 'var(--accent)',  sub: 'รายรับ-รายจ่ายส่วนตัว · บัญชี Make · เป้าหมาย' },
@@ -107,8 +120,21 @@ function InlineEdit({ value, onSave, type = 'text', display, placeholder, cellSt
   );
 }
 
-function InlineSelect({ value, options, onSave, cellStyle }) {
+function InlineSelect({ value, options, onSave, onAdd, cellStyle }) {
   const [editing, setEditing] = useState(false);
+
+  const handleAdd = async () => {
+    setEditing(false);
+    const label = window.prompt('ชื่อหมวดใหม่ (เช่น "ค่าเรียน", "เกม"):');
+    if (!label || !label.trim()) return;
+    const icon = (window.prompt('Emoji ของหมวดนี้ (เช่น 🎮 📚 ☕️):') || '📦').trim();
+    const id   = slugify(label);
+    const cat  = { id, label: label.trim(), icon, type: id };
+    try {
+      await onAdd?.(cat);
+      await onSave(id);
+    } catch (err) { alert(err.message); }
+  };
 
   if (editing) {
     return (
@@ -117,6 +143,7 @@ function InlineSelect({ value, options, onSave, cellStyle }) {
         value={value}
         onChange={async e => {
           const next = e.target.value;
+          if (next === '__add__') { await handleAdd(); return; }
           setEditing(false);
           if (next === value) return;
           try { await onSave(next); } catch (err) { alert(err.message); }
@@ -132,6 +159,12 @@ function InlineSelect({ value, options, onSave, cellStyle }) {
         {options.map(o => (
           <option key={o.value} value={o.value}>{o.icon ? o.icon + ' ' : ''}{o.label}</option>
         ))}
+        {onAdd && (
+          <>
+            <option disabled>──────────</option>
+            <option value="__add__">+ เพิ่มหมวดใหม่...</option>
+          </>
+        )}
       </select>
     );
   }
@@ -153,7 +186,7 @@ function InlineSelect({ value, options, onSave, cellStyle }) {
   );
 }
 
-function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
+function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DEFAULT_CATEGORIES, onAddCategory }) {
   const isEdit = !!initialTxn;
   const formRef     = useRef(null);
   const firstInputRef = useRef(null);
@@ -198,7 +231,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
       const amount = Number(form.amount) * (isIncome ? 1 : -1);
       const payload = {
         title: form.title.trim(), amount, type: form.type,
-        category: CATEGORIES.find(c => c.id === form.type)?.label || form.type,
+        category: categories.find(c => c.id === form.type)?.label || form.type,
         account_id: form.account_id || null,
         note: form.note.trim() || null,
         occurred_at: form.occurred_at,
@@ -268,12 +301,27 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose }) {
         <div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {CATEGORIES.map(c => (
+            {categories.map(c => (
               <button key={c.id} type="button" onClick={() => set('type', c.id)}
                 style={{ padding: '5px 10px', borderRadius: 'var(--r-md)', fontSize: 12, background: form.type === c.id ? 'var(--amber)' : 'var(--surface-2)', color: form.type === c.id ? '#1a1410' : 'var(--ink-2)', border: `1px solid ${form.type === c.id ? 'var(--amber)' : 'var(--line)'}`, cursor: 'pointer' }}>
                 {c.icon} {c.label}
               </button>
             ))}
+            {onAddCategory && (
+              <button type="button"
+                onClick={async () => {
+                  const label = window.prompt('ชื่อหมวดใหม่:');
+                  if (!label || !label.trim()) return;
+                  const icon  = (window.prompt('Emoji (เช่น 🎮 📚 ☕️):') || '📦').trim();
+                  const id    = slugify(label);
+                  const cat   = { id, label: label.trim(), icon, type: id };
+                  await onAddCategory(cat);
+                  set('type', id);
+                }}
+                style={{ padding: '5px 10px', borderRadius: 'var(--r-md)', fontSize: 12, background: 'transparent', color: 'var(--ink-3)', border: '1px dashed var(--line)', cursor: 'pointer' }}>
+                + เพิ่มหมวด
+              </button>
+            )}
           </div>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -422,6 +470,27 @@ export function FinanceView({ scope }) {
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
+
+  // Custom categories (saved in localStorage, merged with defaults)
+  const [customCats, setCustomCats] = useState(loadCustomCats);
+  const categories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCats], [customCats]);
+  const catIconOf  = useCallback(id => categories.find(c => c.id === id)?.icon || '📦', [categories]);
+  const addCategory = useCallback((cat) => {
+    // Dedupe by id; if duplicate, leave existing as-is
+    setCustomCats(prev => {
+      if (prev.some(c => c.id === cat.id) || DEFAULT_CATEGORIES.some(c => c.id === cat.id)) return prev;
+      const next = [...prev, cat];
+      saveCustomCats(next);
+      return next;
+    });
+  }, []);
+  const removeCategory = useCallback((id) => {
+    setCustomCats(prev => {
+      const next = prev.filter(c => c.id !== id);
+      saveCustomCats(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => { localStorage.setItem(`atelier:fin:ym:${scope}`, yearMonth); }, [scope, yearMonth]);
 
@@ -834,7 +903,7 @@ export function FinanceView({ scope }) {
                         width: 26, height: 26, borderRadius: 6,
                         background: 'var(--surface-2)', border: '1px solid var(--line)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13,
-                      }}>{CAT_ICON[t.type] || '📦'}</div>
+                      }}>{catIconOf(t.type)}</div>
                       {/* DATE — inline editable */}
                       <InlineEdit
                         value={t.occurred_at ? t.occurred_at.split('T')[0] : ''}
@@ -872,12 +941,13 @@ export function FinanceView({ scope }) {
                       {/* CATEGORY — inline dropdown */}
                       <InlineSelect
                         value={t.type}
-                        options={CATEGORIES.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
+                        options={categories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
                         onSave={async newType => {
-                          const cat = CATEGORIES.find(c => c.id === newType);
+                          const cat = categories.find(c => c.id === newType);
                           await updateTransaction(t.id, { type: newType, category: cat?.label || newType });
                           refresh();
                         }}
+                        onAdd={addCategory}
                       />
                       {/* AMOUNT — inline editable, preserves sign */}
                       <InlineEdit
@@ -943,8 +1013,8 @@ export function FinanceView({ scope }) {
         </div>
       </div>
 
-      {showTxnForm && <TxnForm accounts={accounts} scope={scope} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
-      {editingTxn  && <TxnForm accounts={accounts} scope={scope} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
+      {showTxnForm && <TxnForm accounts={accounts} scope={scope} categories={categories} onAddCategory={addCategory} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
+      {editingTxn  && <TxnForm accounts={accounts} scope={scope} categories={categories} onAddCategory={addCategory} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
       {showTransfer && (
         <ScopeTransferModal
           defaultFromScope={scope}
