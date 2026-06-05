@@ -3,15 +3,24 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
-    version: 'v0.25',
+    version: 'v0.26',
     date: '2026-06-04',
-    title: 'Popup · Zone-aligned positioning (อยู่ล่างก็โผล่ล่าง)',
+    title: 'Popup · Center on click row (simple rule)',
     badge: 'Current',
     changes: [
-      '🎯 Popup top อยู่ติด row top — ถ้า user อยู่ล่าง popup ก็โผล่ล่าง',
-      'ไม่ flip ไปบนอีกแล้ว (เดิม v0.24 flip ทำให้ดูเหมือนอยู่กลาง)',
-      'Popup compress สูงน้อยลงเมื่อใกล้ขอบล่าง — scroll ใน popup ได้',
-      'min 340px / max 560px — ใช้งานได้สบายในทุก zone',
+      '🎯 Rule เดียว: popup center = row center (กดที่ไหน popup อยู่ตรงนั้น)',
+      'กดบน → popup บน · กดกลาง → กลาง · กดล่าง → ล่าง',
+      'Clamp ขอบจอเสมอ ไม่ทะลุออกนอก viewport',
+      'Horizontal กลางจอเสมอ (อ่านง่าย)',
+    ],
+  },
+  {
+    version: 'v0.25',
+    date: '2026-06-04',
+    title: 'Popup · Zone-aligned positioning',
+    changes: [
+      'พยายามให้ popup top ติด row top — แต่ user ยังรู้สึกว่าอยู่กลาง',
+      '(แทนที่ด้วย v0.26 — center on row แบบเรียบง่ายกว่า)',
     ],
   },
   {
