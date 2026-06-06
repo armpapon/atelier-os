@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v0.30',
+    date: '2026-06-05',
+    title: 'Learning Hub · ใส่รูปปกหนังสือ/คอร์สได้แล้ว',
+    badge: 'Current',
+    changes: [
+      '📚 อัพโหลดรูปปก (book cover / course thumbnail) สำหรับทุก source',
+      'แทนตัวอักษร "TH" / "BL" placeholder ที่แสดงเดิม',
+      'Auto resize 800px JPEG · เก็บใน Supabase Storage bucket "avatars"',
+      'YouTube ยังใช้ thumbnail อัตโนมัติ (ถ้าไม่ได้อัพรูปปกเอง)',
+      '⚠️ ต้องรัน SQL migration หนึ่งครั้ง: ALTER TABLE learning_sources ADD COLUMN cover_url text',
+    ],
+  },
+  {
     version: 'v0.29',
     date: '2026-06-05',
     title: 'Finance · เปิดมาทีไรเป็นเดือนนี้เสมอ',
-    badge: 'Current',
     changes: [
       '📅 หน้าการเงินเปิดมา default = เดือนปัจจุบัน เสมอ',
       'เดิม remember เดือนสุดท้ายที่ดู (localStorage) → เปิดมาเจอเดือนเก่า',

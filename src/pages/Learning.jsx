@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { thumbBg } from '../lib/helpers.js';
 import {
-  listSources, createSource, updateSource, deleteSource,
+  listSources, createSource, updateSource, deleteSource, uploadCoverImage,
   listNotes, createNote, deleteNote,
   extractVideoId, getYouTubeEmbedUrl, getYouTubeThumbnail,
   translateText,
@@ -32,13 +32,25 @@ const TARGET_LANGS = [
 function AddSourceForm({ onSave, onClose }) {
   const [form, setForm] = useState({
     type: 'youtube', title: '', author: '', url: '', duration_min: '', category: 'TRADING',
-    status: 'active', glyph: '', progress: 0,
+    status: 'active', glyph: '', progress: 0, cover_url: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [autoTitle, setAutoTitle] = useState(false);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleCoverPick = async (file) => {
+    if (!file) return;
+    setUploadingCover(true); setError(null);
+    try {
+      const slug = (form.title || 'untitled').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
+      const url  = await uploadCoverImage(file, slug);
+      set('cover_url', url);
+    } catch (err) { setError(err.message); }
+    finally { setUploadingCover(false); }
+  };
 
   // Auto-detect title from YouTube URL
   const handleUrlChange = async (url) => {
@@ -75,6 +87,7 @@ function AddSourceForm({ onSave, onClose }) {
         status: 'active',
         progress: 0,
         glyph: form.glyph.trim() || form.title.slice(0, 2),
+        cover_url: form.cover_url || null,
       });
       onSave();
       onClose();
@@ -154,6 +167,47 @@ function AddSourceForm({ onSave, onClose }) {
             <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ความยาว (นาที)</span>
             <input className="input" type="number" min="0" value={form.duration_min} onChange={e => set('duration_min', e.target.value)} placeholder="60" />
           </label>
+        </div>
+
+        {/* Cover image — แทน initials เช่น "TH" ในการ์ด */}
+        <div>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>
+            รูปปก {form.type === 'youtube' && '(ไม่ต้องใส่ — ใช้ thumbnail YouTube)'}
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            {form.cover_url ? (
+              <div style={{
+                width: 80, height: 110, borderRadius: 'var(--r-md)',
+                background: `url(${form.cover_url}) center/cover`,
+                border: '1px solid var(--line)', flexShrink: 0,
+              }} />
+            ) : (
+              <div style={{
+                width: 80, height: 110, borderRadius: 'var(--r-md)',
+                background: 'var(--surface-2)', border: '1px dashed var(--line)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'var(--ink-4)', fontSize: 24, flexShrink: 0,
+              }}>📚</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+              <label className="btn btn--ghost" style={{ cursor: 'pointer', textAlign: 'center', fontSize: 12, padding: '8px 12px' }}>
+                {uploadingCover ? 'อัพโหลด...' : (form.cover_url ? '🔄 เปลี่ยนรูป' : '📤 อัพโหลดรูปปก')}
+                <input type="file" accept="image/*"
+                  onChange={e => handleCoverPick(e.target.files?.[0])}
+                  style={{ display: 'none' }}
+                  disabled={uploadingCover} />
+              </label>
+              {form.cover_url && (
+                <button type="button" onClick={() => set('cover_url', '')}
+                  style={{ fontSize: 11, color: 'var(--loss)', textAlign: 'center', padding: '4px' }}>
+                  × ลบรูป
+                </button>
+              )}
+              <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)' }}>
+                ระบบจะ resize ให้ ≤ 800px อัตโนมัติ
+              </div>
+            </div>
+          </div>
         </div>
 
         {error && <div style={{ padding: '10px 12px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 12 }}>{error}</div>}
@@ -431,7 +485,8 @@ function StudyMode({ source, onBack, onUpdate }) {
 // ── Source Card ───────────────────────────────────────────────────────────────
 function SourceCard({ source, onClick, onDelete }) {
   const videoId = source.type === 'youtube' ? extractVideoId(source.url) : null;
-  const thumb = videoId ? getYouTubeThumbnail(videoId) : null;
+  // Priority: user-uploaded cover > YouTube thumbnail > letter placeholder
+  const thumb = source.cover_url || (videoId ? getYouTubeThumbnail(videoId) : null);
   const typeInfo = SOURCE_TYPES.find(s => s.id === source.type) || SOURCE_TYPES[0];
 
   return (

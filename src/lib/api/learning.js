@@ -58,6 +58,52 @@ export async function listSources({ limit = 200, type } = {}) {
   return data;
 }
 
+// ── Cover image upload (reuse 'avatars' bucket) ──────────────────────────────
+async function resizeImage(file, maxEdge = 800, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      const w = Math.round(img.width  * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('canvas.toBlob returned null')),
+        'image/jpeg', quality
+      );
+    };
+    img.onerror = () => reject(new Error('โหลดรูปไม่สำเร็จ'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Upload cover image for a learning source. Returns public URL. */
+export async function uploadCoverImage(file, sourceIdOrSlug = 'new') {
+  if (!supabase) throw new Error('Supabase not configured');
+  if (!file)    throw new Error('No file provided');
+  if (!file.type?.startsWith('image/')) throw new Error('ต้องเป็นไฟล์รูปภาพ');
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+
+  const blob = await resizeImage(file);
+  const ts   = Date.now();
+  const path = `${user.id}/learning_cover_${sourceIdOrSlug}_${ts}.jpg`;
+
+  const { error: upErr } = await supabase.storage
+    .from('avatars')
+    .upload(path, blob, { upsert: true, cacheControl: '3600', contentType: 'image/jpeg' });
+  if (upErr) throw upErr;
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  return `${data.publicUrl}?v=${ts}`;
+}
+
 export async function createSource(input) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();
