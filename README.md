@@ -4,7 +4,7 @@ Personal life OS — **Finance** · **Trading Journal** · **Learning Hub** · *
 
 Built with React 18 + Vite, backed by Supabase, deployed on Vercel.
 
-> The repo directory is `atelier-os/` for historical reasons; the product is **Loop**.
+> GitHub repo + Vercel project are still named `atelier-os` (legacy); local folder is `Loop/`. Both work — they're just labels.
 
 ---
 

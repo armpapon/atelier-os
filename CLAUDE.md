@@ -11,7 +11,7 @@
 - **Owner**: Arm (`armpapon@gmail.com`). Solo project, Thai-speaking user.
 - **Stack**: React 18 + Vite + Supabase (Postgres + Auth + RLS + Storage). Deployed on Vercel via GitHub auto-deploy.
 - **Current version**: bumped in `src/components/VersionHistory.jsx` — `CHANGELOG[0].version`. Sidebar reads this at runtime.
-- **Repo dir name** is still `atelier-os/` (legacy), but the product is called **Loop** everywhere in the UI.
+- **Folder**: `Loop/` (renamed from `atelier-os/` at v1.0). GitHub repo is still `armpapon/atelier-os` — keep that as-is for now (Vercel deployment is linked to it).
 
 ---
 
@@ -140,8 +140,7 @@ Each is idempotent — safe to re-run.
 
 ### Known caveats
 - `transactions` table check constraint was dropped — `type` is now free-form text. Don't add it back.
-- The repo dir is `atelier-os/` but the brand is `Loop`. Don't try to rename the folder.
-- Vercel project name: `atelier-os` (matches dir). Production URL: `atelier-os-eta.vercel.app`.
+- Local folder is `Loop/`. GitHub repo + Vercel project are still named `atelier-os` — production URL stays `atelier-os-eta.vercel.app`. Don't try to rename the remote.
 - v0.21's auto-scroll-to-top in TxnForm was reverted in v0.22 — user explicitly didn't want it. Don't re-add.
 
 ---

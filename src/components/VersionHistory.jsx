@@ -3,10 +3,22 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v1.0',
+    date: '2026-06-05',
+    title: '🎉 Loop — official rename milestone',
+    badge: 'Current',
+    changes: [
+      'เปลี่ยนชื่อโปรเจคจาก "Atelier OS" → "Loop" อย่างเป็นทางการ',
+      'Local folder rename: atelier-os/ → Loop/',
+      'package.json name = "loop" · version = 1.0.0',
+      'CLAUDE.md + README อัพเดทตามชื่อใหม่',
+      '(GitHub repo + Vercel project ยังเป็น "atelier-os" — URL เดิม atelier-os-eta.vercel.app ใช้งานปกติ)',
+    ],
+  },
+  {
     version: 'v0.30',
     date: '2026-06-05',
     title: 'Learning Hub · ใส่รูปปกหนังสือ/คอร์สได้แล้ว',
-    badge: 'Current',
     changes: [
       '📚 อัพโหลดรูปปก (book cover / course thumbnail) สำหรับทุก source',
       'แทนตัวอักษร "TH" / "BL" placeholder ที่แสดงเดิม',
