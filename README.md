@@ -1,121 +1,67 @@
-# Atelier OS
+# Loop
 
-Personal Life Dashboard — Trading Journal · Learning Hub · Daily Journal · Finance · Family
+Personal life OS — **Finance** · **Trading Journal** · **Learning Hub** · **Daily Journal** · **Family**
 
-Built with **React 18 + Vite**. Designed to deploy on **Vercel** with **Supabase** as the backend.
+Built with React 18 + Vite, backed by Supabase, deployed on Vercel.
+
+> The repo directory is `atelier-os/` for historical reasons; the product is **Loop**.
 
 ---
 
-## 🏃 Local development
+## Local development
 
 ```bash
-cd atelier-os
 npm install
-npm run dev
+npm run dev     # http://localhost:5173
+npm run build   # required before every push — catches deploy-blocking bugs
 ```
 
-เปิด http://localhost:5173
+## Deploy
 
-## 🏗️ Build for production
+`git push` to `main` → Vercel auto-deploys to https://atelier-os-eta.vercel.app
 
-```bash
-npm run build       # outputs to dist/
-npm run preview     # serve dist/ locally for sanity check
-```
+## Database
+
+Supabase project. Auth + Postgres + Storage (single `avatars` bucket).
+SQL migrations live in `supabase/migration_*.sql` — **run them manually in the Supabase SQL Editor** when pulling a new feature. No migration runner.
 
 ---
 
-## 🚀 Deploy to Vercel (ฟรี)
+## Modules
 
-### ครั้งแรก
-1. Push โค้ดขึ้น GitHub:
-   ```bash
-   cd atelier-os
-   git init
-   git add .
-   git commit -m "init atelier-os"
-   git branch -M main
-   git remote add origin https://github.com/<your-username>/atelier-os.git
-   git push -u origin main
-   ```
-
-2. ไปที่ https://vercel.com/new → Import repository
-3. Vercel จะ detect Vite อัตโนมัติ — กด **Deploy** ได้เลย
-4. ได้ URL `https://atelier-os-xxx.vercel.app` ใน ~1 นาที
-
-### ครั้งต่อไป
-แค่ `git push` — Vercel auto-deploy
+| Module | Page | Highlights |
+|---|---|---|
+| Finance | `src/pages/Finance.jsx` | Personal + Family scopes, CSV import (Make/KBank), inline-edit table, debt tracker with payment recording, cash-flow forecast, recurring bills, scope transfers |
+| Trading | `src/pages/Trading.jsx` | ICT-style trade journal, daily plan with chart upload, DST-aware killzone schedule, standalone HTML playbook at `/playbook.html` |
+| Learning | `src/pages/Learning.jsx` | YouTube + book + course tracking, note-taking with translation, page/video progress, cover image upload |
+| Journal | `src/pages/Journal.jsx` | Daily bullet logging |
+| Family | `src/pages/Family.jsx` | Member profiles with health info, growth records, milestones, photos |
 
 ---
 
-## 🗄️ เชื่อม Supabase (ฟรี)
-
-### 1. สร้าง Supabase project
-1. ไปที่ https://supabase.com → New project (เลือก region `Southeast Asia (Singapore)`)
-2. ตั้ง password ของ database
-3. รอ ~2 นาที
-
-### 2. รัน schema
-เปิด **SQL Editor** ใน Supabase แล้ว paste schema จาก `supabase/schema.sql` (จะสร้างให้ใน step ถัดไป)
-
-### 3. เพิ่ม env vars
-สร้างไฟล์ `.env.local`:
-```bash
-VITE_SUPABASE_URL=https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-```
-
-หาค่าได้จาก Supabase → Project Settings → API
-
-### 4. ติดตั้ง client
-```bash
-npm install @supabase/supabase-js
-```
-
-### 5. Add Supabase integration to Vercel
-- Vercel Dashboard → Project → Storage → Browse Marketplace → Supabase
-- เชื่อม project — env vars จะ sync อัตโนมัติ
-
----
-
-## 📁 Project structure
+## Project structure (high level)
 
 ```
-atelier-os/
-├── index.html
-├── vite.config.js
-├── package.json
-└── src/
-    ├── main.jsx           # Entry point
-    ├── App.jsx            # Routing + global state
-    ├── styles.css         # Design tokens + all CSS
-    ├── data.js            # Mock data (will be replaced by Supabase)
-    ├── lib/
-    │   └── helpers.js     # toneColor, thumbBg
-    ├── components/
-    │   ├── Icon.jsx
-    │   ├── Sidebar.jsx
-    │   ├── PageHeader.jsx
-    │   ├── Sparkline.jsx
-    │   ├── CandleChart.jsx
-    │   ├── TweaksPanel.jsx
-    │   └── ComingSoon.jsx
-    └── pages/
-        ├── Dashboard.jsx
-        ├── Trading.jsx
-        ├── Learning.jsx
-        ├── Journal.jsx
-        ├── Finance.jsx
-        └── Family.jsx
+src/
+├── App.jsx                  # routing + global state
+├── styles.css               # design tokens + global CSS
+├── pages/                   # one file per top-level module
+├── components/
+│   ├── ui/                  # shared primitives (Button, Card, Badge, EmptyState)
+│   ├── dashboard/           # finance widgets
+│   ├── trading/             # trading widgets
+│   ├── family/, learning/
+│   └── VersionHistory.jsx   # changelog + sidebar version label
+└── lib/
+    ├── supabase.js
+    └── api/                 # one file per domain (finance, trades, learning, …)
+
+supabase/
+├── schema.sql               # initial schema
+└── migration_*.sql          # additive migrations (run manually)
+
+public/
+└── playbook.html            # standalone trading playbook
 ```
 
-## 🛣️ Roadmap
-
-- [x] UI prototype with mock data
-- [ ] Supabase schema + RLS policies
-- [ ] Auth (email + Google)
-- [ ] Trading module — CRUD against Supabase
-- [ ] Finance module — CRUD + monthly rollups
-- [ ] Journal module — daily bullet logging
-- [ ] Learning, Family modules
-- [ ] Goals & Second Brain (placeholders)
+For Claude Code session context, see [`CLAUDE.md`](./CLAUDE.md).
