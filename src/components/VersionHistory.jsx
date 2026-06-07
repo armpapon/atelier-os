@@ -3,10 +3,24 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v1.1',
+    date: '2026-06-08',
+    title: 'Learning · ยกเครื่องระบบอ่านหนังสือเป็น Reading Companion',
+    badge: 'Current',
+    changes: [
+      '🐛 FIX: กรอก session แล้วไม่อัพเดท — ถ้าหนังสือยังไม่ตั้งจำนวนหน้า ระบบจะถามก่อน + การ์ดเลิกค้าง "ยังไม่เริ่ม" ทันทีที่บันทึก session แรก',
+      '💎 Insights Bank — เก็บ "ข้อคิด / Quote / สิ่งที่จะลงมือทำ" ถาวรต่อเล่ม · action item ติ๊กเสร็จได้',
+      '🔥 Reading streak — นับวันอ่านต่อเนื่อง',
+      '⚡ ความเร็วอ่าน (หน้า/ชม.) + 🏁 ประมาณว่าอีกกี่วันอ่านจบ — คำนวณอัตโนมัติ',
+      'Progress Hero ใหม่ใต้หัว drawer: %, แถบหน้า, streak, เวลรวม, คะแนนเข้าใจเฉลี่ย',
+      'Stats เพิ่ม streak / pages-per-day / action items done',
+      '⚠️ ต้องรัน SQL: supabase/migration_add_learning_insights.sql',
+    ],
+  },
+  {
     version: 'v1.0',
     date: '2026-06-05',
     title: '🎉 Loop — official rename milestone',
-    badge: 'Current',
     changes: [
       'เปลี่ยนชื่อโปรเจคจาก "Atelier OS" → "Loop" อย่างเป็นทางการ',
       'Local folder rename: atelier-os/ → Loop/',

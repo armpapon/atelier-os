@@ -130,7 +130,8 @@ Each is idempotent — safe to re-run.
 |---|---|---|
 | ✅ run | `migration_drop_txn_type_check.sql` | unblock custom categories |
 | ⚠️ pending? | `migration_add_recurring_forecast.sql` | adds `recurring_expenses` table + `accounts.is_emergency_fund` (errored "table not found" at one point — confirm with user) |
-| ⚠️ pending | `migration_add_source_cover.sql` | adds `learning_sources.cover_url`. **User has not run this yet** — error visible in their last screenshot |
+| ⚠️ pending | `migration_add_source_cover.sql` | adds `learning_sources.cover_url`. Run before book cover upload works |
+| ⚠️ pending | `migration_add_learning_insights.sql` | v1.1 — adds `learning_insights` table + `learning_sources.reading_goal_min`. Insights Bank tab needs this |
 
 ### Pending product ideas (user said "เดี๋ยวจะกลับมาคุย")
 - **Income vs Expense separation**: user wants to model finance as two separate buckets/accounts instead of in-and-out from one. Currently exploring by entering May manually. Will return with a model proposal.

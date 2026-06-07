@@ -197,20 +197,27 @@ export async function createSession(input) {
     .from('learning_sessions').insert(payload).select().single();
   if (error) throw error;
 
-  // Auto-update source's current_page / progress / video_position
+  // Auto-update source's current_page / progress / video_position / status
   if (input.source_id) {
     const patch = {};
-    if (payload.to_page != null) patch.current_page = payload.to_page;
+    if (payload.to_page != null)     patch.current_page = payload.to_page;
     if (payload.video_to_sec != null) patch.video_position_sec = payload.video_to_sec;
 
-    // Recompute progress %
     const { data: src } = await supabase
-      .from('learning_sources').select('total_pages, duration_min').eq('id', input.source_id).single();
+      .from('learning_sources')
+      .select('total_pages, duration_min, status').eq('id', input.source_id).single();
+
     if (src) {
+      // Progress %: pages take priority, then video position.
       if (src.total_pages && payload.to_page != null) {
         patch.progress = Math.min(100, Math.round((payload.to_page / src.total_pages) * 100));
       } else if (src.duration_min && payload.video_to_sec != null) {
         patch.progress = Math.min(100, Math.round((payload.video_to_sec / (src.duration_min * 60)) * 100));
+      }
+      // Move 'ยังไม่เริ่ม' → 'active' the moment a session is logged, so the
+      // library card stops saying "ยังไม่เริ่ม" even when total_pages is unset.
+      if ((src.status || 'active') !== 'completed') {
+        patch.status = patch.progress >= 100 ? 'completed' : 'active';
       }
     }
     if (Object.keys(patch).length > 0) {
@@ -237,6 +244,45 @@ export async function completeBookPass(sourceId) {
     reading_count: next, current_page: 0, progress: 0,
   }).eq('id', sourceId);
   return next;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Insights Bank — takeaways / quotes / action items per source
+// ════════════════════════════════════════════════════════════════════════════
+export async function listInsights(sourceId) {
+  if (!supabase || !sourceId) return [];
+  const { data, error } = await supabase
+    .from('learning_insights').select('*').eq('source_id', sourceId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createInsight(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('learning_insights')
+    .insert({ ...input, user_id: user.id })
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function toggleInsightDone(id, isDone) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase
+    .from('learning_insights').update({ is_done: isDone }).eq('id', id)
+    .select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteInsight(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('learning_insights').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -310,15 +356,51 @@ export function getStudyHints(source, sessions) {
   return hints;
 }
 
+/** Consecutive-day reading streak ending today or yesterday (so it survives
+ *  until end of the next day before breaking). */
+export function computeStreak(sessions) {
+  if (!sessions?.length) return 0;
+  const days = new Set(sessions.map(s => (s.session_date || '').slice(0, 10)));
+  const dayMs = 86400000;
+  const toKey = (d) => d.toISOString().slice(0, 10);
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Anchor: today if read today, else yesterday if read yesterday, else broken.
+  let cursor = new Date(today);
+  if (!days.has(toKey(cursor))) {
+    cursor = new Date(today.getTime() - dayMs);
+    if (!days.has(toKey(cursor))) return 0;
+  }
+  let streak = 0;
+  while (days.has(toKey(cursor))) {
+    streak++;
+    cursor = new Date(cursor.getTime() - dayMs);
+  }
+  return streak;
+}
+
 export function computeReadingStats(source, sessions) {
+  const withScore   = sessions.filter(x => x.understanding_score);
   const totalMin    = sessions.reduce((s, x) => s + (x.duration_min || 0), 0);
   const totalPages  = sessions.reduce((s, x) => s + (x.pages_read   || 0), 0);
-  const avgScore    = sessions.filter(x => x.understanding_score).reduce((s, x) => s + x.understanding_score, 0)
-                    / Math.max(1, sessions.filter(x => x.understanding_score).length) || 0;
+  const avgScore    = withScore.reduce((s, x) => s + x.understanding_score, 0)
+                    / Math.max(1, withScore.length) || 0;
   const pagesPerHour = totalMin > 0 ? (totalPages / totalMin) * 60 : 0;
+
+  // Distinct active reading days → average pages/day → estimated days to finish
+  const readingDays  = new Set(sessions.map(s => (s.session_date || '').slice(0, 10))).size;
+  const pagesPerDay  = readingDays > 0 ? totalPages / readingDays : 0;
+  const pagesLeft    = source?.total_pages
+    ? Math.max(0, source.total_pages - (source.current_page || 0))
+    : null;
+  const daysToFinish = (pagesLeft != null && pagesPerDay > 0)
+    ? Math.ceil(pagesLeft / pagesPerDay) : null;
+
   return {
     sessionsCount: sessions.length,
     totalMin, totalPages, avgScore, pagesPerHour,
+    readingDays, pagesPerDay, pagesLeft, daysToFinish,
+    streak: computeStreak(sessions),
     readingCount: source?.reading_count || 0,
   };
 }
