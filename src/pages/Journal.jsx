@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import {
-  listEntries, listRecentDates, createEntry, toggleEntry, deleteEntry,
+  listEntries, listRecentDates, createEntry, toggleEntry, updateEntry, deleteEntry,
   getMoodForDate, upsertMood,
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
@@ -28,6 +28,35 @@ function weekday(dateStr) {
   return d.toLocaleDateString('th-TH', { weekday: 'short' });
 }
 
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+// Build a "https://calendar.google.com/.../render?action=TEMPLATE" link — opens
+// Google Calendar's add-event dialog pre-filled, no OAuth needed.
+function buildGCalUrl({ text, note, location, event_time, event_end_time }, date) {
+  const ymd = date.replace(/-/g, '');
+  let dates;
+  if (event_time) {
+    const start = event_time.slice(0, 5).replace(':', '');
+    let end = event_end_time ? event_end_time.slice(0, 5).replace(':', '') : null;
+    if (!end) {
+      const [h, m] = event_time.slice(0, 5).split(':').map(Number);
+      end = `${pad2((h + 1) % 24)}${pad2(m)}`;
+    }
+    dates = `${ymd}T${start}00/${ymd}T${end}00`;
+  } else {
+    const d = new Date(date + 'T00:00:00');
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    const nextYmd = `${next.getFullYear()}${pad2(next.getMonth() + 1)}${pad2(next.getDate())}`;
+    dates = `${ymd}/${nextYmd}`;
+  }
+  const params = new URLSearchParams({
+    action: 'TEMPLATE', text: text || '', dates,
+    details: note || '', location: location || '', ctz: 'Asia/Bangkok',
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 const BULLET_TYPES = [
   { id: 'task',    label: 'งาน',     symbol: '·' },
   { id: 'event',   label: 'เหตุการณ์', symbol: '○' },
@@ -51,6 +80,8 @@ function AddEntryForm({ date, onSave, onClose }) {
   const [type, setType] = useState('task');
   const [text, setText] = useState('');
   const [tag, setTag] = useState('');
+  const [time, setTime] = useState('');
+  const [location, setLocation] = useState('');
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -58,9 +89,13 @@ function AddEntryForm({ date, onSave, onClose }) {
     if (!text.trim()) return;
     setSaving(true);
     try {
-      await createEntry({ entry_date: date, bullet_type: type, text: text.trim(), tag: tag || null, done: false });
+      await createEntry({
+        entry_date: date, bullet_type: type, text: text.trim(), tag: tag || null, done: false,
+        event_time: type === 'event' && time ? time : null,
+        location: type === 'event' && location.trim() ? location.trim() : null,
+      });
       onSave();
-      setText('');
+      setText(''); setTime(''); setLocation('');
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
 
@@ -85,6 +120,27 @@ function AddEntryForm({ date, onSave, onClose }) {
           </button>
         ))}
       </div>
+
+      {/* Event time + location */}
+      {type === 'event' && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input
+            type="time" value={time} onChange={e => setTime(e.target.value)}
+            style={{
+              background: 'transparent', border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)',
+              padding: '4px 8px', fontSize: 12, fontFamily: 'var(--f-mono)', color: 'var(--paper-ink)',
+            }}
+          />
+          <input
+            type="text" value={location} onChange={e => setLocation(e.target.value)}
+            placeholder="สถานที่ (ถ้ามี)"
+            style={{
+              flex: 1, background: 'transparent', border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)',
+              padding: '4px 8px', fontSize: 12, fontFamily: 'var(--f-display)', color: 'var(--paper-ink)',
+            }}
+          />
+        </div>
+      )}
 
       {/* Text */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
@@ -161,6 +217,82 @@ function HabitModal({ onSave, onClose }) {
   );
 }
 
+// ── Entry Details (note + event time/location + Google Calendar) ───────────────
+function EntryDetails({ entry, date, onUpdate }) {
+  const [note, setNote] = useState(entry.note || '');
+  const [time, setTime] = useState(entry.event_time ? entry.event_time.slice(0, 5) : '');
+  const [endTime, setEndTime] = useState(entry.event_end_time ? entry.event_end_time.slice(0, 5) : '');
+  const [location, setLocation] = useState(entry.location || '');
+
+  useEffect(() => {
+    setNote(entry.note || '');
+    setTime(entry.event_time ? entry.event_time.slice(0, 5) : '');
+    setEndTime(entry.event_end_time ? entry.event_end_time.slice(0, 5) : '');
+    setLocation(entry.location || '');
+  }, [entry.id, entry.note, entry.event_time, entry.event_end_time, entry.location]);
+
+  const isEvent = entry.bullet_type === 'event';
+  const fieldStyle = {
+    fontFamily: 'var(--f-mono)', fontSize: 12, padding: '4px 8px',
+    border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)',
+    background: 'rgba(255,255,255,0.4)', color: 'var(--paper-ink)', outline: 'none',
+  };
+  const labelStyle = {
+    display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10,
+    letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8a7060', fontFamily: 'var(--f-mono)',
+  };
+
+  return (
+    <div style={{ padding: '8px 0 14px 32px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {isEvent && (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <label style={labelStyle}>
+            <span>เวลาเริ่ม</span>
+            <input type="time" value={time} style={fieldStyle}
+              onChange={e => setTime(e.target.value)}
+              onBlur={() => onUpdate(entry.id, { event_time: time || null })} />
+          </label>
+          <label style={labelStyle}>
+            <span>เวลาจบ</span>
+            <input type="time" value={endTime} style={fieldStyle}
+              onChange={e => setEndTime(e.target.value)}
+              onBlur={() => onUpdate(entry.id, { event_end_time: endTime || null })} />
+          </label>
+          <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
+            <span>สถานที่</span>
+            <input type="text" value={location} placeholder="ที่ไหน?" style={fieldStyle}
+              onChange={e => setLocation(e.target.value)}
+              onBlur={() => onUpdate(entry.id, { location: location.trim() || null })} />
+          </label>
+        </div>
+      )}
+      <textarea
+        value={note} rows={3} placeholder="รายละเอียดเพิ่มเติม..."
+        onChange={e => setNote(e.target.value)}
+        onBlur={() => onUpdate(entry.id, { note: note.trim() || null })}
+        style={{
+          fontFamily: 'var(--f-body)', fontSize: 13, padding: '8px 10px', resize: 'vertical',
+          border: '1px solid rgba(90,70,50,0.25)', borderRadius: 'var(--r-sm)',
+          background: 'rgba(255,255,255,0.35)', color: 'var(--paper-ink)', outline: 'none',
+        }}
+      />
+      {isEvent && (
+        <a href={buildGCalUrl({ text: entry.text, note, location, event_time: time, event_end_time: endTime }, date)}
+          target="_blank" rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+            fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
+            color: 'var(--amber-deep)', textDecoration: 'none',
+            border: '1px solid rgba(138,100,56,0.35)', borderRadius: 'var(--r-sm)',
+            padding: '5px 10px', background: 'rgba(138,100,56,0.08)',
+          }}>
+          <Icon name="calendar" size={13} /> เพิ่มลง Google Calendar
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function Journal() {
   const [date, setDate] = useState(todayStr());
@@ -172,6 +304,7 @@ export function Journal() {
   const [loading, setLoading] = useState(true);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showHabitModal, setShowHabitModal] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -197,6 +330,11 @@ export function Journal() {
     if (!confirm('ลบรายการนี้?')) return;
     await deleteEntry(id);
     setEntries(prev => prev.filter(e => e.id !== id));
+  };
+
+  const handleEntryUpdate = async (id, patch) => {
+    const updated = await updateEntry(id, patch);
+    setEntries(prev => prev.map(e => e.id === id ? updated : e));
   };
 
   const handleMood = async (value) => {
@@ -301,26 +439,41 @@ export function Journal() {
               </div>
             ) : (
               <div style={{ marginTop: showAddEntry ? 8 : 0 }}>
-                {entries.map(entry => (
-                  <div key={entry.id} className={`bujo-line ${entry.done ? 'bujo-line--done' : ''}`}
-                    style={{ cursor: 'pointer' }}
-                    onDoubleClick={() => entry.bullet_type === 'task' && handleToggle(entry.id, entry.done)}>
-                    <span className={`bujo-line__bullet bujo-line__bullet--${entry.done ? 'done' : entry.bullet_type}`} />
-                    <span className="bujo-line__text">{entry.text}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {entry.tag && <span className="bujo-line__tag">{entry.tag}</span>}
-                      {entry.bullet_type === 'task' && (
-                        <button onClick={() => handleToggle(entry.id, entry.done)}
-                          title={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}
-                          style={{ opacity: 0.5, fontSize: 12, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>
-                          {entry.done ? '↩' : '✓'}
-                        </button>
-                      )}
-                      <button onClick={() => handleDelete(entry.id)}
-                        style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                {entries.map(entry => {
+                  const isExpanded = expandedId === entry.id;
+                  const hasDetails = !!(entry.note || entry.location || entry.event_time);
+                  return (
+                    <div key={entry.id}>
+                      <div className={`bujo-line ${entry.done ? 'bujo-line--done' : ''}`}
+                        style={{ cursor: 'pointer' }}
+                        onDoubleClick={() => entry.bullet_type === 'task' && handleToggle(entry.id, entry.done)}>
+                        <span className={`bujo-line__bullet bujo-line__bullet--${entry.done ? 'done' : entry.bullet_type}`} />
+                        <span className="bujo-line__text">{entry.text}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {entry.event_time && <span className="bujo-line__tag">{entry.event_time.slice(0, 5)}</span>}
+                          {entry.tag && <span className="bujo-line__tag">{entry.tag}</span>}
+                          {entry.bullet_type === 'task' && (
+                            <button onClick={() => handleToggle(entry.id, entry.done)}
+                              title={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}
+                              style={{ opacity: 0.5, fontSize: 12, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>
+                              {entry.done ? '↩' : '✓'}
+                            </button>
+                          )}
+                          <button onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                            title="รายละเอียด"
+                            style={{ opacity: hasDetails ? 0.8 : 0.35, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex' }}>
+                            <span style={{ display: 'inline-flex', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}>
+                              <Icon name="chevron" size={12} />
+                            </span>
+                          </button>
+                          <button onClick={() => handleDelete(entry.id)}
+                            style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                        </div>
+                      </div>
+                      {isExpanded && <EntryDetails entry={entry} date={date} onUpdate={handleEntryUpdate} />}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {!showAddEntry && (
                   <button onClick={() => setShowAddEntry(true)}

@@ -60,6 +60,18 @@ export async function toggleEntry(id, done) {
   return data;
 }
 
+export async function updateEntry(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteEntry(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('journal_entries').delete().eq('id', id);

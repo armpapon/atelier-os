@@ -3,10 +3,21 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v1.2',
+    date: '2026-06-15',
+    title: 'Journal · โน้ตละเอียด + นัด + เพิ่มลง Google Calendar',
+    badge: 'Current',
+    changes: [
+      '📝 แต่ละรายการใน Journal เปิดดูรายละเอียด/โน้ตยาวๆ ได้ — กดไอคอน ▸ ข้างรายการ',
+      '🕐 รายการประเภท "เหตุการณ์" ใส่เวลาเริ่ม/จบ + สถานที่ได้',
+      '📅 ปุ่ม "เพิ่มลง Google Calendar" — เปิดหน้า Google Calendar แบบกรอกข้อมูลให้พร้อม (ไม่ต้อง login เชื่อมต่อ)',
+      '⚠️ ต้องรัน SQL: supabase/migration_add_journal_details.sql',
+    ],
+  },
+  {
     version: 'v1.1',
     date: '2026-06-08',
     title: 'Learning · ยกเครื่องระบบอ่านหนังสือเป็น Reading Companion',
-    badge: 'Current',
     changes: [
       '🐛 FIX: กรอก session แล้วไม่อัพเดท — ถ้าหนังสือยังไม่ตั้งจำนวนหน้า ระบบจะถามก่อน + การ์ดเลิกค้าง "ยังไม่เริ่ม" ทันทีที่บันทึก session แรก',
       '💎 Insights Bank — เก็บ "ข้อคิด / Quote / สิ่งที่จะลงมือทำ" ถาวรต่อเล่ม · action item ติ๊กเสร็จได้',
