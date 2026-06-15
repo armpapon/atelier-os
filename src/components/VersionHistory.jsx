@@ -3,10 +3,19 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v1.3',
+    date: '2026-06-15',
+    title: 'Journal · การ์ด "นัดที่จะถึง" สรุปนัด 7 วันข้างหน้า',
+    badge: 'Current',
+    changes: [
+      '🗓️ การ์ดใหม่ในหน้า Journal — รวมรายการ "เหตุการณ์" ที่มีเวลาในช่วง 7 วันข้างหน้า',
+      'กดที่นัดเพื่อกระโดดไปยังวันนั้นในหน้า Journal ทันที',
+    ],
+  },
+  {
     version: 'v1.2',
     date: '2026-06-15',
     title: 'Journal · โน้ตละเอียด + นัด + เพิ่มลง Google Calendar',
-    badge: 'Current',
     changes: [
       '📝 แต่ละรายการใน Journal เปิดดูรายละเอียด/โน้ตยาวๆ ได้ — กดไอคอน ▸ ข้างรายการ',
       '🕐 รายการประเภท "เหตุการณ์" ใส่เวลาเริ่ม/จบ + สถานที่ได้',

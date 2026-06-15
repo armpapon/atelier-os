@@ -35,6 +35,27 @@ export async function listRecentDates(limit = 14) {
   return dates;
 }
 
+export async function listUpcomingEvents({ days = 7, limit = 10 } = {}) {
+  if (!supabase) return [];
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const end = new Date(today);
+  end.setDate(end.getDate() + days);
+  const endStr = end.toISOString().split('T')[0];
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('*')
+    .eq('bullet_type', 'event')
+    .not('event_time', 'is', null)
+    .gte('entry_date', todayStr)
+    .lte('entry_date', endStr)
+    .order('entry_date', { ascending: true })
+    .order('event_time', { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function createEntry(input) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import {
-  listEntries, listRecentDates, createEntry, toggleEntry, updateEntry, deleteEntry,
+  listEntries, listRecentDates, listUpcomingEvents, createEntry, toggleEntry, updateEntry, deleteEntry,
   getMoodForDate, upsertMood,
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
@@ -26,6 +26,15 @@ function formatDateShort(dateStr) {
 function weekday(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('th-TH', { weekday: 'short' });
+}
+
+function relativeDayLabel(dateStr) {
+  const diffDays = Math.round(
+    (new Date(dateStr + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000
+  );
+  if (diffDays === 0) return 'วันนี้';
+  if (diffDays === 1) return 'พรุ่งนี้';
+  return `${formatDateShort(dateStr)} · ${weekday(dateStr)}`;
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -301,6 +310,7 @@ export function Journal() {
   const [mood, setMood] = useState(null);
   const [habits, setHabits] = useState([]);
   const [habitLogs, setHabitLogs] = useState([]);
+  const [upcoming, setUpcoming] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showHabitModal, setShowHabitModal] = useState(false);
@@ -308,14 +318,15 @@ export function Journal() {
 
   const refresh = useCallback(async () => {
     try {
-      const [e, rd, m, h, hl] = await Promise.all([
+      const [e, rd, m, h, hl, up] = await Promise.all([
         listEntries({ date }),
         listRecentDates(14),
         getMoodForDate(date),
         listHabits(),
         getHabitLogsForDate(date),
+        listUpcomingEvents(),
       ]);
-      setEntries(e); setRecentDates(rd); setMood(m); setHabits(h); setHabitLogs(hl);
+      setEntries(e); setRecentDates(rd); setMood(m); setHabits(h); setHabitLogs(hl); setUpcoming(up);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [date]);
 
@@ -487,6 +498,39 @@ export function Journal() {
 
           {/* Right: side panels */}
           <div className="bujo-side">
+            {/* Upcoming events */}
+            <div className="card">
+              <div className="card__head">
+                <div className="card__title">นัดที่จะถึง</div>
+              </div>
+              {upcoming.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>
+                  ไม่มีนัดใน 7 วันข้างหน้า
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {upcoming.map(ev => (
+                    <button key={ev.id} onClick={() => setDate(ev.entry_date)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'left',
+                        padding: '8px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                        border: `1px solid ${ev.entry_date === date ? 'var(--amber)' : 'var(--line)'}`,
+                        background: 'var(--surface-2)',
+                      }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                        <span>{relativeDayLabel(ev.entry_date)}</span>
+                        <span>{ev.event_time.slice(0, 5)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--ink)' }}>{ev.text}</div>
+                      {ev.location && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>📍 {ev.location}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Mood */}
             <div className="card">
               <div className="card__head">
