@@ -25,6 +25,7 @@ export function Icon({ name, size = 16 }) {
     case 'calendar':   return <svg {...props}><rect x="4" y="5" width="16" height="16" rx="1"/><path d="M4 9h16M8 3v4M16 3v4"/></svg>;
     case 'mood':       return <svg {...props}><circle cx="12" cy="12" r="9"/><path d="M9 10h.01M15 10h.01M8 15c1 1.3 2.4 2 4 2s3-.7 4-2"/></svg>;
     case 'tweak':      return <svg {...props}><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M1 12h6M17 12h6M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/></svg>;
+    case 'hourglass':  return <svg {...props}><path d="M6 3h12M6 21h12M8 3v3.5l4 4 4-4V3M8 21v-3.5l4-4 4 4V21"/></svg>;
     default: return null;
   }
 }

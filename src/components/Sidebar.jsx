@@ -22,6 +22,7 @@ export function Sidebar({ active, onChange, user }) {
     ]},
     { group: 'ชีวิต', children: [
       { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },
+      { id: 'life-calendar', label: 'Life Calendar', icon: 'hourglass', badge: null },
       { id: 'goals',  label: 'เป้าหมาย & OKR', icon: 'target', badge: 'Soon' },
       { id: 'brain',  label: 'Second Brain',   icon: 'brain',  badge: null   },
     ]},
