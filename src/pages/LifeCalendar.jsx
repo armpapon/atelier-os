@@ -5,10 +5,28 @@ import { EmptyState } from '../components/ui/index.js';
 
 const LS_BIRTH = 'loop:life-birthdate';
 const LS_SPAN  = 'loop:life-lifespan';
+const LS_MILESTONES = 'loop:life-milestones';
 
 const MS_DAY  = 86400000;
 const MS_WEEK = 7 * MS_DAY;
 const MS_YEAR = 365.2425 * MS_DAY;
+
+const MILESTONE_EMOJIS = ['⭐', '🎓', '💍', '👶', '🏠', '✈️', '💼', '🎉', '❤️', '📖', '🚀', '🌱'];
+
+function loadMilestones() {
+  try { return JSON.parse(localStorage.getItem(LS_MILESTONES) || '[]'); }
+  catch { return []; }
+}
+
+// Index of the cell a given date falls into, for the active grid mode.
+function milestoneIndex(dateStr, birthMs, mode) {
+  const t = new Date(dateStr + 'T00:00:00').getTime();
+  if (isNaN(t) || t < birthMs) return -1;
+  if (mode === 'weeks') return Math.floor((t - birthMs) / MS_WEEK);
+  if (mode === 'years') return Math.floor((t - birthMs) / MS_YEAR);
+  const b = new Date(birthMs), d = new Date(t);
+  return (d.getFullYear() - b.getFullYear()) * 12 + (d.getMonth() - b.getMonth()) - (d.getDate() < b.getDate() ? 1 : 0);
+}
 
 const QUOTES = [
   'เวลาที่ผ่านไปไม่ย้อนกลับ — ใช้สัปดาห์นี้ให้คุ้ม',
@@ -60,6 +78,47 @@ function SetupCard({ initialBirth, initialSpan, onSave, onCancel }) {
   );
 }
 
+// ── Milestone form ────────────────────────────────────────────────────────────
+function MilestoneForm({ maxDate, onAdd, onClose }) {
+  const [emoji, setEmoji] = useState('⭐');
+  const [label, setLabel] = useState('');
+  const [date, setDate]   = useState('');
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!label.trim() || !date) return;
+    onAdd({ id: Date.now().toString(36), emoji, label: label.trim(), date });
+    onClose();
+  };
+
+  return (
+    <form onSubmit={submit} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 }}>
+      <div className="card__title" style={{ fontSize: 15 }}>เพิ่มเหตุการณ์สำคัญ</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {MILESTONE_EMOJIS.map(em => (
+          <button key={em} type="button" onClick={() => setEmoji(em)}
+            style={{
+              fontSize: 18, width: 38, height: 38, borderRadius: 'var(--r-sm)', cursor: 'pointer',
+              border: `1px solid ${emoji === em ? 'var(--accent)' : 'var(--line)'}`,
+              background: emoji === em ? 'var(--accent-soft)' : 'transparent',
+            }}>{em}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <input className="input" value={label} onChange={e => setLabel(e.target.value)}
+          placeholder="เช่น เรียนจบ, แต่งงาน, เปิดบริษัท, เกษียณ" autoFocus required style={{ flex: 2, minWidth: 200 }} />
+        <input type="date" className="input" value={date} max={maxDate}
+          onChange={e => setDate(e.target.value)} required style={{ flex: 1, minWidth: 150 }} />
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>ใส่ได้ทั้งวันในอดีตและอนาคต (เป้าหมายที่อยากไปถึง)</div>
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>ยกเลิก</button>
+        <button type="submit" className="btn btn--primary">เพิ่ม</button>
+      </div>
+    </form>
+  );
+}
+
 // ── Stat ────────────────────────────────────────────────────────────────────
 function Stat({ label, value, sub, tone }) {
   return (
@@ -72,7 +131,7 @@ function Stat({ label, value, sub, tone }) {
 }
 
 // ── Life grid ─────────────────────────────────────────────────────────────────
-function LifeGrid({ mode, lifespan, lived }) {
+function LifeGrid({ mode, lifespan, lived, markers }) {
   const m = MODES.find(x => x.id === mode);
   const total = mode === 'years' ? lifespan : lifespan * m.cols;
   const rows = Math.ceil(total / m.cols);
@@ -92,13 +151,15 @@ function LifeGrid({ mode, lifespan, lived }) {
         if (idx >= total) break;
         const isLived   = idx < livedCount;
         const isCurrent = idx === livedCount;
+        const ms = markers && markers.get(idx);
+        const title = ms ? ms.map(x => `${x.emoji} ${x.label}`).join(' · ') : (mode === 'years' ? `ปีที่ ${idx + 1}` : undefined);
         cells.push(
-          <div key={c} title={mode === 'years' ? `ปีที่ ${idx + 1}` : undefined}
+          <div key={c} title={title}
             style={{
               width: m.cell, height: m.cell, borderRadius: mode === 'years' ? 4 : 2,
-              background: isLived ? 'var(--accent)' : (isCurrent ? 'var(--amber)' : 'transparent'),
-              border: isLived ? 'none' : `1px solid ${isCurrent ? 'var(--amber-deep)' : 'var(--line-2)'}`,
-              boxShadow: isCurrent ? '0 0 0 2px var(--amber-deep)' : 'none',
+              background: ms ? 'var(--rose)' : (isLived ? 'var(--accent)' : (isCurrent ? 'var(--amber)' : 'transparent')),
+              border: (isLived || ms) ? 'none' : `1px solid ${isCurrent ? 'var(--amber-deep)' : 'var(--line-2)'}`,
+              boxShadow: ms ? '0 0 0 2px var(--rose)' : (isCurrent ? '0 0 0 2px var(--amber-deep)' : 'none'),
               flexShrink: 0,
             }} />
         );
@@ -113,7 +174,7 @@ function LifeGrid({ mode, lifespan, lived }) {
       );
     }
     return out;
-  }, [mode, lifespan, livedCount, total, rows, m.cols, m.cell, m.gap]);
+  }, [mode, lifespan, livedCount, total, rows, m.cols, m.cell, m.gap, markers]);
 
   return (
     <div className="card" style={{ overflowX: 'auto' }}>
@@ -131,6 +192,9 @@ function LifeGrid({ mode, lifespan, lived }) {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 11, height: 11, borderRadius: 2, border: '1px solid var(--line-2)' }} /> ยังมาไม่ถึง
         </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 11, height: 11, borderRadius: 2, background: 'var(--rose)' }} /> เหตุการณ์สำคัญ
+        </span>
       </div>
     </div>
   );
@@ -142,12 +206,21 @@ export function LifeCalendar() {
   const [lifespan, setLifespan] = useState(() => Number(localStorage.getItem(LS_SPAN)) || 80);
   const [mode, setMode] = useState('weeks');
   const [editing, setEditing] = useState(false);
+  const [milestones, setMilestones] = useState(loadMilestones);
+  const [addingMs, setAddingMs] = useState(false);
 
   const save = ({ birth: b, span }) => {
     localStorage.setItem(LS_BIRTH, b);
     localStorage.setItem(LS_SPAN, String(span));
     setBirth(b); setLifespan(span); setEditing(false);
   };
+
+  const persistMilestones = (next) => {
+    localStorage.setItem(LS_MILESTONES, JSON.stringify(next));
+    setMilestones(next);
+  };
+  const addMilestone = (ms) => persistMilestones([...milestones, ms]);
+  const removeMilestone = (id) => persistMilestones(milestones.filter(x => x.id !== id));
 
   const stats = useMemo(() => {
     if (!birth) return null;
@@ -170,6 +243,26 @@ export function LifeCalendar() {
   const livedForMode = stats
     ? (mode === 'weeks' ? stats.weeksLived : mode === 'months' ? stats.monthsLived : stats.yearsLived)
     : 0;
+
+  // Map cell-index → milestones for the active mode (for grid markers).
+  const markerMap = useMemo(() => {
+    const map = new Map();
+    if (!birth) return map;
+    const birthMs = new Date(birth + 'T00:00:00').getTime();
+    for (const ms of milestones) {
+      const idx = milestoneIndex(ms.date, birthMs, mode);
+      if (idx < 0) continue;
+      const cur = map.get(idx) || [];
+      cur.push(ms);
+      map.set(idx, cur);
+    }
+    return map;
+  }, [milestones, birth, mode]);
+
+  const sortedMilestones = useMemo(
+    () => [...milestones].sort((a, b) => a.date.localeCompare(b.date)),
+    [milestones]
+  );
 
   const quote = QUOTES[(stats?.weeksLived || 0) % QUOTES.length];
 
@@ -240,7 +333,63 @@ export function LifeCalendar() {
               </span>
             </div>
 
-            <LifeGrid mode={mode} lifespan={lifespan} lived={livedForMode} />
+            <LifeGrid mode={mode} lifespan={lifespan} lived={livedForMode} markers={markerMap} />
+
+            {/* Milestones */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div className="card__title">เหตุการณ์สำคัญในชีวิต</div>
+                {!addingMs && (
+                  <button className="btn btn--ghost btn--sm" onClick={() => setAddingMs(true)}>
+                    <Icon name="plus" size={13} /> เพิ่มเหตุการณ์
+                  </button>
+                )}
+              </div>
+
+              {addingMs && (
+                <MilestoneForm onAdd={addMilestone} onClose={() => setAddingMs(false)} />
+              )}
+
+              {sortedMilestones.length === 0 ? (
+                !addingMs && (
+                  <div style={{ fontSize: 13, color: 'var(--ink-4)', fontStyle: 'italic' }}>
+                    ยังไม่มีเหตุการณ์ — มาร์กช่วงสำคัญ เช่น วันเรียนจบ วันแต่งงาน หรือเป้าหมายในอนาคต แล้วมันจะไปปรากฏบนกริด
+                  </div>
+                )
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {sortedMilestones.map(ms => {
+                    const birthMs = new Date(birth + 'T00:00:00').getTime();
+                    const ageAt = (new Date(ms.date + 'T00:00:00').getTime() - birthMs) / MS_YEAR;
+                    const yearsFromNow = (new Date(ms.date + 'T00:00:00').getTime() - Date.now()) / MS_YEAR;
+                    const future = yearsFromNow > 0;
+                    return (
+                      <div key={ms.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                        borderRadius: 'var(--r-md)', border: '1px solid var(--line)',
+                        background: future ? 'var(--surface)' : 'var(--surface-2)',
+                      }}>
+                        <span style={{ fontSize: 20 }}>{ms.emoji}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontFamily: 'var(--f-display)', fontSize: 14.5, color: 'var(--ink)' }}>{ms.label}</div>
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>
+                            {new Date(ms.date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {ageAt >= 0 && ` · อายุ ${ageAt.toFixed(0)} ปี`}
+                          </div>
+                        </div>
+                        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: future ? 'var(--accent-strong)' : 'var(--ink-4)' }}>
+                          {future ? `อีก ${Math.max(1, Math.round(yearsFromNow * 10) / 10)} ปี` : `ผ่านมา ${Math.round(Math.abs(yearsFromNow))} ปี`}
+                        </span>
+                        <button onClick={() => removeMilestone(ms.id)} title="ลบ"
+                          style={{ color: 'var(--ink-4)', fontSize: 16, padding: '2px 4px', cursor: 'pointer' }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--danger)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--ink-4)'}>×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
