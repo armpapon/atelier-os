@@ -6,6 +6,7 @@ import {
   listNotes, listAllTags, listBacklinks, parseWikiLinks,
   createNote, updateNote, deleteNote,
 } from '../lib/api/notes.js';
+import { NOTE_TEMPLATES, fillTemplateTokens } from '../lib/noteTemplates.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatStamp(ts) {
@@ -245,6 +246,46 @@ function NoteEditor({ note, titleIndex, onPatch, onDelete, onOpenTitle, backlink
   );
 }
 
+// ── Template picker ───────────────────────────────────────────────────────────
+function TemplatePicker({ onPick, onClose }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />
+      <div style={{
+        position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
+        borderRadius: 'var(--r-xl)', padding: 28, width: 560, maxWidth: '100%',
+        maxHeight: '85vh', overflowY: 'auto', boxShadow: 'var(--shadow-pop)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18 }}>
+          <div>
+            <div className="card__label" style={{ marginBottom: 4 }}>เริ่มโน้ตใหม่</div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 500 }}>เลือกเทมเพลต</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 20, color: 'var(--ink-4)', cursor: 'pointer', padding: 4 }}>×</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {NOTE_TEMPLATES.map(t => (
+            <button key={t.id} onClick={() => onPick(t)}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 11, textAlign: 'left',
+                padding: '13px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                border: '1px solid var(--line)', background: 'var(--surface)', transition: 'all 120ms',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent-soft)'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--line)'; }}>
+              <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{t.emoji}</span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={{ fontFamily: 'var(--f-display)', fontSize: 14.5, fontWeight: 500, color: 'var(--ink)' }}>{t.name}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{t.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 export function SecondBrain() {
   const [notes, setNotes] = useState([]);
@@ -255,6 +296,7 @@ export function SecondBrain() {
   const [selectedId, setSelectedId] = useState(null);
   const [backlinks, setBacklinks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const selected = notes.find(n => n.id === selectedId) || null;
 
@@ -296,11 +338,15 @@ export function SecondBrain() {
     if (patch.title || patch.tags) refresh();
   };
 
-  const handleNew = async () => {
-    const note = await createNote({ title: 'ไม่มีชื่อ', body: '' });
+  const handlePickTemplate = async (tmpl) => {
+    setShowTemplates(false);
+    const title = fillTemplateTokens(tmpl.title) || 'ไม่มีชื่อ';
+    const body  = fillTemplateTokens(tmpl.body) || '';
+    const note = await createNote({ title, body, tags: tmpl.tags || [] });
     setNotes(prev => [note, ...prev]);
     setSelectedId(note.id);
     setTitleIndex(prev => new Map(prev).set(note.title.toLowerCase(), note.id));
+    if (tmpl.tags?.length) refresh();
   };
 
   const handleDelete = async (id) => {
@@ -338,7 +384,7 @@ export function SecondBrain() {
           <div className="page-header__meta-big">{notes.length}</div>
         </>}
         actions={
-          <button className="btn btn--primary" onClick={handleNew}>
+          <button className="btn btn--primary" onClick={() => setShowTemplates(true)}>
             <Icon name="plus" size={14} /> โน้ตใหม่
           </button>
         }
@@ -355,7 +401,7 @@ export function SecondBrain() {
             title="เริ่มต้น Second Brain ของคุณ"
             description="จดทุกอย่างที่อยากจำ ความคิด ไอเดีย บทเรียน แล้วเชื่อมโยงกันด้วย [[ลิงก์]] — ค้นเจอได้เสมอ"
             actionLabel="+ สร้างโน้ตแรก"
-            onAction={handleNew}
+            onAction={() => setShowTemplates(true)}
           />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }}>
@@ -429,6 +475,10 @@ export function SecondBrain() {
           </div>
         )}
       </div>
+
+      {showTemplates && (
+        <TemplatePicker onPick={handlePickTemplate} onClose={() => setShowTemplates(false)} />
+      )}
     </>
   );
 }
