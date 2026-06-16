@@ -126,6 +126,11 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
     return scored.slice(0, 6).map(s => s.t);
   }, [linkCtx, allTitles, note.title]);
 
+  // Offer a "create new note" row when the typed query isn't an existing title.
+  const linkQuery = linkCtx?.query.trim() || '';
+  const showCreate = !!linkQuery && !(allTitles || []).some(t => t.toLowerCase() === linkQuery.toLowerCase());
+  const optionCount = suggestions.length + (showCreate ? 1 : 0);
+
   // Detect whether the caret sits inside an unclosed [[ … and refresh the dropdown.
   const refreshLinkCtx = (el) => {
     const val = el.value;
@@ -196,11 +201,17 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
     });
   };
 
+  // The create row (if shown) sits at index === suggestions.length.
+  const chooseAt = (idx) => {
+    if (idx < suggestions.length) selectSuggestion(suggestions[idx]);
+    else if (showCreate) selectSuggestion(linkQuery);
+  };
+
   const handleBodyKeyDown = (e) => {
-    if (linkCtx != null && suggestions.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => (i + 1) % suggestions.length); return; }
-      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => (i - 1 + suggestions.length) % suggestions.length); return; }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectSuggestion(suggestions[activeIdx]); return; }
+    if (linkCtx != null && optionCount > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => (i + 1) % optionCount); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => (i - 1 + optionCount) % optionCount); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); chooseAt(activeIdx); return; }
       if (e.key === 'Escape')    { e.preventDefault(); setLinkCtx(null); return; }
     }
   };
@@ -283,7 +294,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
         />
 
         {/* [[link]] autocomplete dropdown */}
-        {linkCtx != null && suggestions.length > 0 && (
+        {linkCtx != null && optionCount > 0 && (
           <div style={{
             position: 'absolute', zIndex: 20,
             top: (linkCtx.xy.top - (bodyRef.current?.scrollTop || 0) + linkCtx.xy.height + 2),
@@ -306,6 +317,23 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t}</span>
               </button>
             ))}
+            {showCreate && (
+              <button
+                onMouseDown={e => { e.preventDefault(); selectSuggestion(linkQuery); }}
+                onMouseEnter={() => setActiveIdx(suggestions.length)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
+                  padding: '7px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                  background: activeIdx === suggestions.length ? 'var(--accent-soft)' : 'transparent',
+                  color: 'var(--accent-strong)', fontSize: 13.5,
+                  borderTop: suggestions.length ? '1px solid var(--line)' : 'none',
+                }}>
+                <span style={{ fontSize: 13 }}>➕</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  สร้างลิงก์ "{linkQuery}"
+                </span>
+              </button>
+            )}
             <div style={{ padding: '4px 10px 2px', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', letterSpacing: '0.04em' }}>
               ↑↓ เลือก · Enter ยืนยัน · Esc ปิด
             </div>
