@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import {
-  listEntries, listRecentDates, listUpcomingEvents, createEntry, toggleEntry, updateEntry, deleteEntry,
+  listEntries, listRecentDates, listUpcomingEvents, listEntriesInRange,
+  createEntry, toggleEntry, updateEntry, deleteEntry,
   getMoodForDate, upsertMood,
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
@@ -35,6 +36,73 @@ function relativeDayLabel(dateStr) {
   if (diffDays === 0) return 'วันนี้';
   if (diffDays === 1) return 'พรุ่งนี้';
   return `${formatDateShort(dateStr)} · ${weekday(dateStr)}`;
+}
+
+function pad2cal(n) { return String(n).padStart(2, '0'); }
+function ymd(y, m, d) { return `${y}-${pad2cal(m + 1)}-${pad2cal(d)}`; }
+
+const CAL_WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+// ── Mini month calendar ─────────────────────────────────────────────────────
+function MiniCalendar({ monthDate, selected, activity, onPick, onPrev, onNext }) {
+  const y = monthDate.getFullYear();
+  const m = monthDate.getMonth();
+  const today = todayStr();
+  const firstWeekday = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const monthLabel = monthDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="card">
+      <div className="card__head" style={{ marginBottom: 10 }}>
+        <button onClick={onPrev} aria-label="เดือนก่อน"
+          style={{ color: 'var(--ink-3)', fontSize: 16, padding: '2px 8px', cursor: 'pointer' }}>‹</button>
+        <div className="card__title" style={{ fontSize: 14 }}>{monthLabel}</div>
+        <button onClick={onNext} aria-label="เดือนถัดไป"
+          style={{ color: 'var(--ink-3)', fontSize: 16, padding: '2px 8px', cursor: 'pointer' }}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
+        {CAL_WEEKDAYS.map((w, i) => (
+          <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', padding: '2px 0' }}>{w}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+        {cells.map((d, i) => {
+          if (d == null) return <div key={i} />;
+          const ds = ymd(y, m, d);
+          const act = activity.get(ds);
+          const isSel = ds === selected;
+          const isToday = ds === today;
+          return (
+            <button key={i} onClick={() => onPick(ds)}
+              style={{
+                position: 'relative', aspectRatio: '1', borderRadius: 'var(--r-sm)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: 'var(--f-mono)', fontSize: 11.5, cursor: 'pointer',
+                background: isSel ? 'var(--amber)' : 'transparent',
+                color: isSel ? '#1a1410' : (isToday ? 'var(--amber-deep)' : 'var(--ink-2)'),
+                fontWeight: isToday || isSel ? 600 : 400,
+                border: isToday && !isSel ? '1px solid var(--amber)' : '1px solid transparent',
+              }}>
+              {d}
+              {act && (
+                <span style={{
+                  position: 'absolute', bottom: 3, left: '50%', transform: 'translateX(-50%)',
+                  width: 4, height: 4, borderRadius: '50%',
+                  background: isSel ? '#1a1410' : (act.hasEvent ? 'var(--amber-deep)' : 'var(--ink-4)'),
+                }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -315,6 +383,8 @@ export function Journal() {
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showHabitModal, setShowHabitModal] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(todayStr() + 'T00:00:00'); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [monthActivity, setMonthActivity] = useState(new Map());
 
   const refresh = useCallback(async () => {
     try {
@@ -331,6 +401,35 @@ export function Journal() {
   }, [date]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Load per-day activity for the visible calendar month (refetch when month
+  // changes, or after the selected date changes so new entries show as dots).
+  const loadMonth = useCallback(async () => {
+    try {
+      const y = calMonth.getFullYear(), mo = calMonth.getMonth();
+      const start = ymd(y, mo, 1);
+      const end = ymd(y, mo, new Date(y, mo + 1, 0).getDate());
+      const rows = await listEntriesInRange({ start, end });
+      const map = new Map();
+      for (const r of rows) {
+        const cur = map.get(r.entry_date) || { count: 0, hasEvent: false };
+        cur.count += 1;
+        if (r.bullet_type === 'event' && r.event_time) cur.hasEvent = true;
+        map.set(r.entry_date, cur);
+      }
+      setMonthActivity(map);
+    } catch (err) { console.error(err); }
+  }, [calMonth, date]);
+
+  useEffect(() => { loadMonth(); }, [loadMonth]);
+
+  // Keep the calendar on the selected date's month when the date jumps months.
+  useEffect(() => {
+    const d = new Date(date + 'T00:00:00');
+    if (d.getFullYear() !== calMonth.getFullYear() || d.getMonth() !== calMonth.getMonth()) {
+      setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+  }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggle = async (id, done) => {
     await toggleEntry(id, !done);
@@ -498,6 +597,16 @@ export function Journal() {
 
           {/* Right: side panels */}
           <div className="bujo-side">
+            {/* Mini calendar */}
+            <MiniCalendar
+              monthDate={calMonth}
+              selected={date}
+              activity={monthActivity}
+              onPick={setDate}
+              onPrev={() => setCalMonth(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
+              onNext={() => setCalMonth(c => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
+            />
+
             {/* Upcoming events */}
             <div className="card">
               <div className="card__head">

@@ -56,6 +56,18 @@ export async function listUpcomingEvents({ days = 7, limit = 10 } = {}) {
   return data || [];
 }
 
+// Lightweight per-day activity for a date range — feeds the mini calendar.
+export async function listEntriesInRange({ start, end }) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('entry_date, bullet_type, event_time')
+    .gte('entry_date', start)
+    .lte('entry_date', end);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function createEntry(input) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();
