@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { Badge, EmptyState } from '../components/ui/index.js';
@@ -17,6 +17,37 @@ function formatStamp(ts) {
 function snippet(body, n = 90) {
   const clean = (body || '').replace(/\[\[([^\[\]]+)\]\]/g, '$1').replace(/\s+/g, ' ').trim();
   return clean.length > n ? clean.slice(0, n) + '…' : clean;
+}
+
+// Pixel position of the caret (at `position`) inside a textarea, relative to its
+// own padding box — used to anchor the [[link]] autocomplete dropdown. Mirror-div
+// technique: clone the textarea's text styling into a hidden div and measure a span.
+const MIRROR_PROPS = [
+  'boxSizing', 'width', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+  'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+  'fontStyle', 'fontVariant', 'fontWeight', 'fontStretch', 'fontSize', 'lineHeight',
+  'fontFamily', 'textAlign', 'textIndent', 'letterSpacing', 'wordSpacing', 'tabSize',
+];
+function caretCoords(el, position) {
+  const cs = window.getComputedStyle(el);
+  const div = document.createElement('div');
+  div.style.position = 'absolute';
+  div.style.visibility = 'hidden';
+  div.style.whiteSpace = 'pre-wrap';
+  div.style.wordWrap = 'break-word';
+  MIRROR_PROPS.forEach(p => { div.style[p] = cs[p]; });
+  div.textContent = el.value.slice(0, position);
+  const span = document.createElement('span');
+  span.textContent = el.value.slice(position) || '.';
+  div.appendChild(span);
+  document.body.appendChild(div);
+  const coords = {
+    top: span.offsetTop + parseInt(cs.borderTopWidth || '0', 10),
+    left: span.offsetLeft + parseInt(cs.borderLeftWidth || '0', 10),
+    height: parseInt(cs.lineHeight, 10) || 20,
+  };
+  document.body.removeChild(div);
+  return coords;
 }
 
 // ── Note list item ──────────────────────────────────────────────────────────
@@ -58,18 +89,73 @@ function NoteListItem({ note, active, onClick }) {
 }
 
 // ── Note editor ───────────────────────────────────────────────────────────────
-function NoteEditor({ note, titleIndex, onPatch, onDelete, onOpenTitle, backlinks }) {
+function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitle, backlinks }) {
   const [title, setTitle] = useState(note.title || '');
   const [body, setBody]   = useState(note.body || '');
   const [tagInput, setTagInput] = useState('');
   const [savedFlash, setSavedFlash] = useState(false);
   const bodyRef = useRef(null);
 
+  // [[link]] autocomplete
+  const [linkCtx, setLinkCtx] = useState(null); // { query, open, cursor, xy } | null
+  const [activeIdx, setActiveIdx] = useState(0);
+
   useEffect(() => {
     setTitle(note.title || '');
     setBody(note.body || '');
     setTagInput('');
+    setLinkCtx(null);
   }, [note.id]);
+
+  // Titles that match the active [[query]] (excluding this note's own title).
+  const suggestions = useMemo(() => {
+    if (linkCtx == null) return [];
+    const q = linkCtx.query.trim().toLowerCase();
+    const self = (note.title || '').toLowerCase();
+    const pool = (allTitles || []).filter(t => t.toLowerCase() !== self);
+    const scored = pool
+      .map(t => {
+        const lt = t.toLowerCase();
+        if (!q) return { t, rank: 2 };
+        if (lt.startsWith(q)) return { t, rank: 0 };
+        if (lt.includes(q)) return { t, rank: 1 };
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.rank - b.rank || a.t.localeCompare(b.t));
+    return scored.slice(0, 6).map(s => s.t);
+  }, [linkCtx, allTitles, note.title]);
+
+  // Detect whether the caret sits inside an unclosed [[ … and refresh the dropdown.
+  const refreshLinkCtx = (el) => {
+    const val = el.value;
+    const cur = el.selectionStart;
+    const upto = val.slice(0, cur);
+    const open = upto.lastIndexOf('[[');
+    if (open === -1) { setLinkCtx(null); return; }
+    const between = upto.slice(open + 2);
+    if (between.includes(']]') || between.includes('\n')) { setLinkCtx(null); return; }
+    setActiveIdx(0);
+    setLinkCtx({ query: between, open, cursor: cur, xy: caretCoords(el, open) });
+  };
+
+  const selectSuggestion = (chosen) => {
+    if (!chosen || linkCtx == null) return;
+    const { open, cursor } = linkCtx;
+    const after = body.slice(cursor);
+    const hasClose = after.startsWith(']]');
+    const insert = `[[${chosen}]]`;
+    const newBody = body.slice(0, open) + insert + (hasClose ? after.slice(2) : after);
+    setBody(newBody);
+    setLinkCtx(null);
+    onPatch(note.id, { body: newBody });
+    flashSaved();
+    const caret = open + insert.length;
+    requestAnimationFrame(() => {
+      const el = bodyRef.current;
+      if (el) { el.focus(); el.selectionStart = el.selectionEnd = caret; }
+    });
+  };
 
   const flashSaved = () => { setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1200); };
 
@@ -95,15 +181,28 @@ function NoteEditor({ note, titleIndex, onPatch, onDelete, onOpenTitle, backlink
     flashSaved();
   };
 
-  // Insert a [[ ]] template at the cursor in the body.
+  // Insert a [[ ]] template at the cursor and open the autocomplete dropdown.
   const insertLinkTemplate = () => {
     const el = bodyRef.current;
     const pos = el ? el.selectionStart : body.length;
     const next = body.slice(0, pos) + '[[]]' + body.slice(pos);
     setBody(next);
     requestAnimationFrame(() => {
-      if (el) { el.focus(); el.selectionStart = el.selectionEnd = pos + 2; }
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = pos + 2;
+        refreshLinkCtx(el);
+      }
     });
+  };
+
+  const handleBodyKeyDown = (e) => {
+    if (linkCtx != null && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => (i + 1) % suggestions.length); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => (i - 1 + suggestions.length) % suggestions.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectSuggestion(suggestions[activeIdx]); return; }
+      if (e.key === 'Escape')    { e.preventDefault(); setLinkCtx(null); return; }
+    }
   };
 
   const outgoing = parseWikiLinks(body);
@@ -166,7 +265,13 @@ function NoteEditor({ note, titleIndex, onPatch, onDelete, onOpenTitle, backlink
       <div style={{ position: 'relative' }}>
         <textarea
           ref={bodyRef}
-          value={body} onChange={e => setBody(e.target.value)} onBlur={saveBody}
+          value={body}
+          onChange={e => { setBody(e.target.value); refreshLinkCtx(e.target); }}
+          onKeyDown={handleBodyKeyDown}
+          onKeyUp={e => { if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) refreshLinkCtx(e.target); }}
+          onClick={e => refreshLinkCtx(e.target)}
+          onScroll={() => { if (linkCtx) setLinkCtx(null); }}
+          onBlur={() => { saveBody(); setLinkCtx(null); }}
           placeholder="เขียนอะไรก็ได้... พิมพ์ [[ชื่อโน้ต]] เพื่อลิงก์ไปโน้ตอื่น"
           style={{
             width: '100%', minHeight: 320, resize: 'vertical',
@@ -176,6 +281,37 @@ function NoteEditor({ note, titleIndex, onPatch, onDelete, onOpenTitle, backlink
           }}
           onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
         />
+
+        {/* [[link]] autocomplete dropdown */}
+        {linkCtx != null && suggestions.length > 0 && (
+          <div style={{
+            position: 'absolute', zIndex: 20,
+            top: (linkCtx.xy.top - (bodyRef.current?.scrollTop || 0) + linkCtx.xy.height + 2),
+            left: Math.min(linkCtx.xy.left, 260),
+            minWidth: 200, maxWidth: 320,
+            background: 'var(--surface)', border: '1px solid var(--border-strong)',
+            borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-pop)', padding: 4, overflow: 'hidden',
+          }}>
+            {suggestions.map((t, i) => (
+              <button key={t}
+                onMouseDown={e => { e.preventDefault(); selectSuggestion(t); }}
+                onMouseEnter={() => setActiveIdx(i)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
+                  padding: '7px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
+                  background: i === activeIdx ? 'var(--accent-soft)' : 'transparent',
+                  color: i === activeIdx ? 'var(--accent-strong)' : 'var(--ink)', fontSize: 13.5,
+                }}>
+                <span style={{ fontSize: 11 }}>🔗</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t}</span>
+              </button>
+            ))}
+            <div style={{ padding: '4px 10px 2px', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', letterSpacing: '0.04em' }}>
+              ↑↓ เลือก · Enter ยืนยัน · Esc ปิด
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
           <button onClick={insertLinkTemplate}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -309,13 +445,10 @@ export function SecondBrain() {
       setNotes(list);
       setAllTags(tags);
       // Title index for resolving [[wiki links]] (always the full set).
+      // Keyed by lowercase title → { id, title } so we keep the original case.
       const idx = new Map();
-      if (search.trim() || activeTag) {
-        const all = await listNotes({});
-        for (const n of all) idx.set(n.title.toLowerCase(), n.id);
-      } else {
-        for (const n of list) idx.set(n.title.toLowerCase(), n.id);
-      }
+      const source = (search.trim() || activeTag) ? await listNotes({}) : list;
+      for (const n of source) idx.set(n.title.toLowerCase(), { id: n.id, title: n.title });
       setTitleIndex(idx);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [search, activeTag]);
@@ -345,7 +478,7 @@ export function SecondBrain() {
     const note = await createNote({ title, body, tags: tmpl.tags || [] });
     setNotes(prev => [note, ...prev]);
     setSelectedId(note.id);
-    setTitleIndex(prev => new Map(prev).set(note.title.toLowerCase(), note.id));
+    setTitleIndex(prev => new Map(prev).set(note.title.toLowerCase(), { id: note.id, title: note.title }));
     if (tmpl.tags?.length) refresh();
   };
 
@@ -359,7 +492,7 @@ export function SecondBrain() {
 
   // Open an existing note by title, or create one if it doesn't exist yet.
   const handleOpenTitle = async (title) => {
-    const id = titleIndex.get(title.toLowerCase());
+    const id = titleIndex.get(title.toLowerCase())?.id;
     if (id) {
       const inList = notes.find(n => n.id === id);
       if (inList) { setSelectedId(id); return; }
@@ -370,8 +503,10 @@ export function SecondBrain() {
     const note = await createNote({ title, body: '' });
     setNotes(prev => [note, ...prev]);
     setSelectedId(note.id);
-    setTitleIndex(prev => new Map(prev).set(note.title.toLowerCase(), note.id));
+    setTitleIndex(prev => new Map(prev).set(note.title.toLowerCase(), { id: note.id, title: note.title }));
   };
+
+  const allTitles = useMemo(() => [...titleIndex.values()].map(v => v.title), [titleIndex]);
 
   return (
     <>
@@ -459,6 +594,7 @@ export function SecondBrain() {
                   key={selected.id}
                   note={selected}
                   titleIndex={titleIndex}
+                  allTitles={allTitles}
                   backlinks={backlinks}
                   onPatch={handlePatch}
                   onDelete={handleDelete}
