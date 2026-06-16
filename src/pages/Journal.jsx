@@ -614,7 +614,7 @@ export function Journal() {
               </div>
               {upcoming.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>
-                  ไม่มีนัดใน 7 วันข้างหน้า
+                  ไม่มีนัดใน 14 วันข้างหน้า
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

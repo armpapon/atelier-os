@@ -35,7 +35,7 @@ export async function listRecentDates(limit = 14) {
   return dates;
 }
 
-export async function listUpcomingEvents({ days = 7, limit = 10 } = {}) {
+export async function listUpcomingEvents({ days = 14, limit = 10 } = {}) {
   if (!supabase) return [];
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
