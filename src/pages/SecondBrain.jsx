@@ -19,6 +19,11 @@ function snippet(body, n = 90) {
   return clean.length > n ? clean.slice(0, n) + '…' : clean;
 }
 
+const SECTION_LABEL = {
+  fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
+  textTransform: 'uppercase', color: 'var(--ink-4)', padding: '2px 2px',
+};
+
 // Pixel position of the caret (at `position`) inside a textarea, relative to its
 // own padding box — used to anchor the [[link]] autocomplete dropdown. Mirror-div
 // technique: clone the textarea's text styling into a hidden div and measure a span.
@@ -496,7 +501,9 @@ export function SecondBrain() {
   const handlePatch = async (id, patch) => {
     const updated = await updateNote(id, patch);
     setNotes(prev => prev.map(n => n.id === id ? updated : n));
-    if (patch.title || patch.tags) refresh();
+    // Re-sort the list when something that affects ordering/grouping changes:
+    // title (titleIndex), tags (tag rail), or pin state (pinned float to top).
+    if (patch.title || patch.tags || 'pinned' in patch) refresh();
   };
 
   const handlePickTemplate = async (tmpl) => {
@@ -535,6 +542,11 @@ export function SecondBrain() {
   };
 
   const allTitles = useMemo(() => [...titleIndex.values()].map(v => v.title), [titleIndex]);
+
+  // Split for the pinned / recent sections in the list (notes already arrive
+  // pinned-first, recency-sorted from the query).
+  const pinnedNotes = notes.filter(n => n.pinned);
+  const restNotes   = notes.filter(n => !n.pinned);
 
   return (
     <>
@@ -607,6 +619,17 @@ export function SecondBrain() {
                   <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '24px 0', fontSize: 13 }}>
                     ไม่พบโน้ตที่ตรงกับการค้นหา
                   </div>
+                ) : pinnedNotes.length > 0 ? (
+                  <>
+                    <div style={SECTION_LABEL}>📌 ปักหมุด</div>
+                    {pinnedNotes.map(n => (
+                      <NoteListItem key={n.id} note={n} active={n.id === selectedId} onClick={() => setSelectedId(n.id)} />
+                    ))}
+                    {restNotes.length > 0 && <div style={{ ...SECTION_LABEL, marginTop: 8 }}>ล่าสุด</div>}
+                    {restNotes.map(n => (
+                      <NoteListItem key={n.id} note={n} active={n.id === selectedId} onClick={() => setSelectedId(n.id)} />
+                    ))}
+                  </>
                 ) : (
                   notes.map(n => (
                     <NoteListItem key={n.id} note={n} active={n.id === selectedId} onClick={() => setSelectedId(n.id)} />
