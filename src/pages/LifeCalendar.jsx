@@ -36,10 +36,14 @@ const QUOTES = [
 ];
 
 const MODES = [
-  { id: 'weeks',  label: 'สัปดาห์', cols: 52, cell: 10, gap: 3 },
-  { id: 'months', label: 'เดือน',   cols: 12, cell: 17, gap: 5 },
-  { id: 'years',  label: 'ปี',      cols: 10, cell: 26, gap: 6 },
+  // maxCell caps how big a square can grow; cells flex to fill the row up to it.
+  { id: 'weeks',  label: 'สัปดาห์', cols: 52, maxCell: 18, gap: 3 },
+  { id: 'months', label: 'เดือน',   cols: 12, maxCell: 30, gap: 5 },
+  { id: 'years',  label: 'ปี',      cols: 10, maxCell: 38, gap: 6 },
 ];
+
+const LABEL_GUTTER = 22;
+const ROW_GAP = 8;
 
 function fmtInt(n) { return Math.max(0, Math.round(n)).toLocaleString('en-US'); }
 
@@ -156,29 +160,33 @@ function LifeGrid({ mode, lifespan, lived, markers }) {
         cells.push(
           <div key={c} title={title}
             style={{
-              width: m.cell, height: m.cell, borderRadius: mode === 'years' ? 4 : 2,
+              aspectRatio: '1', borderRadius: mode === 'years' ? 4 : 2,
               background: ms ? 'var(--rose)' : (isLived ? 'var(--accent)' : (isCurrent ? 'var(--amber)' : 'transparent')),
               border: (isLived || ms) ? 'none' : `1px solid ${isCurrent ? 'var(--amber-deep)' : 'var(--line-2)'}`,
               boxShadow: ms ? '0 0 0 2px var(--rose)' : (isCurrent ? '0 0 0 2px var(--amber-deep)' : 'none'),
-              flexShrink: 0,
             }} />
         );
       }
       out.push(
-        <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 22, textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', flexShrink: 0 }}>
+        <div key={r} style={{ display: 'flex', alignItems: 'center', gap: ROW_GAP }}>
+          <div style={{ width: LABEL_GUTTER, textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', flexShrink: 0 }}>
             {labelFor(r)}
           </div>
-          <div style={{ display: 'flex', gap: m.gap }}>{cells}</div>
+          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${m.cols}, 1fr)`, gap: m.gap }}>
+            {cells}
+          </div>
         </div>
       );
     }
     return out;
-  }, [mode, lifespan, livedCount, total, rows, m.cols, m.cell, m.gap, markers]);
+  }, [mode, lifespan, livedCount, total, rows, m.cols, m.maxCell, m.gap, markers]);
+
+  // Cap how wide the grid grows so few-column modes don't get giant squares.
+  const maxWidth = LABEL_GUTTER + ROW_GAP + m.cols * m.maxCell + (m.cols - 1) * m.gap;
 
   return (
-    <div className="card" style={{ overflowX: 'auto' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: m.gap, width: 'fit-content' }}>
+    <div className="card">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: m.gap, width: '100%', maxWidth, margin: '0 auto' }}>
         {rowEls}
       </div>
       {/* Legend */}
