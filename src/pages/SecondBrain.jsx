@@ -24,6 +24,12 @@ const SECTION_LABEL = {
   textTransform: 'uppercase', color: 'var(--ink-4)', padding: '2px 2px',
 };
 
+const TOOL_BTN = {
+  display: 'inline-flex', alignItems: 'center', gap: 5,
+  fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-2)', cursor: 'pointer',
+  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 9px',
+};
+
 // Pixel position of the caret (at `position`) inside a textarea, relative to its
 // own padding box — used to anchor the [[link]] autocomplete dropdown. Mirror-div
 // technique: clone the textarea's text styling into a hidden div and measure a span.
@@ -212,12 +218,82 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
     else if (showCreate) selectSuggestion(linkQuery);
   };
 
+  const setBodyAt = (newBody, caret) => {
+    setBody(newBody);
+    requestAnimationFrame(() => {
+      const el = bodyRef.current;
+      if (el) { el.focus(); el.selectionStart = el.selectionEnd = caret; }
+    });
+  };
+
+  // Pressing Enter inside a list line continues it ("- ", "[ ] ", "2." ...);
+  // pressing Enter on an empty item exits the list. Returns true if handled.
+  const continueList = (el) => {
+    if (el.selectionStart !== el.selectionEnd) return false;
+    const pos = el.selectionStart;
+    const lineStart = body.lastIndexOf('\n', pos - 1) + 1;
+    const before = body.slice(lineStart, pos);
+    const mt = before.match(/^(\s*)(\[ \] |\[x\] |- |\d+\. )(.*)$/);
+    if (!mt) return false;
+    const [, indent, marker, content] = mt;
+    if (content.trim() === '') {
+      setBodyAt(body.slice(0, lineStart) + indent + body.slice(pos), lineStart + indent.length);
+      return true;
+    }
+    let next = marker;
+    const num = marker.match(/^(\d+)\. $/);
+    if (num) next = `${Number(num[1]) + 1}. `;
+    else if (marker === '[x] ') next = '[ ] ';
+    const insert = '\n' + indent + next;
+    setBodyAt(body.slice(0, pos) + insert + body.slice(pos), pos + insert.length);
+    return true;
+  };
+
+  const indentLine = (dir) => {
+    const el = bodyRef.current; if (!el) return;
+    const pos = el.selectionStart;
+    const lineStart = body.lastIndexOf('\n', pos - 1) + 1;
+    if (dir > 0) {
+      setBodyAt(body.slice(0, lineStart) + '  ' + body.slice(lineStart), pos + 2);
+    } else {
+      const remove = body.startsWith('  ', lineStart) ? 2 : (body[lineStart] === ' ' ? 1 : 0);
+      setBodyAt(body.slice(0, lineStart) + body.slice(lineStart + remove), Math.max(lineStart, pos - remove));
+    }
+  };
+
+  // Toolbar: add/remove a list marker on the current line.
+  const toggleMarker = (marker) => {
+    const el = bodyRef.current; if (!el) return;
+    const pos = el.selectionStart;
+    const lineStart = body.lastIndexOf('\n', pos - 1) + 1;
+    let lineEnd = body.indexOf('\n', pos); if (lineEnd === -1) lineEnd = body.length;
+    const line = body.slice(lineStart, lineEnd);
+    const mt = line.match(/^(\s*)(\[ \] |\[x\] |- |\d+\. )?(.*)$/);
+    const indent = mt[1], existing = mt[2] || '', content = mt[3];
+    const sameType =
+      (marker === '- '   && existing === '- ') ||
+      (marker === '[ ] ' && (existing === '[ ] ' || existing === '[x] ')) ||
+      (marker === '1. '  && /^\d+\. $/.test(existing));
+    const newLine = sameType ? indent + content : indent + marker + content;
+    const newBody = body.slice(0, lineStart) + newLine + body.slice(lineEnd);
+    setBodyAt(newBody, lineStart + newLine.length);
+    onPatch(note.id, { body: newBody });
+    flashSaved();
+  };
+
   const handleBodyKeyDown = (e) => {
     if (linkCtx != null && optionCount > 0) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => (i + 1) % optionCount); return; }
       if (e.key === 'ArrowUp')   { e.preventDefault(); setActiveIdx(i => (i - 1 + optionCount) % optionCount); return; }
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); chooseAt(activeIdx); return; }
       if (e.key === 'Escape')    { e.preventDefault(); setLinkCtx(null); return; }
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (continueList(e.currentTarget)) e.preventDefault();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      indentLine(e.shiftKey ? -1 : 1);
     }
   };
 
@@ -345,15 +421,14 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-          <button onClick={insertLinkTemplate}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-              fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--accent-strong)', cursor: 'pointer',
-              border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 9px' }}>
-            [[ ]] แทรกลิงก์
-          </button>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: savedFlash ? 'var(--success)' : 'var(--ink-4)', transition: 'color 200ms' }}>
-            {savedFlash ? '✓ บันทึกแล้ว' : 'บันทึกอัตโนมัติเมื่อคลิกออก'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <button onMouseDown={e => { e.preventDefault(); toggleMarker('- '); }} title="รายการ (bullet)" style={TOOL_BTN}>• รายการ</button>
+          <button onMouseDown={e => { e.preventDefault(); toggleMarker('[ ] '); }} title="เช็กลิสต์" style={TOOL_BTN}>☐ เช็กลิสต์</button>
+          <button onMouseDown={e => { e.preventDefault(); toggleMarker('1. '); }} title="ลำดับเลข" style={TOOL_BTN}>1. ลำดับ</button>
+          <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 2px' }} />
+          <button onClick={insertLinkTemplate} style={{ ...TOOL_BTN, color: 'var(--accent-strong)' }}>[[ ]] แทรกลิงก์</button>
+          <span style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 10, color: savedFlash ? 'var(--success)' : 'var(--ink-4)', transition: 'color 200ms' }}>
+            {savedFlash ? '✓ บันทึกแล้ว' : 'Enter ต่อรายการ · Tab เยื้อง'}
           </span>
         </div>
       </div>
