@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { EmptyState } from '../components/ui/index.js';
@@ -135,16 +135,49 @@ function Stat({ label, value, sub, tone }) {
 }
 
 // ── Life grid ─────────────────────────────────────────────────────────────────
-function LifeGrid({ mode, lifespan, lived, markers }) {
+function LifeGrid({ mode, lifespan, lived, markers, fit }) {
   const m = MODES.find(x => x.id === mode);
   const total = mode === 'years' ? lifespan : lifespan * m.cols;
   const rows = Math.ceil(total / m.cols);
   const livedCount = Math.min(lived, total);
+  const gap = fit ? Math.max(1, m.gap - 2) : m.gap;
+
+  const cardRef = useRef(null);
+  const [box, setBox] = useState({ w: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = cardRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setBox({ w: r.width, top: r.top });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [mode, fit]);
+
+  // Compute a pixel cell size: fill the row width up to maxCell, and — in fit
+  // mode — also shrink so every row fits the viewport height (no scroll).
+  const cell = useMemo(() => {
+    const cardPad = 40;            // .card horizontal padding (20 + 20)
+    const availW = (box.w || 900) - cardPad - LABEL_GUTTER - ROW_GAP;
+    let c = Math.min(m.maxCell, (availW - (m.cols - 1) * gap) / m.cols);
+    if (fit && box.w) {
+      const reserve = 96;          // card padding + legend + breathing room
+      const availH = window.innerHeight - box.top - reserve;
+      const byH = (availH - (rows - 1) * gap) / rows;
+      c = Math.min(c, byH);
+    }
+    return Math.max(2, Math.floor(c));
+  }, [box, fit, m.cols, m.maxCell, rows, gap]);
 
   const labelFor = (rowIdx) => {
     if (mode === 'years') return `${rowIdx * 10}`;          // decade
     return rowIdx % 10 === 0 ? `${rowIdx}` : '';            // age in years
   };
+
+  const showLabels = cell >= 6; // hide the age gutter when cells get tiny
 
   const rowEls = useMemo(() => {
     const out = [];
@@ -160,33 +193,30 @@ function LifeGrid({ mode, lifespan, lived, markers }) {
         cells.push(
           <div key={c} title={title}
             style={{
-              aspectRatio: '1', borderRadius: mode === 'years' ? 4 : 2,
+              width: cell, height: cell, borderRadius: cell >= 16 ? 4 : (cell >= 5 ? 2 : 1), flexShrink: 0,
               background: ms ? 'var(--rose)' : (isLived ? 'var(--accent)' : (isCurrent ? 'var(--amber)' : 'transparent')),
               border: (isLived || ms) ? 'none' : `1px solid ${isCurrent ? 'var(--amber-deep)' : 'var(--line-2)'}`,
-              boxShadow: ms ? '0 0 0 2px var(--rose)' : (isCurrent ? '0 0 0 2px var(--amber-deep)' : 'none'),
+              boxShadow: ms ? `0 0 0 ${cell >= 8 ? 2 : 1}px var(--rose)` : (isCurrent ? `0 0 0 ${cell >= 8 ? 2 : 1}px var(--amber-deep)` : 'none'),
             }} />
         );
       }
       out.push(
         <div key={r} style={{ display: 'flex', alignItems: 'center', gap: ROW_GAP }}>
-          <div style={{ width: LABEL_GUTTER, textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', flexShrink: 0 }}>
-            {labelFor(r)}
-          </div>
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${m.cols}, 1fr)`, gap: m.gap }}>
-            {cells}
-          </div>
+          {showLabels && (
+            <div style={{ width: LABEL_GUTTER, textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', flexShrink: 0 }}>
+              {labelFor(r)}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap }}>{cells}</div>
         </div>
       );
     }
     return out;
-  }, [mode, lifespan, livedCount, total, rows, m.cols, m.maxCell, m.gap, markers]);
-
-  // Cap how wide the grid grows so few-column modes don't get giant squares.
-  const maxWidth = LABEL_GUTTER + ROW_GAP + m.cols * m.maxCell + (m.cols - 1) * m.gap;
+  }, [mode, lifespan, livedCount, total, rows, m.cols, cell, gap, markers, showLabels]);
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: m.gap, width: '100%', maxWidth, margin: '0 auto' }}>
+    <div className="card" ref={cardRef}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap, width: 'fit-content', margin: '0 auto' }}>
         {rowEls}
       </div>
       {/* Legend */}
@@ -213,6 +243,7 @@ export function LifeCalendar() {
   const [birth, setBirth] = useState(() => localStorage.getItem(LS_BIRTH) || '');
   const [lifespan, setLifespan] = useState(() => Number(localStorage.getItem(LS_SPAN)) || 80);
   const [mode, setMode] = useState('weeks');
+  const [fit, setFit] = useState(true);
   const [editing, setEditing] = useState(false);
   const [milestones, setMilestones] = useState(loadMilestones);
   const [addingMs, setAddingMs] = useState(false);
@@ -336,12 +367,19 @@ export function LifeCalendar() {
                   {md.label}
                 </button>
               ))}
-              <span style={{ alignSelf: 'center', marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>
-                1 ช่อง = 1 {MODES.find(x => x.id === mode).label} · ตัวเลขซ้าย = อายุ (ปี)
-              </span>
+              <button onClick={() => setFit(f => !f)}
+                style={{
+                  marginLeft: 'auto', padding: '5px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
+                  fontFamily: 'var(--f-mono)', fontSize: 11,
+                  border: `1px solid ${fit ? 'var(--accent)' : 'var(--line)'}`,
+                  background: fit ? 'var(--accent-soft)' : 'transparent',
+                  color: fit ? 'var(--accent-strong)' : 'var(--ink-3)',
+                }}>
+                {fit ? '⤢ พอดีจอ' : '⤢ ขนาดปกติ'}
+              </button>
             </div>
 
-            <LifeGrid mode={mode} lifespan={lifespan} lived={livedForMode} markers={markerMap} />
+            <LifeGrid mode={mode} lifespan={lifespan} lived={livedForMode} markers={markerMap} fit={fit} />
 
             {/* Milestones */}
             <div>
