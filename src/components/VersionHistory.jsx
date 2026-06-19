@@ -3,10 +3,19 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v2.6',
+    date: '2026-06-16',
+    title: 'Family · เหตุการณ์แนบรูปความทรงจำได้',
+    badge: 'Current',
+    changes: [
+      '📸 เพิ่มรูปภาพในเหตุการณ์ครอบครัวได้ (วันเกิด, ทริป, วันสำคัญ) — โผล่เป็นรูปย่อในไทม์ไลน์',
+      '⚠️ ต้องรัน SQL: supabase/migration_add_event_photo.sql',
+    ],
+  },
+  {
     version: 'v2.5',
     date: '2026-06-16',
     title: 'Second Brain · ตัวช่วยพิมพ์ — bullet, เช็กลิสต์, Enter ต่อรายการ',
-    badge: 'Current',
     changes: [
       '⏎ กด Enter ในบรรทัด list ขึ้น marker ใหม่ให้เลย (- / ☐ / เลขลำดับ) · บรรทัดว่างกด Enter = ออกจาก list',
       '🔘 ปุ่ม • รายการ / ☐ เช็กลิสต์ / 1. ลำดับ — กดใส่/ถอด marker บรรทัดนั้นทันที',

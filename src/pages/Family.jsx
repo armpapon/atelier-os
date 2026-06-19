@@ -6,7 +6,7 @@ import {
   listEvents, createEvent, deleteEvent,
   listFamilyNotes, createFamilyNote, deleteFamilyNote,
 } from '../lib/api/family.js';
-import { uploadFamilyAvatar, removeFamilyAvatar } from '../lib/storage.js';
+import { uploadFamilyAvatar, removeFamilyAvatar, uploadFamilyEventPhoto } from '../lib/storage.js';
 import { MemberDetail } from '../components/family/MemberDetail.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -236,19 +236,32 @@ function MemberModal({ initial, onSave, onClose }) {
 // ── Add Event Modal ───────────────────────────────────────────────────────────
 function AddEventModal({ members, onSave, onClose }) {
   const [form, setForm] = useState({ title: '', event_date: '', member_id: '', note: '' });
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
+
+  const handlePhotoPick = (file) => {
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim() || !form.event_date) return;
     setSaving(true);
     try {
-      await createEvent({
+      const saved = await createEvent({
         title: form.title.trim(),
         event_date: form.event_date,
         member_id: form.member_id || null,
         note: form.note.trim() || null,
       });
+      if (photoFile && saved?.id) {
+        try { await uploadFamilyEventPhoto(photoFile, saved.id); }
+        catch (err) { alert('บันทึกเหตุการณ์แล้ว แต่อัปโหลดรูปไม่สำเร็จ: ' + err.message); }
+      }
       onSave(); onClose();
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
@@ -282,6 +295,26 @@ function AddEventModal({ members, onSave, onClose }) {
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>โน้ต</span>
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
         </label>
+
+        {/* Memory photo (optional) */}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รูปภาพ (ถ้ามี)</span>
+          {photoPreview ? (
+            <div style={{ position: 'relative' }}>
+              <img src={photoPreview} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--line)' }} />
+              <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
+                style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 0, borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14 }}>×</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => fileRef.current?.click()}
+              style={{ padding: '9px 14px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', border: 0, borderRadius: 'var(--r-md)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--f-body)' }}>
+              📸 เพิ่มรูปภาพความทรงจำ
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+            onChange={e => handlePhotoPick(e.target.files?.[0])} />
+        </label>
+
         <div style={{ display: 'flex', gap: 10 }}>
           <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
           <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : '+ เพิ่ม'}</button>
@@ -521,6 +554,10 @@ export function Family() {
                         {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}
                         {days > 1 && <div style={{ fontSize: 8, color: 'var(--ink-3)' }}>วัน</div>}
                       </div>
+                      {ev.photo_url && (
+                        <img src={ev.photo_url} alt="" loading="lazy"
+                          style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 500 }}>{ev.title}</div>
                         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 2 }}>
