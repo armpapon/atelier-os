@@ -69,6 +69,18 @@ export async function createEvent(input) {
   return data;
 }
 
+export async function updateEvent(id, patch) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data, error } = await supabase
+    .from('family_events')
+    .update(patch)
+    .eq('id', id)
+    .select('*, member:family_members(name, color, initial)')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteEvent(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('family_events').delete().eq('id', id);

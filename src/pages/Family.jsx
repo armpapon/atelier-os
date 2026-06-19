@@ -3,10 +3,10 @@ import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import {
   listMembers, createMember, updateMember, deleteMember,
-  listEvents, createEvent, deleteEvent,
+  listEvents, createEvent, updateEvent, deleteEvent,
   listFamilyNotes, createFamilyNote, deleteFamilyNote,
 } from '../lib/api/family.js';
-import { uploadFamilyAvatar, removeFamilyAvatar, uploadFamilyEventPhoto } from '../lib/storage.js';
+import { uploadFamilyAvatar, removeFamilyAvatar, uploadFamilyEventPhoto, deleteEventPhotoByUrl } from '../lib/storage.js';
 import { MemberDetail } from '../components/family/MemberDetail.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -26,6 +26,12 @@ function formatEventDate(dateStr) {
 
 function getInitial(name) {
   return (name || '?').charAt(0).toUpperCase();
+}
+
+// Event photos: prefer the `photos` array, fall back to legacy single photo_url.
+function eventPhotos(ev) {
+  if (Array.isArray(ev?.photos) && ev.photos.length) return ev.photos;
+  return ev?.photo_url ? [ev.photo_url] : [];
 }
 
 // Avatar — shows photo if avatar_url, else colored circle with initial
@@ -236,15 +242,14 @@ function MemberModal({ initial, onSave, onClose }) {
 // ── Add Event Modal ───────────────────────────────────────────────────────────
 function AddEventModal({ members, onSave, onClose }) {
   const [form, setForm] = useState({ title: '', event_date: '', member_id: '', note: '' });
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photos, setPhotos] = useState([]); // [{ file, preview }]
   const [saving, setSaving] = useState(false);
   const fileRef = useRef(null);
 
-  const handlePhotoPick = (file) => {
-    if (!file) return;
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
+  const handlePhotoPick = (files) => {
+    const picked = Array.from(files || []).filter(f => f.type?.startsWith('image/'));
+    if (!picked.length) return;
+    setPhotos(prev => [...prev, ...picked.map(file => ({ file, preview: URL.createObjectURL(file) }))]);
   };
 
   const handleSubmit = async (e) => {
@@ -258,9 +263,12 @@ function AddEventModal({ members, onSave, onClose }) {
         member_id: form.member_id || null,
         note: form.note.trim() || null,
       });
-      if (photoFile && saved?.id) {
-        try { await uploadFamilyEventPhoto(photoFile, saved.id); }
-        catch (err) { alert('บันทึกเหตุการณ์แล้ว แต่อัปโหลดรูปไม่สำเร็จ: ' + err.message); }
+      if (photos.length && saved?.id) {
+        try {
+          const urls = [];
+          for (const p of photos) urls.push(await uploadFamilyEventPhoto(p.file, saved.id));
+          await updateEvent(saved.id, { photos: urls });
+        } catch (err) { alert('บันทึกเหตุการณ์แล้ว แต่อัปโหลดรูปบางส่วนไม่สำเร็จ: ' + err.message); }
       }
       onSave(); onClose();
     } catch (err) { alert(err.message); } finally { setSaving(false); }
@@ -296,23 +304,26 @@ function AddEventModal({ members, onSave, onClose }) {
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
         </label>
 
-        {/* Memory photo (optional) */}
+        {/* Memory photos (optional, multiple) */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รูปภาพ (ถ้ามี)</span>
-          {photoPreview ? (
-            <div style={{ position: 'relative' }}>
-              <img src={photoPreview} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--line)' }} />
-              <button type="button" onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
-                style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 0, borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14 }}>×</button>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รูปภาพ (ใส่ได้หลายรูป)</span>
+          {photos.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
+              {photos.map((p, i) => (
+                <div key={i} style={{ position: 'relative', aspectRatio: '1' }}>
+                  <img src={p.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)' }} />
+                  <button type="button" onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
+                    style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>×</button>
+                </div>
+              ))}
             </div>
-          ) : (
-            <button type="button" onClick={() => fileRef.current?.click()}
-              style={{ padding: '9px 14px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', border: 0, borderRadius: 'var(--r-md)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--f-body)' }}>
-              📸 เพิ่มรูปภาพความทรงจำ
-            </button>
           )}
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
-            onChange={e => handlePhotoPick(e.target.files?.[0])} />
+          <button type="button" onClick={() => fileRef.current?.click()}
+            style={{ padding: '9px 14px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', border: 0, borderRadius: 'var(--r-md)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--f-body)' }}>
+            📸 {photos.length ? 'เพิ่มรูปอีก' : 'เพิ่มรูปภาพความทรงจำ'}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+            onChange={e => handlePhotoPick(e.target.files)} />
         </label>
 
         <div style={{ display: 'flex', gap: 10 }}>
@@ -372,6 +383,158 @@ function AddNoteDrawer({ onSave, onClose }) {
   );
 }
 
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+function Lightbox({ photos, index, onIndex, onClose }) {
+  const go = (d) => onIndex((index + d + photos.length) % photos.length);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowRight') go(1);
+      else if (e.key === 'ArrowLeft') go(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <img src={photos[index]} alt="" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 6 }} />
+      <button onClick={onClose} style={{ position: 'absolute', top: 18, right: 22, color: '#fff', fontSize: 30, background: 'none', border: 0, cursor: 'pointer', lineHeight: 1 }}>×</button>
+      {photos.length > 1 && (
+        <>
+          <button onClick={e => { e.stopPropagation(); go(-1); }} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#fff', fontSize: 34, background: 'none', border: 0, cursor: 'pointer' }}>‹</button>
+          <button onClick={e => { e.stopPropagation(); go(1); }} style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', color: '#fff', fontSize: 34, background: 'none', border: 0, cursor: 'pointer' }}>›</button>
+          <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.8)', fontFamily: 'var(--f-mono)', fontSize: 12 }}>
+            {index + 1} / {photos.length}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Event Detail (memory view) ─────────────────────────────────────────────────
+function EventDetail({ event, members, onChange, onClose }) {
+  const [ev, setEv] = useState(event);
+  const [title, setTitle] = useState(event.title);
+  const [note, setNote] = useState(event.note || '');
+  const [uploading, setUploading] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const fileRef = useRef(null);
+
+  const photos = eventPhotos(ev);
+  const member = ev.member || members.find(m => m.id === ev.member_id) || null;
+
+  const persist = async (patch) => {
+    const updated = await updateEvent(ev.id, patch);
+    setEv(updated);
+    onChange();
+    return updated;
+  };
+
+  const saveTitle = () => { const t = title.trim(); if (t && t !== ev.title) persist({ title: t }); };
+  const saveNote  = () => { if (note.trim() !== (ev.note || '')) persist({ note: note.trim() || null }); };
+
+  const addPhotos = async (files) => {
+    const picked = Array.from(files || []).filter(f => f.type?.startsWith('image/'));
+    if (!picked.length) return;
+    setUploading(true);
+    try {
+      const urls = [];
+      for (const f of picked) urls.push(await uploadFamilyEventPhoto(f, ev.id));
+      await persist({ photos: [...photos, ...urls] });
+    } catch (err) { alert(err.message); } finally { setUploading(false); }
+  };
+
+  const removePhoto = async (url) => {
+    if (!confirm('ลบรูปนี้?')) return;
+    await persist({ photos: photos.filter(p => p !== url) });
+    deleteEventPhotoByUrl(url);
+  };
+
+  const removeEvent = async () => {
+    if (!confirm('ลบเหตุการณ์นี้ทั้งหมด (รวมรูป)?')) return;
+    photos.forEach(deleteEventPhotoByUrl);
+    await deleteEvent(ev.id);
+    onChange(); onClose();
+  };
+
+  const labelStyle = { fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 550, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }} />
+      <div style={{
+        position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
+        borderRadius: 'var(--r-xl)', padding: 28, width: 640, maxWidth: '100%', maxHeight: '90vh',
+        overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: 'var(--shadow-pop)',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <input value={title} onChange={e => setTitle(e.target.value)} onBlur={saveTitle}
+              onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none',
+                fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 500, color: 'var(--ink)' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+              <span>{formatEventDate(ev.event_date)} · {new Date(ev.event_date + 'T00:00:00').getFullYear() + 543}</span>
+              {member?.name && <span>· {member.name}</span>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 22, color: 'var(--ink-4)', cursor: 'pointer', padding: 2 }}>×</button>
+        </div>
+
+        {/* Note */}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <span style={labelStyle}>บันทึก</span>
+          <textarea value={note} rows={2} onChange={e => setNote(e.target.value)} onBlur={saveNote}
+            placeholder="วันนั้นเป็นยังไงบ้าง..."
+            style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+              padding: '10px 12px', fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6, color: 'var(--ink)', outline: 'none', resize: 'vertical' }} />
+        </label>
+
+        {/* Photos */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={labelStyle}>รูปภาพ {photos.length > 0 && `(${photos.length})`}</span>
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', cursor: 'pointer',
+                border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 10px' }}>
+              {uploading ? 'กำลังอัปโหลด...' : '📸 เพิ่มรูป'}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+              onChange={e => addPhotos(e.target.files)} />
+          </div>
+          {photos.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '24px 0', fontSize: 13, fontStyle: 'italic', fontFamily: 'var(--f-display)' }}>
+              ยังไม่มีรูป — เพิ่มภาพความทรงจำของวันนี้
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+              {photos.map((url, i) => (
+                <div key={url} style={{ position: 'relative', aspectRatio: '1' }}>
+                  <img src={url} alt="" loading="lazy" onClick={() => setLightbox(i)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', cursor: 'pointer' }} />
+                  <button onClick={() => removePhoto(url)}
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+          <button onClick={removeEvent} style={{ fontSize: 12.5, color: 'var(--danger)', cursor: 'pointer' }}>ลบเหตุการณ์</button>
+          <button className="btn btn--ghost" onClick={onClose}>ปิด</button>
+        </div>
+      </div>
+
+      {lightbox != null && <Lightbox photos={photos} index={lightbox} onIndex={setLightbox} onClose={() => setLightbox(null)} />}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function Family() {
   const [members, setMembers] = useState([]);
@@ -383,6 +546,7 @@ export function Family() {
   const [editingMember, setEditingMember]     = useState(null);
   const [viewingMember, setViewingMember]     = useState(null);
   const [showEventModal, setShowEventModal]   = useState(false);
+  const [viewingEvent, setViewingEvent]       = useState(null);
   const [showNoteDrawer, setShowNoteDrawer]   = useState(false);
 
   const refresh = useCallback(async () => {
@@ -538,8 +702,10 @@ export function Family() {
                 {upcomingEvents.slice(0, 6).map(ev => {
                   const days = daysUntil(ev.event_date);
                   const member = ev.member || null;
+                  const pics = eventPhotos(ev);
                   return (
-                    <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--line)' }}>
+                    <div key={ev.id} onClick={() => setViewingEvent(ev)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
                       {/* Day countdown badge */}
                       <div style={{
                         minWidth: 44, height: 44, borderRadius: 'var(--r-md)',
@@ -554,9 +720,14 @@ export function Family() {
                         {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}
                         {days > 1 && <div style={{ fontSize: 8, color: 'var(--ink-3)' }}>วัน</div>}
                       </div>
-                      {ev.photo_url && (
-                        <img src={ev.photo_url} alt="" loading="lazy"
-                          style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
+                      {pics.length > 0 && (
+                        <div style={{ position: 'relative', flexShrink: 0 }}>
+                          <img src={pics[0]} alt="" loading="lazy"
+                            style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', objectFit: 'cover', border: '1px solid var(--line)', display: 'block' }} />
+                          {pics.length > 1 && (
+                            <span style={{ position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: '#fff', borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-mono)', fontSize: 8.5, padding: '1px 5px' }}>📷{pics.length}</span>
+                          )}
+                        </div>
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 500 }}>{ev.title}</div>
@@ -566,7 +737,7 @@ export function Family() {
                           {ev.note ? ` · ${ev.note}` : ''}
                         </div>
                       </div>
-                      <button onClick={() => { if (confirm('ลบเหตุการณ์นี้?')) { deleteEvent(ev.id).then(refresh); } }}
+                      <button onClick={(e) => { e.stopPropagation(); if (confirm('ลบเหตุการณ์นี้?')) { eventPhotos(ev).forEach(deleteEventPhotoByUrl); deleteEvent(ev.id).then(refresh); } }}
                         style={{ color: 'var(--ink-4)', fontSize: 13, padding: '4px 6px', flexShrink: 0 }}>×</button>
                     </div>
                   );
@@ -577,16 +748,24 @@ export function Family() {
                     <summary style={{ fontSize: 12, color: 'var(--ink-4)', cursor: 'pointer', fontFamily: 'var(--f-mono)' }}>
                       เหตุการณ์ที่ผ่านมา ({pastEvents.length})
                     </summary>
-                    {pastEvents.slice(0, 5).map(ev => (
-                      <div key={ev.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', opacity: 0.6, borderBottom: '1px solid var(--line)' }}>
-                        <div>
-                          <div style={{ fontSize: 12.5 }}>{ev.title}</div>
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{formatEventDate(ev.event_date)}</div>
+                    {pastEvents.slice(0, 8).map(ev => {
+                      const pics = eventPhotos(ev);
+                      return (
+                        <div key={ev.id} onClick={() => setViewingEvent(ev)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', padding: '8px 0', opacity: 0.7, borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+                          {pics.length > 0 && (
+                            <img src={pics[0]} alt="" loading="lazy"
+                              style={{ width: 32, height: 32, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5 }}>{ev.title}{pics.length > 1 ? ` · 📷${pics.length}` : ''}</div>
+                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{formatEventDate(ev.event_date)}</div>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); if (confirm('ลบ?')) { eventPhotos(ev).forEach(deleteEventPhotoByUrl); deleteEvent(ev.id).then(refresh); } }}
+                            style={{ color: 'var(--ink-4)', fontSize: 13, padding: '2px 6px' }}>×</button>
                         </div>
-                        <button onClick={() => { if (confirm('ลบ?')) { deleteEvent(ev.id).then(refresh); } }}
-                          style={{ color: 'var(--ink-4)', fontSize: 13, padding: '2px 6px' }}>×</button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </details>
                 )}
               </>
@@ -656,6 +835,7 @@ export function Family() {
         />
       )}
       {showEventModal && <AddEventModal members={members} onSave={refresh} onClose={() => setShowEventModal(false)} />}
+      {viewingEvent && <EventDetail event={viewingEvent} members={members} onChange={refresh} onClose={() => setViewingEvent(null)} />}
       {showNoteDrawer && <AddNoteDrawer onSave={refresh} onClose={() => setShowNoteDrawer(false)} />}
     </>
   );

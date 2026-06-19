@@ -98,9 +98,9 @@ async function resizeContain(file, maxEdge = 1000, quality = 0.85) {
 }
 
 /**
- * Upload a memory photo for a family event.
- * Stored at: avatars/{user_id}/event_{eventId}.jpg (overwrites existing)
- * Persists photo_url on the event row. Returns the public URL (cache-busted).
+ * Upload one memory photo for a family event to a unique path.
+ * Stored at: avatars/{user_id}/event_{eventId}_{ts}.jpg
+ * Returns the public URL — the caller appends it to the event's `photos` array.
  */
 export async function uploadFamilyEventPhoto(file, eventId) {
   if (!supabase) throw new Error('Supabase not configured');
@@ -109,7 +109,8 @@ export async function uploadFamilyEventPhoto(file, eventId) {
 
   const user = await getUser();
   const blob = await resizeContain(file);
-  const path = `${user.id}/event_${eventId}.jpg`;
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const path = `${user.id}/event_${eventId}_${stamp}.jpg`;
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
@@ -117,13 +118,17 @@ export async function uploadFamilyEventPhoto(file, eventId) {
   if (upErr) throw upErr;
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  const url = `${data.publicUrl}?v=${Date.now()}`;
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
 
-  const { error: dbErr } = await supabase
-    .from('family_events').update({ photo_url: url }).eq('id', eventId);
-  if (dbErr) throw dbErr;
-
-  return url;
+/** Remove a single event photo from storage, given its public URL. */
+export async function deleteEventPhotoByUrl(url) {
+  if (!supabase || !url) return;
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split(`/${BUCKET}/`);
+    if (parts[1]) await supabase.storage.from(BUCKET).remove([decodeURIComponent(parts[1])]).catch(() => {});
+  } catch { /* ignore malformed url */ }
 }
 
 /** Remove avatar from storage + clear avatar_url on member */
