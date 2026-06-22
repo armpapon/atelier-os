@@ -1096,7 +1096,17 @@ export function FinanceView({ scope }) {
       {showTxnForm && <TxnForm accounts={accounts} scope={scope} categories={allCategories} onAddCategory={addCategory} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
       {editingTxn  && <TxnForm accounts={accounts} scope={scope} categories={allCategories} onAddCategory={addCategory} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
       {linkingTxn  && <RecurringLinkMenu txn={linkingTxn.txn} recurring={recurring} anchorRect={linkingTxn.anchorRect}
-        onPick={async (rid) => { await updateTransaction(linkingTxn.txn.id, { recurring_id: rid }); setLinkingTxn(null); refresh(); }}
+        onPick={async (rid) => {
+          try {
+            await updateTransaction(linkingTxn.txn.id, { recurring_id: rid });
+            setLinkingTxn(null); refresh();
+          } catch (err) {
+            const msg = /recurring_id|column|schema/i.test(err.message || '')
+              ? 'ยังไม่ได้รัน SQL — เปิด Supabase แล้วรัน migration_add_txn_recurring_link.sql ก่อนนะครับ'
+              : err.message;
+            alert(msg);
+          }
+        }}
         onClose={() => setLinkingTxn(null)} />}
       {showTransfer && (
         <ScopeTransferModal
