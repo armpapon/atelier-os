@@ -1219,14 +1219,22 @@ function normalizeTitle(t) {
 /** Check whether a recurring expense has been paid for a given month. */
 export function checkRecurringStatus(recurring, transactions, yearMonth) {
   const ym = yearMonth || currentYearMonth();
+  const inMonth = (t) => (t.occurred_at || '').substring(0, 7) === ym && Number(t.amount) < 0;
+
+  // 1) Explicit link wins — a transaction tagged with this bill's id.
+  const linked = (transactions || []).find(t => t.recurring_id === recurring.id && inMonth(t));
+  if (linked) return { status: 'paid', txn: linked };
+
+  // 2) Fuzzy match by title. Amount is only checked when the bill has a fixed
+  //    amount — variable bills (no amount set) match on title alone.
+  const hasAmount = Number(recurring.amount) > 0;
   const tolerance = Math.max(50, Number(recurring.amount) * 0.10);
   const vendor = (recurring.vendor || recurring.name || '').toLowerCase();
   const vendorKey = vendor.substring(0, Math.min(8, vendor.length));
 
   const match = (transactions || []).find(t => {
-    if ((t.occurred_at || '').substring(0, 7) !== ym) return false;
-    if (Number(t.amount) >= 0) return false;
-    if (Math.abs(Math.abs(Number(t.amount)) - Number(recurring.amount)) > tolerance) return false;
+    if (!inMonth(t)) return false;
+    if (hasAmount && Math.abs(Math.abs(Number(t.amount)) - Number(recurring.amount)) > tolerance) return false;
     const title = (t.title || '').toLowerCase();
     return vendorKey.length >= 4 && title.includes(vendorKey);
   });

@@ -43,17 +43,26 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
   // Mark a bill paid by logging the matching expense for the viewed month —
   // checkRecurringStatus then auto-detects it and flips the status to "paid".
   const markPaid = async (r) => {
-    if (!confirm(`บันทึกว่าจ่าย "${r.name}" ${fmt(r.amount)} แล้ว?`)) return;
+    let amt = Number(r.amount || 0);
+    if (amt > 0) {
+      if (!confirm(`บันทึกว่าจ่าย "${r.name}" ${fmt(amt)} แล้ว?`)) return;
+    } else {
+      const input = prompt(`จ่าย "${r.name}" เดือนนี้เท่าไหร่? (บาท)`);
+      if (input == null) return;
+      amt = Number(input);
+      if (!amt || amt <= 0) { alert('กรุณาใส่จำนวนเงิน'); return; }
+    }
     const dd = String(Math.min(Number(r.due_day) || 5, 28)).padStart(2, '0');
     try {
       await createTransaction({
         title: r.name,
-        amount: -Math.abs(Number(r.amount || 0)),
+        amount: -Math.abs(amt),
         type: 'expense',
         category: r.category || 'ค่าใช้จ่ายประจำ',
         note: 'บิลประจำ',
         occurred_at: `${yearMonth}-${dd}T12:00:00+07:00`,
         scope: r.scope || scope,
+        recurring_id: r.id,
       });
       onChange?.();
     } catch (err) { alert(err.message); }
@@ -131,7 +140,7 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
-                    {fmt(r.amount)}
+                    {Number(r.amount) > 0 ? fmt(r.amount) : 'ผันแปร'}
                   </div>
                   <Badge tone={st.tone} size="sm">{st.icon} {st.label}</Badge>
                 </div>
@@ -200,10 +209,10 @@ function RecurringForm({ initial, scope, onSubmit, onCancel }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const submit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.amount) return;
+    if (!form.name.trim()) return;
     try {
       const payload = {
-        ...form, amount: Number(form.amount), due_day: Number(form.due_day) || 5,
+        ...form, amount: form.amount === '' ? 0 : Number(form.amount), due_day: Number(form.due_day) || 5,
         vendor: form.name.trim(), is_active: true,
       };
       if (initial) await updateRecurring(initial.id, payload);
@@ -221,7 +230,7 @@ function RecurringForm({ initial, scope, onSubmit, onCancel }) {
         placeholder='ชื่อ เช่น "Netflix" "การไฟฟ้านครหลวง" "AIS"' required style={input} />
       <div style={{ display: 'grid', gridTemplateColumns: '120px 110px 90px 1fr', gap: 6 }}>
         <input type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)}
-          placeholder="ค่างวด" required style={{ ...input, fontFamily: 'var(--f-mono)' }} />
+          placeholder="ค่างวด (ว่างได้)" style={{ ...input, fontFamily: 'var(--f-mono)' }} />
         <select value={form.frequency} onChange={e => set('frequency', e.target.value)} style={input}>
           <option value="monthly">รายเดือน</option>
           <option value="weekly">รายสัปดาห์</option>

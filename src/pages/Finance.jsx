@@ -454,6 +454,52 @@ function GoalModal({ scope, onSave, onClose }) {
   );
 }
 
+// Anchored menu to link a transaction to a recurring bill (marks it paid).
+function RecurringLinkMenu({ txn, recurring, anchorRect, onPick, onClose }) {
+  const top  = Math.min((anchorRect?.bottom || 120) + 4, window.innerHeight - 280);
+  const left = Math.max(12, Math.min((anchorRect?.right || 320) - 248, window.innerWidth - 260));
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        position: 'absolute', top, left, width: 248, background: 'var(--surface)',
+        border: '1px solid var(--line)', borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-pop)',
+        padding: 6, maxHeight: 300, overflowY: 'auto',
+      }}>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)', padding: '4px 8px 6px' }}>
+          นี่คือการจ่ายบิลประจำ?
+        </div>
+        {recurring.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--ink-4)', padding: '8px', lineHeight: 1.5 }}>
+            ยังไม่มีบิลประจำ — ตั้งในการ์ด "บิล / ค่าใช้จ่ายประจำ" ก่อน
+          </div>
+        ) : recurring.map(r => {
+          const active = txn.recurring_id === r.id;
+          return (
+            <button key={r.id} onClick={() => onPick(r.id)}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%',
+                textAlign: 'left', padding: '8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 13,
+                background: active ? 'var(--accent-soft)' : 'transparent',
+                color: active ? 'var(--accent-strong)' : 'var(--ink)',
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-muted)'; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+              {active && <span style={{ flexShrink: 0 }}>✓</span>}
+            </button>
+          );
+        })}
+        {txn.recurring_id && (
+          <button onClick={() => onPick(null)}
+            style={{ width: '100%', textAlign: 'left', padding: '8px', borderRadius: 'var(--r-sm)', color: 'var(--danger)', fontSize: 12.5, cursor: 'pointer', borderTop: '1px solid var(--line)', marginTop: 4 }}>
+            × ยกเลิกการผูก
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared FinanceView — Financial Planner Edition
 // ════════════════════════════════════════════════════════════════════════════
@@ -480,6 +526,7 @@ export function FinanceView({ scope }) {
 
   const [showTxnForm, setShowTxnForm]   = useState(false);
   const [editingTxn,  setEditingTxn]    = useState(null);
+  const [linkingTxn,  setLinkingTxn]    = useState(null);
   const [showAccForm, setShowAccForm]   = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
@@ -915,7 +962,7 @@ export function FinanceView({ scope }) {
                   const isIn = t.amount > 0;
                   return (
                     <div key={t.id} data-txn-row style={{
-                      display: 'grid', gridTemplateColumns: '32px 90px 1.3fr 1.2fr 130px 110px 60px', gap: 10,
+                      display: 'grid', gridTemplateColumns: '32px 90px 1.3fr 1.2fr 130px 110px 86px', gap: 10,
                       padding: '9px 12px', borderBottom: '1px solid var(--line)',
                       alignItems: 'center', fontSize: 12.5,
                     }}>
@@ -986,8 +1033,21 @@ export function FinanceView({ scope }) {
                         }}
                         inputStyle={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13 }}
                       />
-                      {/* ACTIONS — delete + full-edit drawer */}
+                      {/* ACTIONS — link recurring + delete + full-edit drawer */}
                       <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                        <button onClick={(e) => {
+                          const row = e.currentTarget.closest('[data-txn-row]');
+                          const rect = (row || e.currentTarget).getBoundingClientRect();
+                          setLinkingTxn({ txn: t, anchorRect: rect });
+                        }} title={t.recurring_id ? 'ผูกกับบิลประจำแล้ว — คลิกเพื่อเปลี่ยน' : 'ผูกกับบิลประจำ'} aria-label="ผูกบิลประจำ"
+                          style={{
+                            color: t.recurring_id ? 'var(--accent-strong)' : 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
+                            cursor: 'pointer', padding: '4px 5px', borderRadius: 6, transition: 'all 130ms', opacity: t.recurring_id ? 1 : 0.7,
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                          🔁
+                        </button>
                         <button onClick={(e) => {
                           // Anchor to the whole ROW (not just the button) so the popup
                           // centers over the transaction table, not over the sidebar.
@@ -1035,6 +1095,9 @@ export function FinanceView({ scope }) {
 
       {showTxnForm && <TxnForm accounts={accounts} scope={scope} categories={allCategories} onAddCategory={addCategory} onSave={refresh} onClose={() => setShowTxnForm(false)} />}
       {editingTxn  && <TxnForm accounts={accounts} scope={scope} categories={allCategories} onAddCategory={addCategory} initialTxn={editingTxn} onSave={refresh} onClose={() => setEditingTxn(null)} />}
+      {linkingTxn  && <RecurringLinkMenu txn={linkingTxn.txn} recurring={recurring} anchorRect={linkingTxn.anchorRect}
+        onPick={async (rid) => { await updateTransaction(linkingTxn.txn.id, { recurring_id: rid }); setLinkingTxn(null); refresh(); }}
+        onClose={() => setLinkingTxn(null)} />}
       {showTransfer && (
         <ScopeTransferModal
           defaultFromScope={scope}
