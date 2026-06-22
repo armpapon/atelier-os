@@ -454,23 +454,25 @@ function GoalModal({ scope, onSave, onClose }) {
   );
 }
 
-// Anchored menu to link a transaction to a recurring bill (marks it paid).
-function RecurringLinkMenu({ txn, recurring, anchorRect, onPick, onClose }) {
-  const top  = Math.min((anchorRect?.bottom || 120) + 4, window.innerHeight - 280);
-  const left = Math.max(12, Math.min((anchorRect?.right || 320) - 248, window.innerWidth - 260));
+// Centered modal to link a transaction to a recurring bill (marks it paid).
+function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 600 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
       <div onClick={e => e.stopPropagation()} style={{
-        position: 'absolute', top, left, width: 248, background: 'var(--surface)',
-        border: '1px solid var(--line)', borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-pop)',
-        padding: 6, maxHeight: 300, overflowY: 'auto',
+        position: 'relative', width: 340, maxWidth: '100%', maxHeight: '80vh', overflowY: 'auto',
+        background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-xl)',
+        boxShadow: 'var(--shadow-pop)', padding: 22, display: 'flex', flexDirection: 'column', gap: 6,
       }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)', padding: '4px 8px 6px' }}>
-          นี่คือการจ่ายบิลประจำ?
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, fontWeight: 500 }}>นี่คือการจ่ายบิลประจำ?</div>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {txn.title}
+          </div>
         </div>
         {recurring.length === 0 ? (
-          <div style={{ fontSize: 12, color: 'var(--ink-4)', padding: '8px', lineHeight: 1.5 }}>
-            ยังไม่มีบิลประจำ — ตั้งในการ์ด "บิล / ค่าใช้จ่ายประจำ" ก่อน
+          <div style={{ fontSize: 13, color: 'var(--ink-3)', padding: '12px 0', lineHeight: 1.6 }}>
+            ยังไม่มีบิลประจำ — ตั้งในการ์ด "บิล / ค่าใช้จ่ายประจำ" ก่อนนะครับ
           </div>
         ) : recurring.map(r => {
           const active = txn.recurring_id === r.id;
@@ -478,23 +480,23 @@ function RecurringLinkMenu({ txn, recurring, anchorRect, onPick, onClose }) {
             <button key={r.id} onClick={() => onPick(r.id)}
               style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, width: '100%',
-                textAlign: 'left', padding: '8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 13,
-                background: active ? 'var(--accent-soft)' : 'transparent',
+                textAlign: 'left', padding: '11px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer', fontSize: 14,
+                border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+                background: active ? 'var(--accent-soft)' : 'var(--surface)',
                 color: active ? 'var(--accent-strong)' : 'var(--ink)',
-              }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-muted)'; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}>
+              }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-              {active && <span style={{ flexShrink: 0 }}>✓</span>}
+              {active && <span style={{ flexShrink: 0 }}>✓ ผูกอยู่</span>}
             </button>
           );
         })}
         {txn.recurring_id && (
           <button onClick={() => onPick(null)}
-            style={{ width: '100%', textAlign: 'left', padding: '8px', borderRadius: 'var(--r-sm)', color: 'var(--danger)', fontSize: 12.5, cursor: 'pointer', borderTop: '1px solid var(--line)', marginTop: 4 }}>
+            style={{ width: '100%', textAlign: 'center', padding: '9px', borderRadius: 'var(--r-md)', color: 'var(--danger)', fontSize: 12.5, cursor: 'pointer', marginTop: 4 }}>
             × ยกเลิกการผูก
           </button>
         )}
+        <button onClick={onClose} className="btn btn--ghost" style={{ marginTop: 8 }}>ปิด</button>
       </div>
     </div>
   );
