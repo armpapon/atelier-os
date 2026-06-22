@@ -457,10 +457,10 @@ function GoalModal({ scope, onSave, onClose }) {
 // Centered modal to link a transaction to a recurring bill (marks it paid).
 function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '20px 20px 28px' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
       <div onClick={e => e.stopPropagation()} style={{
-        position: 'relative', width: 340, maxWidth: '100%', maxHeight: '80vh', overflowY: 'auto',
+        position: 'relative', width: 420, maxWidth: '100%', maxHeight: '70vh', overflowY: 'auto',
         background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-xl)',
         boxShadow: 'var(--shadow-pop)', padding: 22, display: 'flex', flexDirection: 'column', gap: 6,
       }}>
