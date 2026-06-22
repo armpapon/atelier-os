@@ -4,7 +4,7 @@ import {
   createRecurring, updateRecurring, deleteRecurring,
   detectRecurringFromTransactions, checkRecurringStatus,
   forecastCashFlow, computeEmergencyFundCoverage,
-  updateAccount,
+  updateAccount, createTransaction,
 } from '../../lib/api/finance.js';
 
 const fmt = (n) => {
@@ -39,6 +39,25 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
   }, [transactions, recurring]);
 
   const statusFor = (r) => RECURRING_STATUS[checkRecurringStatus(r, transactions, yearMonth).status] || RECURRING_STATUS.upcoming;
+
+  // Mark a bill paid by logging the matching expense for the viewed month —
+  // checkRecurringStatus then auto-detects it and flips the status to "paid".
+  const markPaid = async (r) => {
+    if (!confirm(`บันทึกว่าจ่าย "${r.name}" ${fmt(r.amount)} แล้ว?`)) return;
+    const dd = String(Math.min(Number(r.due_day) || 5, 28)).padStart(2, '0');
+    try {
+      await createTransaction({
+        title: r.name,
+        amount: -Math.abs(Number(r.amount || 0)),
+        type: 'expense',
+        category: r.category || 'ค่าใช้จ่ายประจำ',
+        note: 'บิลประจำ',
+        occurred_at: `${yearMonth}-${dd}T12:00:00+07:00`,
+        scope: r.scope || scope,
+      });
+      onChange?.();
+    } catch (err) { alert(err.message); }
+  };
   const total     = recurring.reduce((s, r) => s + Number(r.amount || 0), 0);
   const paidCount = recurring.filter(r => checkRecurringStatus(r, transactions, yearMonth).status === 'paid').length;
   const overdueCount = recurring.filter(r => checkRecurringStatus(r, transactions, yearMonth).status === 'overdue').length;
@@ -90,7 +109,9 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {recurring.map(r => {
-            const st = statusFor(r);
+            const rawStatus = checkRecurringStatus(r, transactions, yearMonth).status;
+            const st = RECURRING_STATUS[rawStatus] || RECURRING_STATUS.upcoming;
+            const isPaid = rawStatus === 'paid';
             return (
               <div key={r.id} style={{
                 padding: '10px 12px',
@@ -114,6 +135,13 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
                   </div>
                   <Badge tone={st.tone} size="sm">{st.icon} {st.label}</Badge>
                 </div>
+                {!isPaid && (
+                  <button onClick={() => markPaid(r)} title="บันทึกว่าจ่ายแล้ว"
+                    style={{ flexShrink: 0, background: 'var(--success-soft)', color: 'var(--success)', border: '1px solid var(--success)',
+                      borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-body)', fontSize: 11.5, fontWeight: 500, padding: '5px 11px', cursor: 'pointer' }}>
+                    ✓ จ่ายแล้ว
+                  </button>
+                )}
                 <button onClick={() => { if (confirm(`ลบ "${r.name}"?`)) deleteRecurring(r.id).then(onChange); }}
                   aria-label="ลบ"
                   style={{ background: 'none', border: 0, color: 'var(--text-muted)', fontSize: 15, cursor: 'pointer', padding: 4 }}>×</button>
