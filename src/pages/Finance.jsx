@@ -20,6 +20,7 @@ import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeat
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
+import { MoneyLeaks } from '../components/dashboard/MoneyLeaks.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -682,6 +683,9 @@ export function FinanceView({ scope }) {
 
         {/* Row 2: Cash Flow chart */}
         <CashFlowChart data={trendData} currentYm={yearMonth} onMonthClick={setYearMonth} />
+
+        {/* Row 2b: Money Leaks / Insights */}
+        <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={trend12} debts={debts} allCategories={allCategories} />
 
         {/* Row 2c: Cash Flow Forecast 3 เดือนข้างหน้า */}
         <CashFlowForecastCard forecast={forecast} />
