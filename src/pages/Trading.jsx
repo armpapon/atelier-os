@@ -3,6 +3,7 @@ import { TradeForm } from '../components/TradeForm.jsx';
 import { TradeImporter } from '../components/trading/TradeImporter.jsx';
 import { TradingPlaybook } from '../components/trading/TradingPlaybook.jsx';
 import { DailyPlanCard } from '../components/trading/DailyPlanCard.jsx';
+import { PnLCalendar } from '../components/trading/PnLCalendar.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
 import { useAuth } from '../lib/useAuth.js';
@@ -134,6 +135,9 @@ export function Trading() {
         <KPI label="Account Balance" value={`$${latestBalance.toFixed(2)}`}
           color="var(--accent-strong)" />
       </div>
+
+      {/* Monthly P&L calendar */}
+      <PnLCalendar trades={filtered} />
 
       <Card padding={14}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
