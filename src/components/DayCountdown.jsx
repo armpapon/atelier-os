@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 
 const TOTAL_MIN = 1440; // minutes in a day
+const R = 26;
+const CIRC = 2 * Math.PI * R;
 
-// A slim live countdown of the minutes left in today — a daily nudge to feel
+// A live countdown of the time left in today — a clock ring whose arc drains
+// as the day passes, plus the minutes/seconds remaining. A daily nudge to feel
 // the value of time (the day-scale companion to the Life Calendar).
 export function DayCountdown() {
   const [now, setNow] = useState(() => new Date());
@@ -16,9 +19,9 @@ export function DayCountdown() {
   const msLeft  = Math.max(0, end - now);
   const minLeft = Math.floor(msLeft / 60000);
   const secLeft = Math.floor((msLeft % 60000) / 1000);
-  const usedPct = ((TOTAL_MIN - minLeft) / TOTAL_MIN) * 100;
   const hh = Math.floor(minLeft / 60);
   const mm = minLeft % 60;
+  const remainFrac = msLeft / 86400000; // remaining fraction of the day
 
   const line =
     minLeft > 960 ? 'เช้านี้ยังเต็มไปด้วยเวลา — เลือกใช้ให้ดี'
@@ -29,27 +32,35 @@ export function DayCountdown() {
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18,
-      padding: '12px 18px', borderRadius: 'var(--r-lg)',
+      display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18,
+      padding: '14px 18px', borderRadius: 'var(--r-lg)',
       background: 'var(--surface)', border: '1px solid var(--line)',
     }}>
-      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>⏳</span>
+      {/* Clock ring */}
+      <svg width="66" height="66" viewBox="0 0 66 66" style={{ flexShrink: 0 }}>
+        <circle cx="33" cy="33" r={R} fill="none" stroke="var(--surface-2)" strokeWidth="5" />
+        <circle cx="33" cy="33" r={R} fill="none" stroke="var(--amber)" strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - remainFrac)}
+          transform="rotate(-90 33 33)"
+          style={{ transition: 'stroke-dashoffset 950ms linear' }} />
+        <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--amber-deep)' }}>{minLeft}</text>
+        <text x="33" y="44" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-4)', letterSpacing: '0.1em' }}>นาที</text>
+      </svg>
 
+      {/* Time text */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 24, fontWeight: 600, color: 'var(--amber-deep)', lineHeight: 1 }}>
-            {minLeft.toLocaleString()}
-          </span>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
-            / {TOTAL_MIN.toLocaleString()} นาทีเหลือวันนี้ · {hh} ชม {mm} นาที {String(secLeft).padStart(2, '0')} วิ
-          </span>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+          เหลือเวลาวันนี้
         </div>
-        {/* progress of the day used */}
-        <div style={{ height: 5, borderRadius: 999, background: 'var(--surface-2)', overflow: 'hidden', marginTop: 7 }}>
-          <div style={{ width: `${usedPct}%`, height: '100%', background: 'var(--amber)', transition: 'width 900ms linear' }} />
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>
+          {String(hh).padStart(2, '0')}<span style={{ color: 'var(--ink-4)' }}>:</span>{String(mm).padStart(2, '0')}<span style={{ color: 'var(--ink-4)' }}>:</span>{String(secLeft).padStart(2, '0')}
+        </div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>
+          จาก 1,440 นาที
         </div>
       </div>
 
+      {/* Nudge */}
       <div style={{
         flexShrink: 0, maxWidth: 220, textAlign: 'right',
         fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 13, color: 'var(--ink-3)',
