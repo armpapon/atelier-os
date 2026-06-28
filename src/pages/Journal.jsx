@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
+import { DayCountdown } from '../components/DayCountdown.jsx';
 import {
   listEntries, listRecentDates, listUpcomingEvents, listEntriesInRange,
   createEntry, toggleEntry, updateEntry, deleteEntry,
@@ -493,6 +494,9 @@ export function Journal() {
       />
 
       <div className="page-body">
+        {/* Daily time countdown — feel the value of each day */}
+        {isToday && <DayCountdown />}
+
         {/* Date navigator */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 22, overflowX: 'auto', paddingBottom: 4 }}>
           {allDates.slice(0, 14).map(d => (
