@@ -548,6 +548,14 @@ function DebtStrategyCard({ debts }) {
     avalanche: 'โปะหนี้ดอกเบี้ยสูงก่อน → ประหยัดดอกเบี้ยมากที่สุด',
   }[strategy];
 
+  // Turn "months left" into a tangible calendar date.
+  const freedomLabel = (() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + (result.totalMonthsWithExtra || 0));
+    return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  })();
+
   return (
     <div style={{
       marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)',
@@ -607,6 +615,27 @@ function DebtStrategyCard({ debts }) {
           style={{ accentColor: 'var(--accent)', width: '100%' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>
           <span>฿0</span><span>฿25K</span><span>฿50K</span>
+        </div>
+      </div>
+
+      {/* Debt-free date hero */}
+      <div style={{
+        padding: '16px 18px', borderRadius: 'var(--radius-control)',
+        background: 'var(--accent-soft)', border: '1px solid var(--accent)',
+        display: 'flex', alignItems: 'center', gap: 14,
+      }}>
+        <span style={{ fontSize: 30, lineHeight: 1 }}>🎯</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
+            วันปลอดหนี้
+          </div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 600, color: 'var(--accent-strong)', lineHeight: 1.15 }}>
+            {freedomLabel}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+            อีก {result.totalMonthsWithExtra} เดือน
+            {result.monthsSaved > 0 && ` · โปะเพิ่มช่วยร่นเร็วขึ้น ${result.monthsSaved} เดือน ประหยัด ${fmt(result.cashSaved)}`}
+          </div>
         </div>
       </div>
 
