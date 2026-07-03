@@ -34,6 +34,22 @@ function eventPhotos(ev) {
   return ev?.photo_url ? [ev.photo_url] : [];
 }
 
+function eventVideos(ev) {
+  return Array.isArray(ev?.videos) ? ev.videos : [];
+}
+
+// Turn a video URL into an embeddable form (YouTube / Google Drive / file / link).
+function videoEmbed(url) {
+  const u = (url || '').trim();
+  if (!u) return null;
+  let m = u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/);
+  if (m) return { type: 'iframe', src: `https://www.youtube.com/embed/${m[1]}` };
+  m = u.match(/drive\.google\.com\/file\/d\/([\w-]+)/);
+  if (m) return { type: 'iframe', src: `https://drive.google.com/file/d/${m[1]}/preview` };
+  if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(u)) return { type: 'video', src: u };
+  return { type: 'link', src: u };
+}
+
 // Avatar — shows photo if avatar_url, else colored circle with initial
 function Avatar({ member, size = 44, borderColor }) {
   const initial = member?.initial || getInitial(member?.name);
@@ -420,9 +436,11 @@ function EventDetail({ event, members, onChange, onClose }) {
   const [note, setNote] = useState(event.note || '');
   const [uploading, setUploading] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
   const fileRef = useRef(null);
 
   const photos = eventPhotos(ev);
+  const videos = eventVideos(ev);
   const member = ev.member || members.find(m => m.id === ev.member_id) || null;
 
   const persist = async (patch) => {
@@ -434,6 +452,17 @@ function EventDetail({ event, members, onChange, onClose }) {
 
   const saveTitle = () => { const t = title.trim(); if (t && t !== ev.title) persist({ title: t }); };
   const saveNote  = () => { if (note.trim() !== (ev.note || '')) persist({ note: note.trim() || null }); };
+
+  const addVideo = async () => {
+    const u = videoUrl.trim();
+    if (!u) return;
+    await persist({ videos: [...videos, u] });
+    setVideoUrl('');
+  };
+  const removeVideo = async (u) => {
+    if (!confirm('ลบวิดีโอนี้?')) return;
+    await persist({ videos: videos.filter(v => v !== u) });
+  };
 
   const addPhotos = async (files) => {
     const picked = Array.from(files || []).filter(f => f.type?.startsWith('image/'));
@@ -521,6 +550,42 @@ function EventDetail({ event, members, onChange, onClose }) {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Videos (links) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={labelStyle}>วิดีโอ {videos.length > 0 && `(${videos.length})`}</span>
+          {videos.map(url => {
+            const emb = videoEmbed(url);
+            return (
+              <div key={url} style={{ position: 'relative' }}>
+                {emb?.type === 'iframe' && (
+                  <div style={{ position: 'relative', paddingTop: '56.25%', borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--line)' }}>
+                    <iframe src={emb.src} title="video" allow="autoplay; encrypted-media" allowFullScreen
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }} />
+                  </div>
+                )}
+                {emb?.type === 'video' && (
+                  <video src={emb.src} controls style={{ width: '100%', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', display: 'block' }} />
+                )}
+                {emb?.type === 'link' && (
+                  <a href={emb.src} target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--accent-strong)', textDecoration: 'none',
+                      border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '8px 12px' }}>
+                    ▶ เปิดวิดีโอ
+                  </a>
+                )}
+                <button onClick={() => removeVideo(url)} title="ลบวิดีโอ"
+                  style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+              </div>
+            );
+          })}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="input" value={videoUrl} onChange={e => setVideoUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addVideo(); } }}
+              placeholder="วางลิงก์ YouTube / Google Drive" style={{ flex: 1 }} />
+            <button onClick={addVideo} className="btn btn--ghost btn--sm" style={{ flexShrink: 0 }}>+ เพิ่ม</button>
+          </div>
         </div>
 
         {/* Footer */}
