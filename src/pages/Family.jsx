@@ -5,6 +5,7 @@ import {
   listMembers, createMember, updateMember, deleteMember,
   listEvents, createEvent, updateEvent, deleteEvent,
   listFamilyNotes, createFamilyNote, deleteFamilyNote,
+  listOnThisDay, listQuotes, createQuote, deleteQuote,
 } from '../lib/api/family.js';
 import { uploadFamilyAvatar, removeFamilyAvatar, uploadFamilyEventPhoto, deleteEventPhotoByUrl } from '../lib/storage.js';
 import { MemberDetail } from '../components/family/MemberDetail.jsx';
@@ -600,11 +601,119 @@ function EventDetail({ event, members, onChange, onClose }) {
   );
 }
 
+// ── On This Day ────────────────────────────────────────────────────────────────
+function OnThisDayCard({ events, onOpen }) {
+  if (!events.length) return null;
+  const thisYear = new Date().getFullYear();
+  return (
+    <div className="card" style={{ marginBottom: 18, background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
+      <div className="card__head">
+        <div className="card__title">⭐ วันนี้เมื่อก่อน</div>
+        <span className="card__label" style={{ color: 'var(--accent-strong)' }}>ความทรงจำวันนี้</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {events.map(ev => {
+          const yearsAgo = thisYear - new Date(ev.event_date + 'T00:00:00').getFullYear();
+          const pics = eventPhotos(ev);
+          return (
+            <button key={ev.id} onClick={() => onOpen(ev)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', width: '100%',
+                padding: '10px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer',
+                background: 'var(--surface)', border: '1px solid var(--line)' }}>
+              {pics.length > 0
+                ? <img src={pics[0]} alt="" loading="lazy" style={{ width: 44, height: 44, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
+                : <span style={{ fontSize: 24, flexShrink: 0, width: 44, textAlign: 'center' }}>🗓️</span>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 14, color: 'var(--accent-strong)' }}>
+                  {yearsAgo === 1 ? 'ปีที่แล้ววันนี้' : `${yearsAgo} ปีที่แล้ววันนี้`}
+                </div>
+                <div style={{ fontSize: 14, color: 'var(--ink)', fontWeight: 500 }}>{ev.title}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Kid Quotes ─────────────────────────────────────────────────────────────────
+function KidQuotesCard({ quotes, members, onChange }) {
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ quote: '', member_id: '', said_on: new Date().toISOString().split('T')[0] });
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.quote.trim()) return;
+    setSaving(true);
+    try {
+      await createQuote({ quote: form.quote.trim(), member_id: form.member_id || null, said_on: form.said_on });
+      setForm({ quote: '', member_id: '', said_on: new Date().toISOString().split('T')[0] });
+      setAdding(false); onChange();
+    } catch (err) { alert(err.message); } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="card">
+      <div className="card__head">
+        <div className="card__title">💬 คำพูดของลูก</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="card__label">{quotes.length} คำ</span>
+          <button className="btn btn--ghost btn--sm" onClick={() => setAdding(a => !a)}>{adding ? 'ยกเลิก' : '+ เพิ่มคำพูด'}</button>
+        </div>
+      </div>
+
+      {adding && (
+        <form onSubmit={submit} className="card" style={{ background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+          <textarea className="input" value={form.quote} onChange={e => setForm(f => ({ ...f, quote: e.target.value }))}
+            placeholder='เช่น "ป๊า...ทำไมพระอาทิตย์ไปนอนล่ะ?"' rows={2} autoFocus required style={{ resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <select className="input" value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))} style={{ flex: 1, minWidth: 120 }}>
+              <option value="">ใครพูด</option>
+              {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <input type="date" className="input" value={form.said_on} max={new Date().toISOString().split('T')[0]}
+              onChange={e => setForm(f => ({ ...f, said_on: e.target.value }))} style={{ flex: 1, minWidth: 140 }} />
+            <button type="submit" disabled={saving} className="btn btn--primary" style={{ flexShrink: 0 }}>{saving ? '...' : 'บันทึก'}</button>
+          </div>
+        </form>
+      )}
+
+      {quotes.length === 0 && !adding ? (
+        <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '28px 0', fontSize: 13 }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>💬</div>
+          จดคำน่ารักที่ลูกพูด — ของแบบนี้หายแล้วย้อนกลับไม่ได้
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+          {quotes.map(q => (
+            <div key={q.id} style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '16px 18px', position: 'relative' }}>
+              <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 15.5, lineHeight: 1.5, color: 'var(--ink)' }}>
+                “{q.quote}”
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                  {q.member?.name ? `— ${q.member.name} · ` : ''}{new Date(q.said_on + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+                <button onClick={() => { if (confirm('ลบคำพูดนี้?')) deleteQuote(q.id).then(onChange); }}
+                  style={{ color: 'var(--ink-4)', fontSize: 13, padding: '2px 6px' }}>×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function Family() {
   const [members, setMembers] = useState([]);
   const [events, setEvents] = useState([]);
   const [notes, setNotes] = useState([]);
+  const [onThisDay, setOnThisDay] = useState([]);
+  const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showMemberModal, setShowMemberModal] = useState(false);
@@ -616,14 +725,18 @@ export function Family() {
 
   const refresh = useCallback(async () => {
     try {
-      const [m, e, n] = await Promise.all([
+      const [m, e, n, otd, q] = await Promise.all([
         listMembers(),
         listEvents({ limit: 30, upcoming: false }),
         listFamilyNotes({ limit: 20 }),
+        listOnThisDay().catch(() => []),
+        listQuotes({ limit: 100 }).catch(() => []),
       ]);
       setMembers(m);
       setEvents(e);
       setNotes(n);
+      setOnThisDay(otd);
+      setQuotes(q);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, []);
 
@@ -693,6 +806,9 @@ export function Family() {
             </div>
           )}
         </div>
+
+        {/* On This Day — memories from past years */}
+        <OnThisDayCard events={onThisDay} onOpen={setViewingEvent} />
 
         <div className="grid-2" style={{ marginBottom: 22 }}>
           {/* Members */}
@@ -882,6 +998,11 @@ export function Family() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Kid Quotes */}
+        <div style={{ marginTop: 22 }}>
+          <KidQuotesCard quotes={quotes} members={members} onChange={refresh} />
         </div>
       </div>
 

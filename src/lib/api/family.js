@@ -87,6 +87,49 @@ export async function deleteEvent(id) {
   if (error) throw error;
 }
 
+// ── On This Day — past-year events sharing today's month/day ──────────────────
+export async function listOnThisDay() {
+  if (!supabase) return [];
+  const now = new Date();
+  const mmdd = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const { data, error } = await supabase
+    .from('family_events')
+    .select('*, member:family_members(name, color, initial)')
+    .lt('event_date', `${now.getFullYear()}-01-01`);
+  if (error) throw error;
+  return (data || [])
+    .filter(e => (e.event_date || '').slice(5) === mmdd)
+    .sort((a, b) => b.event_date.localeCompare(a.event_date));
+}
+
+// ── Kid Quotes ────────────────────────────────────────────────────────────────
+export async function listQuotes({ limit = 100 } = {}) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('family_quotes')
+    .select('*, member:family_members(name, color, initial)')
+    .order('said_on', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createQuote(input) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { data, error } = await supabase
+    .from('family_quotes').insert({ ...input, user_id: user.id }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteQuote(id) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('family_quotes').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ── Family Notes ──────────────────────────────────────────────────────────────
 export async function listFamilyNotes({ limit = 30 } = {}) {
   if (!supabase) return [];
