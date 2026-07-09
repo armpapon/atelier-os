@@ -81,6 +81,19 @@ export async function createEntry(input) {
   return data;
 }
 
+export async function bulkCreateEntries(rows) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const withUser = rows.map(r => ({ ...r, user_id: user.id }));
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .insert(withUser)
+    .select();
+  if (error) throw error;
+  return data || [];
+}
+
 export async function toggleEntry(id, done) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data, error } = await supabase

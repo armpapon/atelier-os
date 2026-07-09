@@ -4,7 +4,7 @@ import { PageHeader } from '../components/PageHeader.jsx';
 import { DayCountdown } from '../components/DayCountdown.jsx';
 import {
   listEntries, listRecentDates, listUpcomingEvents, listEntriesInRange,
-  createEntry, toggleEntry, updateEntry, deleteEntry,
+  createEntry, bulkCreateEntries, toggleEntry, updateEntry, deleteEntry,
   getMoodForDate, upsertMood,
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
@@ -133,6 +133,71 @@ function buildGCalUrl({ text, note, location, event_time, event_end_time }, date
     details: note || '', location: location || '', ctz: 'Asia/Bangkok',
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+// Parse pasted calendar/notes text into journal entries.
+// Lines starting with a time (09:30 / 9.30 / 13:30 - 14:00) become timed events;
+// the rest become tasks. Leading bullet/checkbox markers are stripped.
+function parseScheduleText(text, date) {
+  const out = [];
+  for (const raw of (text || '').split('\n')) {
+    // Strip leading noise (emoji, checkmarks, bullets, dashes, spaces) but keep
+    // digits, letters (incl. Thai) and "[" so "[MKT] ..." survives.
+    let s = raw.replace(/^[^\p{L}\p{N}[]+/u, '').trim();
+    if (!s) continue;
+    const m = s.match(/^(\d{1,2})[:.](\d{2})(?:\s*[-–—]\s*\d{1,2}[:.]\d{2})?\s*[:.-]?\s*(.*)$/);
+    if (m && Number(m[1]) <= 23) {
+      const hh = String(Number(m[1])).padStart(2, '0');
+      out.push({ entry_date: date, bullet_type: 'event', text: (m[3].trim() || 'ประชุม'), tag: null, event_time: `${hh}:${m[2]}:00`, done: false });
+    } else {
+      out.push({ entry_date: date, bullet_type: 'task', text: s, tag: null, done: false });
+    }
+  }
+  out.sort((a, b) => (a.event_time || '99').localeCompare(b.event_time || '99'));
+  return out;
+}
+
+// ── Paste schedule modal ────────────────────────────────────────────────────
+function PasteScheduleModal({ date, onSave, onClose }) {
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const parsed = parseScheduleText(text, date);
+  const eventCount = parsed.filter(p => p.bullet_type === 'event').length;
+
+  const submit = async () => {
+    if (!parsed.length) return;
+    setSaving(true);
+    try { await bulkCreateEntries(parsed); onSave(); onClose(); }
+    catch (err) { alert(err.message); } finally { setSaving(false); }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }} />
+      <div style={{ position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-xl)', padding: 26, width: 520, maxWidth: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, fontWeight: 500 }}>วางตารางจาก Calendar</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4 }}>
+            ก๊อปตารางประชุมทั้งวันจาก Google Calendar มาวาง — ระบบจะแยกเวลา เรียงลำดับ และทำเป็นรายการติ๊กได้ให้
+          </div>
+        </div>
+        <textarea value={text} onChange={e => setText(e.target.value)} autoFocus rows={9}
+          placeholder={'09:30 [MKT] รวม Report\n13:30 โปรที่ชอบ Update\n17:00 Meeting AE'}
+          className="input" style={{ resize: 'vertical', fontFamily: 'var(--f-mono)', fontSize: 12.5, lineHeight: 1.6 }} />
+        {parsed.length > 0 && (
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+            จะเพิ่ม {parsed.length} รายการ · มีเวลา {eventCount} · งาน {parsed.length - eventCount}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn btn--ghost" onClick={onClose}>ยกเลิก</button>
+          <button className="btn btn--primary" onClick={submit} disabled={saving || !parsed.length}>
+            {saving ? '...' : `+ เพิ่ม ${parsed.length} รายการ`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const BULLET_TYPES = [
@@ -383,6 +448,7 @@ export function Journal() {
   const [loading, setLoading] = useState(true);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showHabitModal, setShowHabitModal] = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(todayStr() + 'T00:00:00'); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [monthActivity, setMonthActivity] = useState(new Map());
@@ -487,6 +553,7 @@ export function Journal() {
         </>}
         actions={<>
           <button className="btn btn--ghost" onClick={() => setShowHabitModal(true)}>+ Habit</button>
+          <button className="btn btn--ghost" onClick={() => setShowPaste(true)}>📋 วางตาราง</button>
           <button className="btn btn--primary" onClick={() => setShowAddEntry(v => !v)}>
             <Icon name="plus" size={14}/> รายการใหม่
           </button>
@@ -746,6 +813,7 @@ export function Journal() {
       </div>
 
       {showHabitModal && <HabitModal onSave={refresh} onClose={() => setShowHabitModal(false)} />}
+      {showPaste && <PasteScheduleModal date={date} onSave={refresh} onClose={() => setShowPaste(false)} />}
     </>
   );
 }
