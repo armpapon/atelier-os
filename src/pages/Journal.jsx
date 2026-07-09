@@ -9,6 +9,7 @@ import {
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
 } from '../lib/api/journal.js';
+import { startGoogleAuth, getIntegration, callProvider } from '../lib/integrations.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -197,6 +198,95 @@ function PasteScheduleModal({ date, onSave, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Google Calendar — connect + pull the day's meetings into the checklist ────
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+
+// Local HH:MM:SS from an RFC3339 dateTime (browser tz = user's tz).
+function hms(iso) {
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// Map one Google Calendar event → a journal entry for `date`.
+function gcalEventToEntry(ev, date) {
+  const row = {
+    entry_date: date, bullet_type: 'event', done: false, tag: null,
+    text: (ev.summary || 'ประชุม').trim(),
+    location: ev.location ? ev.location.trim() : null,
+    event_time: null,
+  };
+  if (ev.start?.dateTime) {                       // timed event
+    row.event_time = hms(ev.start.dateTime);
+    if (ev.end?.dateTime) row.event_end_time = hms(ev.end.dateTime);
+  }
+  return row;                                     // all-day → event bullet, no time
+}
+
+function GoogleCalendarButton({ date, existing, onImported }) {
+  const [status, setStatus] = useState('loading'); // loading | connected | disconnected
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getIntegration('google')
+      .then(i => setStatus(i && (i.scope || '').includes('calendar') ? 'connected' : 'disconnected'))
+      .catch(() => setStatus('disconnected'));
+  }, []);
+
+  const pull = async () => {
+    setBusy(true);
+    try {
+      const timeMin = new Date(date + 'T00:00:00').toISOString();
+      const timeMax = new Date(date + 'T23:59:59').toISOString();
+      const qs = new URLSearchParams({
+        timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '50',
+      });
+      const res = await callProvider('google', {
+        url: `https://www.googleapis.com/calendar/v3/calendars/primary/events?${qs}`,
+      });
+      if (res?.error) throw new Error(res.error.message || JSON.stringify(res.error));
+
+      // Drop events the user declined; map the rest.
+      const rows = (res.items || [])
+        .filter(ev => {
+          const me = (ev.attendees || []).find(a => a.self);
+          return !me || me.responseStatus !== 'declined';
+        })
+        .map(ev => gcalEventToEntry(ev, date));
+
+      // Dedup against what's already on this day (text + time).
+      const seen = new Set((existing || []).map(e => `${(e.text || '').trim()}|${e.event_time || ''}`));
+      const fresh = rows.filter(r => {
+        const key = `${r.text}|${r.event_time || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (!fresh.length) { alert('ไม่มีประชุมใหม่ให้เพิ่ม'); return; }
+      await bulkCreateEntries(fresh);
+      onImported();
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (msg.includes('not_connected')) { setStatus('disconnected'); alert('ยังไม่ได้เชื่อม Google — กดเชื่อมก่อน'); }
+      else alert('ดึงตารางไม่สำเร็จ: ' + msg);
+    } finally { setBusy(false); }
+  };
+
+  if (status === 'loading') return null;
+  if (status === 'disconnected')
+    return (
+      <button className="btn btn--ghost" onClick={() => startGoogleAuth([CALENDAR_SCOPE])}
+        title="เชื่อม Google Calendar เพื่อดึงตารางประชุมอัตโนมัติ">🗓 เชื่อม Google</button>
+    );
+  return (
+    <button className="btn btn--ghost" onClick={pull} disabled={busy}
+      title="ดึงตารางประชุมของวันนี้จาก Google Calendar">
+      {busy ? '...' : '🗓 ดึงประชุม'}
+    </button>
   );
 }
 
@@ -553,6 +643,7 @@ export function Journal() {
         </>}
         actions={<>
           <button className="btn btn--ghost" onClick={() => setShowHabitModal(true)}>+ Habit</button>
+          <GoogleCalendarButton date={date} existing={entries} onImported={refresh} />
           <button className="btn btn--ghost" onClick={() => setShowPaste(true)}>📋 วางตาราง</button>
           <button className="btn btn--primary" onClick={() => setShowAddEntry(v => !v)}>
             <Icon name="plus" size={14}/> รายการใหม่

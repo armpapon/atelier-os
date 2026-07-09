@@ -3,10 +3,20 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.9',
+    date: '2026-07-09',
+    title: 'Journal · เชื่อม Google Calendar → ดึงประชุมเข้าเช็คลิสต์',
+    badge: 'Current',
+    changes: [
+      '🗓 ปุ่ม "เชื่อม Google" ในหน้า Journal — เชื่อมครั้งเดียว (ขอสิทธิ์อ่าน Calendar อย่างเดียว) แล้วปุ่มเปลี่ยนเป็น "ดึงประชุม"',
+      'กด "ดึงประชุม" → ดึงตารางของวันที่เลือกจาก Google Calendar อัตโนมัติ → แปลงเป็นเหตุการณ์มีเวลา + สถานที่ เข้าเช็คลิสต์ให้เลย',
+      'ข้ามประชุมที่กด declined · กันซ้ำกับรายการที่มีอยู่ — กดดึงซ้ำได้ไม่เพิ่มซ้ำ',
+    ],
+  },
+  {
     version: 'v3.8',
     date: '2026-06-16',
     title: 'Integrations · วางราก Phase 0 (OAuth foundation)',
-    badge: 'Current',
     changes: [
       '🔌 วางโครงระบบเชื่อม API ภายนอก — ตาราง integrations + Edge Functions (oauth-exchange, provider-proxy) + client lib',
       'รองรับ Google OAuth (เก็บ token ปลอดภัยฝั่ง server, refresh อัตโนมัติ) — ต่อยอด Calendar/Sheets/Gmail ได้',
