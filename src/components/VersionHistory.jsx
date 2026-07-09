@@ -3,10 +3,18 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.11.1',
+    date: '2026-07-09',
+    title: 'Integrations · แสดง error จริงจาก provider',
+    badge: 'Current',
+    changes: [
+      '🔧 เวลาเชื่อม API แล้วพัง จะแสดงข้อความจริงจาก Google (เช่น "Gmail API disabled", "insufficient scopes") แทน "non-2xx status code" กลางๆ',
+    ],
+  },
+  {
     version: 'v3.11',
     date: '2026-07-09',
     title: 'Journal · Gmail — สรุปเมลลูกค้าค้างตอบ (Phase 4)',
-    badge: 'Current',
     changes: [
       '✉️ การ์ด "เมลค้างตอบ" ในหน้า Journal — เชื่อม Gmail (readonly) แล้วสรุป thread ที่ข้อความล่าสุดมาจากลูกค้า (นอก sealinteractive.com) และยังไม่ได้ตอบ',
       'โชว์ ผู้ส่ง · หัวข้อ · ค้างมานานแค่ไหน · กดเปิดใน Gmail ได้ — reuse การเชื่อม Google เดิม แค่เพิ่มสิทธิ์ Gmail',

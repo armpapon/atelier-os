@@ -74,6 +74,21 @@ export async function callProvider(provider, { url, method = 'GET', body } = {})
   const { data, error } = await supabase.functions.invoke('provider-proxy', {
     body: { provider, url, method, body },
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // supabase-js hides the real body behind a generic message on non-2xx.
+    // The proxy forwards the provider's status + body, so read it back for a
+    // useful error (e.g. Gmail API disabled, insufficient scopes, not_connected).
+    let detail = error.message;
+    try {
+      const text = await error.context?.text?.();
+      if (text) {
+        try {
+          const j = JSON.parse(text);
+          detail = j?.error?.message || j?.error?.detail || j?.error || j?.detail || text;
+        } catch { detail = text; }
+      }
+    } catch { /* keep generic message */ }
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
   return data;
 }
