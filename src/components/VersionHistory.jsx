@@ -3,10 +3,20 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.8',
+    date: '2026-06-16',
+    title: 'Integrations · วางราก Phase 0 (OAuth foundation)',
+    badge: 'Current',
+    changes: [
+      '🔌 วางโครงระบบเชื่อม API ภายนอก — ตาราง integrations + Edge Functions (oauth-exchange, provider-proxy) + client lib',
+      'รองรับ Google OAuth (เก็บ token ปลอดภัยฝั่ง server, refresh อัตโนมัติ) — ต่อยอด Calendar/Sheets/Gmail ได้',
+      '⚙️ Infra — ยังไม่มี UI ให้ผู้ใช้ทั่วไป (เปิดใช้จริงใน Phase 1) · ต้องตั้ง Google Cloud + deploy Edge Functions',
+    ],
+  },
+  {
     version: 'v3.7',
     date: '2026-06-16',
     title: 'Journal · วางตารางจาก Calendar → เช็คลิสต์ติ๊กได้',
-    badge: 'Current',
     changes: [
       '📋 ปุ่ม "วางตาราง" — ก๊อปตารางประชุมทั้งวันจาก Google Calendar มาวาง → ระบบแยกเวลา เรียงลำดับ ทำเป็นรายการติ๊กได้อัตโนมัติ',
       'บรรทัดที่ขึ้นต้นด้วยเวลา (09:30 / 13:30-14:00) → เป็น "เหตุการณ์" มีเวลา · บรรทัดอื่น → เป็น "งาน"',

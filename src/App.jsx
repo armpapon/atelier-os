@@ -16,6 +16,7 @@ import { SecondBrain } from './pages/SecondBrain.jsx';
 import { LifeCalendar } from './pages/LifeCalendar.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
+import { handleOAuthRedirect } from './lib/integrations.js';
 import { LoopBrand } from './components/LoopMark.jsx';
 
 // ── Preview mode: ?preview=1 in URL bypasses login (for design review) ──────
@@ -34,6 +35,13 @@ export default function App() {
   const [tweaksOpen, setTweaksOpen] = useState(false);
 
   const previewMode = isPreviewMode();
+
+  // Complete an OAuth redirect (?oauth=google&code=...) once, on load.
+  useEffect(() => {
+    handleOAuthRedirect().then(provider => {
+      if (provider) alert(`เชื่อม ${provider} สำเร็จ ✓`);
+    });
+  }, []);
 
   useEffect(() => { localStorage.setItem('atelier:active', active); }, [active]);
   useEffect(() => {
