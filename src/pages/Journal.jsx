@@ -226,6 +226,20 @@ function gcalEventToEntry(ev, date) {
   return row;                                     // all-day → event bullet, no time
 }
 
+// Leave / out-of-office entries are informational (who's away) — not tasks for
+// the day. Kept conservative so real meetings never get hidden by mistake.
+function isLeaveEntry(text = '') {
+  const t = text.trim();
+  if (!t) return false;
+  // Explicit leave phrases (Thai + English).
+  if (/ลาพักร้อน|ลาป่วย|ลากิจ|ลาคลอด|ลาบวช|ลาพัก|ลาหยุด|วันลา/.test(t)) return true;
+  if (/out of office|on leave|annual leave|day off|\bOOO\b|\bPTO\b|vacation|\bleave\b/i.test(t)) return true;
+  // Bare "ลา" as a standalone token, e.g. "นก ลา" / "[ลา] ต่าย" — boundary-bounded
+  // so "ปลา", "ลาว", "ส่งใบลา" are NOT matched.
+  if (/(^|[\s\[\](){}·|\/–—-])ลา($|[\s\[\](){}·|\/–—-])/.test(t)) return true;
+  return false;
+}
+
 function GoogleCalendarButton({ date, existing, onImported }) {
   const [status, setStatus] = useState('loading'); // loading | connected | disconnected
   const [busy, setBusy] = useState(false);
@@ -628,6 +642,10 @@ export function Journal() {
   // Merge today into recentDates if not already
   const allDates = recentDates.includes(today) ? recentDates : [today, ...recentDates];
 
+  // Split off "leave" entries — shown as FYI, not part of the day's checklist.
+  const leaveEntries = entries.filter(e => isLeaveEntry(e.text));
+  const dayEntries   = entries.filter(e => !isLeaveEntry(e.text));
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--ink-3)' }}>
       กำลังโหลด...
@@ -704,8 +722,28 @@ export function Journal() {
               />
             )}
 
-            {/* Entries */}
-            {entries.length === 0 && !showAddEntry ? (
+            {/* FYI — who's on leave today (informational, not tasks) */}
+            {leaveEntries.length > 0 && (
+              <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(90,70,50,0.05)', border: '1px dashed rgba(90,70,50,0.28)', borderRadius: 'var(--r-md)' }}>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#8a7060', marginBottom: 8 }}>
+                  วันนี้ใครลา · FYI
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {leaveEntries.map(entry => (
+                    <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#6b5544' }}>
+                      <span style={{ color: '#b09070' }}>—</span>
+                      <span style={{ flex: 1 }}>{entry.text}</span>
+                      {entry.event_time && <span className="bujo-line__tag">{entry.event_time.slice(0, 5)}</span>}
+                      <button onClick={() => handleDelete(entry.id)}
+                        style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Entries (checklist — leave items are surfaced in FYI above) */}
+            {dayEntries.length === 0 && !showAddEntry ? (
               <div style={{ textAlign: 'center', color: '#8a7060', padding: '32px 0', fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 15 }}>
                 {isToday ? 'วันนี้ยังว่างอยู่ — เริ่มบันทึกได้เลย' : 'ไม่มีรายการในวันนี้'}
                 <br />
@@ -716,7 +754,7 @@ export function Journal() {
               </div>
             ) : (
               <div style={{ marginTop: showAddEntry ? 8 : 0 }}>
-                {entries.map(entry => {
+                {dayEntries.map(entry => {
                   const isExpanded = expandedId === entry.id;
                   const hasDetails = !!(entry.note || entry.location || entry.event_time);
                   return (
