@@ -39,7 +39,12 @@ export default function App() {
   // Complete an OAuth redirect (?oauth=google&code=...) once, on load.
   useEffect(() => {
     handleOAuthRedirect().then(provider => {
-      if (provider) alert(`เชื่อม ${provider} สำเร็จ ✓`);
+      if (provider) {
+        // Let any mounted integration UI (e.g. Journal's Google button) re-check
+        // its connection status now that the token row is stored.
+        window.dispatchEvent(new Event('loop:oauth-connected'));
+        alert(`เชื่อม ${provider} สำเร็จ ✓`);
+      }
     });
   }, []);
 

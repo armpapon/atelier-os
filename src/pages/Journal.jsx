@@ -231,9 +231,14 @@ function GoogleCalendarButton({ date, existing, onImported }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    getIntegration('google')
+    const check = () => getIntegration('google')
       .then(i => setStatus(i && (i.scope || '').includes('calendar') ? 'connected' : 'disconnected'))
       .catch(() => setStatus('disconnected'));
+    check();
+    // Re-check once the OAuth exchange finishes (button may mount before the
+    // token row is stored → otherwise it stays "connect" until a manual reload).
+    window.addEventListener('loop:oauth-connected', check);
+    return () => window.removeEventListener('loop:oauth-connected', check);
   }, []);
 
   const pull = async () => {
