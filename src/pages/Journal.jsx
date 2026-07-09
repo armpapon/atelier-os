@@ -203,6 +203,9 @@ function PasteScheduleModal({ date, onSave, onClose }) {
 
 // ── Google Calendar — connect + pull the day's meetings into the checklist ────
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+// Colleagues sit on this domain; anyone else emailing in is treated as a client.
+const ORG_DOMAIN = 'sealinteractive.com';
 
 // Local HH:MM:SS from an RFC3339 dateTime (browser tz = user's tz).
 function hms(iso) {
@@ -306,6 +309,134 @@ function GoogleCalendarButton({ date, existing, onImported }) {
       title="ดึงตารางประชุมของวันนี้จาก Google Calendar">
       {busy ? '...' : '🗓 ดึงประชุม'}
     </button>
+  );
+}
+
+// ── Gmail — surface client emails still waiting for a reply ───────────────────
+// Parse an RFC 5322 From header ("Name" <a@b.com> | a@b.com) into parts.
+function parseFrom(from = '') {
+  const m = from.match(/<([^>]+)>/);
+  const email = (m ? m[1] : from).trim().toLowerCase();
+  const domain = email.split('@')[1] || '';
+  let name = from.replace(/<[^>]*>/, '').replace(/"/g, '').trim();
+  if (!name) name = email;
+  return { email, domain, name };
+}
+
+function gmailHeader(msg, name) {
+  const h = (msg?.payload?.headers || []).find(x => x.name.toLowerCase() === name.toLowerCase());
+  return h ? h.value : '';
+}
+
+function waitingLabel(ms) {
+  const mins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  if (mins < 60) return `${mins} นาที`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} ชม.`;
+  return `${Math.floor(hrs / 24)} วัน`;
+}
+
+function GmailInbox() {
+  const [status, setStatus] = useState('loading'); // loading | connected | disconnected
+  const [items, setItems] = useState(null);        // null=not loaded yet, []=none
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setBusy(true);
+    try {
+      const list = await callProvider('google', {
+        url: 'https://gmail.googleapis.com/gmail/v1/users/me/threads?' +
+          new URLSearchParams({ q: 'in:inbox newer_than:7d', maxResults: '15' }),
+      });
+      if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
+
+      const details = await Promise.all((list.threads || []).map(t => {
+        const p = new URLSearchParams({ format: 'metadata' });
+        p.append('metadataHeaders', 'From');
+        p.append('metadataHeaders', 'Subject');
+        return callProvider('google', {
+          url: `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?${p}`,
+        }).catch(() => null);
+      }));
+
+      const waiting = [];
+      for (const th of details) {
+        const msgs = th?.messages;
+        if (!msgs?.length) continue;
+        const last = msgs[msgs.length - 1];
+        const from = parseFrom(gmailHeader(last, 'From'));
+        // Waiting on her only if the latest message is from outside the org.
+        if (!from.domain || from.domain === ORG_DOMAIN) continue;
+        waiting.push({
+          id: th.id,
+          name: from.name,
+          subject: gmailHeader(msgs[0], 'Subject') || '(ไม่มีหัวข้อ)',
+          ts: Number(last.internalDate) || Date.now(),
+        });
+      }
+      waiting.sort((a, b) => b.ts - a.ts);
+      setItems(waiting);
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (msg.includes('not_connected')) setStatus('disconnected');
+      else alert('ดึงเมลไม่สำเร็จ: ' + msg);
+    } finally { setBusy(false); }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const i = await getIntegration('google').catch(() => null);
+      if (cancelled) return;
+      const connected = !!(i && (i.scope || '').includes('gmail'));
+      setStatus(connected ? 'connected' : 'disconnected');
+      if (connected) load();
+    };
+    run();
+    window.addEventListener('loop:oauth-connected', run);
+    return () => { cancelled = true; window.removeEventListener('loop:oauth-connected', run); };
+  }, [load]);
+
+  return (
+    <div className="card">
+      <div className="card__head">
+        <div className="card__title">เมลค้างตอบ</div>
+        {status === 'connected' && (
+          <button onClick={load} disabled={busy} title="รีเฟรช"
+            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+        )}
+      </div>
+
+      {status === 'loading' ? null
+        : status === 'disconnected' ? (
+          <div style={{ textAlign: 'center', padding: '14px 0' }}>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 10, lineHeight: 1.5 }}>
+              เชื่อม Gmail เพื่อดูเมลลูกค้าที่ยังไม่ได้ตอบ
+            </div>
+            <button className="btn btn--ghost" onClick={() => startGoogleAuth([CALENDAR_SCOPE, GMAIL_SCOPE])}>
+              ✉️ เชื่อม Gmail
+            </button>
+          </div>
+        ) : busy && items === null ? (
+          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>กำลังดึง...</div>
+        ) : (items && items.length === 0) ? (
+          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>ไม่มีเมลลูกค้าค้างตอบ 🎉</div>
+        ) : items ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {items.map(m => (
+              <a key={m.id} href={`https://mail.google.com/mail/u/0/#inbox/${m.id}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--surface-2)', textDecoration: 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                  <span style={{ flexShrink: 0 }}>ค้าง {waitingLabel(m.ts)}</span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</div>
+              </a>
+            ))}
+          </div>
+        ) : null}
+    </div>
   );
 }
 
@@ -844,6 +975,9 @@ export function Journal() {
                 </div>
               )}
             </div>
+
+            {/* Client emails still waiting for a reply */}
+            <GmailInbox />
 
             {/* Mood */}
             <div className="card">
