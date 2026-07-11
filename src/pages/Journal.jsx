@@ -336,6 +336,15 @@ function isAutomatedSender(email = '') {
   return false;
 }
 
+// Pull the email addresses out of a header value (To can list several).
+function extractEmails(headerVal = '') {
+  const angle = [...headerVal.matchAll(/<([^>]+)>/g)].map(m => m[1].trim().toLowerCase());
+  const found = angle.length
+    ? angle
+    : headerVal.split(',').map(s => s.trim().toLowerCase()).filter(s => s.includes('@'));
+  return [...new Set(found)];
+}
+
 function gmailHeader(msg, name) {
   const h = (msg?.payload?.headers || []).find(x => x.name.toLowerCase() === name.toLowerCase());
   return h ? h.value : '';
@@ -367,6 +376,7 @@ function GmailInbox() {
         const p = new URLSearchParams({ format: 'metadata' });
         p.append('metadataHeaders', 'From');
         p.append('metadataHeaders', 'Subject');
+        p.append('metadataHeaders', 'To');
         return callProvider('google', {
           url: `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?${p}`,
         }).catch(() => null);
@@ -386,6 +396,7 @@ function GmailInbox() {
           id: th.id,
           name: from.name,
           subject: gmailHeader(msgs[0], 'Subject') || '(ไม่มีหัวข้อ)',
+          to: extractEmails(gmailHeader(last, 'To')).join(', '),
           ts: Number(last.internalDate) || Date.now(),
         });
       }
@@ -447,6 +458,11 @@ function GmailInbox() {
                   <span style={{ flexShrink: 0 }}>ค้าง {waitingLabel(m.ts)}</span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</div>
+                {m.to && (
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    ถึง: {m.to}
+                  </div>
+                )}
               </a>
             ))}
           </div>

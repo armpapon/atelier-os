@@ -3,10 +3,18 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.12',
+    date: '2026-07-09',
+    title: 'Journal · เมลค้างตอบบอก "ถึง" อีเมลไหน',
+    badge: 'Current',
+    changes: [
+      '📧 การ์ดเมลค้างตอบเพิ่มบรรทัด "ถึง:" — บอกว่าเมลนั้นส่งเข้าอีเมล/alias ไหนของเธอ (มีประโยชน์เวลามีหลายอีเมล)',
+    ],
+  },
+  {
     version: 'v3.11.3',
     date: '2026-07-09',
     title: 'Journal · fix เมลค้างตอบหายหมด (เอา category:primary ออก)',
-    badge: 'Current',
     changes: [
       '🔧 เมลค้างตอบกลับมาแสดงปกติ — ตัวกรอง category:primary ทำให้เมลหายเกลี้ยงถ้าปิดแท็บหมวดหมู่ใน Gmail จึงเปลี่ยนไปกรองเมลอัตโนมัติ (Google Play/Meta/no-reply) ที่ตัว sender แทน',
     ],
