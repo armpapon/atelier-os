@@ -324,8 +324,8 @@ function parseFrom(from = '') {
 }
 
 // Automated / notification senders (Google Play, Meta, no-reply, etc.) — never
-// something she needs to reply to. `category:primary` in the query removes most;
-// this is the safety net for ones that still land in the Primary tab.
+// something she needs to reply to. Filtered by sender (not a Gmail category
+// query, which returns nothing when the user has inbox tabs turned off).
 const AUTOMATED_DOMAINS = ['google.com', 'facebookmail.com', 'facebook.com', 'meta.com', 'metamail.com'];
 function isAutomatedSender(email = '') {
   const e = email.toLowerCase();
@@ -359,7 +359,7 @@ function GmailInbox() {
     try {
       const list = await callProvider('google', {
         url: 'https://gmail.googleapis.com/gmail/v1/users/me/threads?' +
-          new URLSearchParams({ q: 'in:inbox category:primary newer_than:7d', maxResults: '15' }),
+          new URLSearchParams({ q: 'in:inbox newer_than:7d', maxResults: '15' }),
       });
       if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
 

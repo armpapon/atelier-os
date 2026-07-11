@@ -3,12 +3,20 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.11.3',
+    date: '2026-07-09',
+    title: 'Journal · fix เมลค้างตอบหายหมด (เอา category:primary ออก)',
+    badge: 'Current',
+    changes: [
+      '🔧 เมลค้างตอบกลับมาแสดงปกติ — ตัวกรอง category:primary ทำให้เมลหายเกลี้ยงถ้าปิดแท็บหมวดหมู่ใน Gmail จึงเปลี่ยนไปกรองเมลอัตโนมัติ (Google Play/Meta/no-reply) ที่ตัว sender แทน',
+    ],
+  },
+  {
     version: 'v3.11.2',
     date: '2026-07-09',
     title: 'Journal · กรองเมลแจ้งเตือนอัตโนมัติออกจาก "เมลค้างตอบ"',
-    badge: 'Current',
     changes: [
-      '🧹 เมลอัพเดทอัตโนมัติ (Google Play, Meta, no-reply ต่างๆ) ไม่ขึ้นในเมลค้างตอบแล้ว — ดึงเฉพาะแท็บ Primary + กรอง sender ที่เป็น notification/no-reply',
+      '🧹 เมลอัพเดทอัตโนมัติ (Google Play, Meta, no-reply ต่างๆ) ไม่ขึ้นในเมลค้างตอบแล้ว — กรอง sender ที่เป็น notification/no-reply',
     ],
   },
   {
