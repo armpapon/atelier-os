@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { signIn, signUp } from '../lib/useAuth.js';
+import { signIn, signUp, resetPassword } from '../lib/useAuth.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { LoopMark } from './LoopMark.jsx';
 
 export function LoginScreen() {
-  const [mode, setMode] = useState('signin'); // 'signin' | 'signup'
+  const [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'forgot'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -19,6 +19,9 @@ export function LoginScreen() {
       if (mode === 'signin') {
         await signIn(email, password);
         // onAuthStateChange จะ trigger App ให้ render หน้าหลักเอง
+      } else if (mode === 'forgot') {
+        await resetPassword(email);
+        setInfo('ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมลแล้ว — เปิดลิงก์ในเมลเพื่อตั้งรหัสใหม่ (เช็ค Junk/Spam ด้วยถ้าไม่เจอ)');
       } else {
         const { user, session } = await signUp(email, password, name);
         if (session) {
@@ -54,11 +57,13 @@ export function LoginScreen() {
       <form style={styles.card} onSubmit={handleSubmit}>
         <div style={styles.brand}><LoopMark size={26} /> <span style={{ marginLeft: 10 }}>Loop</span></div>
         <div style={styles.title}>
-          {mode === 'signin' ? 'ยินดีต้อนรับกลับ' : 'สร้างบัญชีใหม่'}
+          {mode === 'signin' ? 'ยินดีต้อนรับกลับ' : mode === 'forgot' ? 'ลืมรหัสผ่าน' : 'สร้างบัญชีใหม่'}
         </div>
         <div style={styles.sub}>
           {mode === 'signin'
             ? 'เข้าสู่ระบบเพื่อเปิดข้อมูลส่วนตัวของคุณ'
+            : mode === 'forgot'
+            ? 'กรอกอีเมลที่ใช้สมัคร เราจะส่งลิงก์ตั้งรหัสผ่านใหม่ให้'
             : 'สร้างบัญชีเพื่อเริ่มบันทึกชีวิตของคุณ'}
         </div>
 
@@ -82,21 +87,36 @@ export function LoginScreen() {
           />
         </label>
 
-        <label style={styles.field}>
-          <span style={styles.label}>รหัสผ่าน</span>
-          <input
-            type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            placeholder="อย่างน้อย 6 ตัวอักษร" style={styles.input}
-            required minLength={6}
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-          />
-        </label>
+        {mode !== 'forgot' && (
+          <label style={styles.field}>
+            <span style={styles.label}>รหัสผ่าน</span>
+            <input
+              type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="อย่างน้อย 6 ตัวอักษร" style={styles.input}
+              required minLength={6}
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+            />
+          </label>
+        )}
+
+        {mode === 'signin' && (
+          <button
+            type="button"
+            onClick={() => { setMode('forgot'); setError(null); setInfo(null); }}
+            style={{ ...styles.switch, alignSelf: 'flex-end', marginTop: -6 }}
+          >
+            ลืมรหัสผ่าน?
+          </button>
+        )}
 
         {error && <div style={{ ...styles.alert, ...styles.alertError }}>{error}</div>}
         {info && <div style={{ ...styles.alert, ...styles.alertInfo }}>{info}</div>}
 
         <button type="submit" disabled={loading} style={styles.submit}>
-          {loading ? 'กำลังโหลด...' : (mode === 'signin' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก')}
+          {loading ? 'กำลังโหลด...'
+            : mode === 'signin' ? 'เข้าสู่ระบบ'
+            : mode === 'forgot' ? 'ส่งลิงก์ตั้งรหัสผ่านใหม่'
+            : 'สมัครสมาชิก'}
         </button>
 
         <button
@@ -104,7 +124,9 @@ export function LoginScreen() {
           onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null); setInfo(null); }}
           style={styles.switch}
         >
-          {mode === 'signin' ? 'ยังไม่มีบัญชี? สมัครเลย' : 'มีบัญชีอยู่แล้ว? เข้าสู่ระบบ'}
+          {mode === 'signin' ? 'ยังไม่มีบัญชี? สมัครเลย'
+            : mode === 'forgot' ? '← กลับไปเข้าสู่ระบบ'
+            : 'มีบัญชีอยู่แล้ว? เข้าสู่ระบบ'}
         </button>
       </form>
     </div>
@@ -169,3 +191,6 @@ const styles = {
     border: '1px solid #4a3a22',
   },
 };
+
+// Shared with ResetPasswordScreen so both auth screens stay visually identical.
+export const authStyles = styles;

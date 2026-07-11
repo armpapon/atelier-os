@@ -4,6 +4,7 @@ import { Icon } from './components/Icon.jsx';
 import { TweaksPanel } from './components/TweaksPanel.jsx';
 import { ComingSoon } from './components/ComingSoon.jsx';
 import { LoginScreen } from './components/LoginScreen.jsx';
+import { ResetPasswordScreen } from './components/ResetPasswordScreen.jsx';
 import { Dashboard } from './pages/Dashboard.jsx';
 import { Trading } from './pages/Trading.jsx';
 import { Learning } from './pages/Learning.jsx';
@@ -28,7 +29,7 @@ function isPreviewMode() {
 }
 
 export default function App() {
-  const { user, loading } = useAuth();
+  const { user, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
   const [active, setActive]   = useState(() => localStorage.getItem('atelier:active') || 'dashboard');
   const [accent, setAccent]   = useState(() => localStorage.getItem('atelier:accent') || '#b27a42');
   const [density, setDensity] = useState(() => localStorage.getItem('atelier:density') || 'comfortable');
@@ -66,6 +67,11 @@ export default function App() {
         <LoopBrand size="lg" />
       </div>
     );
+  }
+
+  // ── Password recovery: user arrived from "ลืมรหัสผ่าน" email link ────────
+  if (passwordRecovery) {
+    return <ResetPasswordScreen onDone={clearPasswordRecovery} />;
   }
 
   // ── Auth gate: skip in preview mode ──────────────────────────────────────

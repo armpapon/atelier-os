@@ -10,6 +10,8 @@ import { supabase } from './supabase.js';
 export function useAuth() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  // true เมื่อ user กลับมาจากลิงก์ "ลืมรหัสผ่าน" ในอีเมล — App จะโชว์หน้าตั้งรหัสใหม่
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -23,14 +25,21 @@ export function useAuth() {
       setLoading(false);
     });
 
-    // listen การเปลี่ยนแปลง auth state (login/logout/refresh)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    // listen การเปลี่ยนแปลง auth state (login/logout/refresh/password recovery)
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  return { session, user: session?.user ?? null, loading };
+  return {
+    session,
+    user: session?.user ?? null,
+    loading,
+    passwordRecovery,
+    clearPasswordRecovery: () => setPasswordRecovery(false),
+  };
 }
 
 export async function signIn(email, password) {
@@ -52,4 +61,17 @@ export async function signUp(email, password, name) {
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+}
+
+export async function resetPassword(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin,
+  });
+  if (error) throw error;
+}
+
+export async function updatePassword(password) {
+  const { data, error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+  return data;
 }
