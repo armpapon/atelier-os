@@ -323,6 +323,19 @@ function parseFrom(from = '') {
   return { email, domain, name };
 }
 
+// Automated / notification senders (Google Play, Meta, no-reply, etc.) — never
+// something she needs to reply to. `category:primary` in the query removes most;
+// this is the safety net for ones that still land in the Primary tab.
+const AUTOMATED_DOMAINS = ['google.com', 'facebookmail.com', 'facebook.com', 'meta.com', 'metamail.com'];
+function isAutomatedSender(email = '') {
+  const e = email.toLowerCase();
+  const local = e.split('@')[0] || '';
+  const domain = e.split('@')[1] || '';
+  if (/(^|[._+-])(no-?reply|do-?not-?reply|donotreply|noreply|notification|notifications|notify|mailer|mailer-daemon|bounce|postmaster)([._+-]|$)/.test(local)) return true;
+  if (AUTOMATED_DOMAINS.some(d => domain === d || domain.endsWith('.' + d))) return true;
+  return false;
+}
+
 function gmailHeader(msg, name) {
   const h = (msg?.payload?.headers || []).find(x => x.name.toLowerCase() === name.toLowerCase());
   return h ? h.value : '';
@@ -346,7 +359,7 @@ function GmailInbox() {
     try {
       const list = await callProvider('google', {
         url: 'https://gmail.googleapis.com/gmail/v1/users/me/threads?' +
-          new URLSearchParams({ q: 'in:inbox newer_than:7d', maxResults: '15' }),
+          new URLSearchParams({ q: 'in:inbox category:primary newer_than:7d', maxResults: '15' }),
       });
       if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
 
@@ -365,8 +378,10 @@ function GmailInbox() {
         if (!msgs?.length) continue;
         const last = msgs[msgs.length - 1];
         const from = parseFrom(gmailHeader(last, 'From'));
-        // Waiting on her only if the latest message is from outside the org.
+        // Waiting on her only if the latest message is from outside the org…
         if (!from.domain || from.domain === ORG_DOMAIN) continue;
+        // …and it's a real person, not a platform/no-reply notification.
+        if (isAutomatedSender(from.email)) continue;
         waiting.push({
           id: th.id,
           name: from.name,

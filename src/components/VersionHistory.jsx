@@ -3,10 +3,18 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.11.2',
+    date: '2026-07-09',
+    title: 'Journal · กรองเมลแจ้งเตือนอัตโนมัติออกจาก "เมลค้างตอบ"',
+    badge: 'Current',
+    changes: [
+      '🧹 เมลอัพเดทอัตโนมัติ (Google Play, Meta, no-reply ต่างๆ) ไม่ขึ้นในเมลค้างตอบแล้ว — ดึงเฉพาะแท็บ Primary + กรอง sender ที่เป็น notification/no-reply',
+    ],
+  },
+  {
     version: 'v3.11.1',
     date: '2026-07-09',
     title: 'Integrations · แสดง error จริงจาก provider',
-    badge: 'Current',
     changes: [
       '🔧 เวลาเชื่อม API แล้วพัง จะแสดงข้อความจริงจาก Google (เช่น "Gmail API disabled", "insufficient scopes") แทน "non-2xx status code" กลางๆ',
     ],
