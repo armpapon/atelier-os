@@ -58,10 +58,43 @@ export async function getIntegration(provider) {
   if (!supabase) return null;
   const { data } = await supabase
     .from('integrations')
-    .select('provider, scope, expires_at, updated_at')
+    .select('provider, scope, expires_at, meta, updated_at')
     .eq('provider', provider)
     .maybeSingle();
   return data;
+}
+
+// ── Asana (Personal Access Token — no OAuth, never expires) ─────────────────
+// The user pastes the PAT in the app UI. We store it in `integrations` via a
+// direct upsert (RLS restricts to the owner's row), then validate it through
+// provider-proxy — a bad token is deleted again so the card stays disconnected.
+export async function connectAsana(pat) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { error } = await supabase.from('integrations').upsert({
+    user_id: user.id, provider: 'asana', access_token: pat,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,provider' });
+  if (error) throw error;
+  try {
+    const me = await callProvider('asana', {
+      url: 'https://app.asana.com/api/1.0/users/me?opt_fields=name,workspaces.name',
+    });
+    return me?.data;
+  } catch (e) {
+    await supabase.from('integrations').delete().eq('provider', 'asana');
+    throw new Error('Token ใช้ไม่ได้ — เช็คว่า copy มาครบ: ' + (e.message || e));
+  }
+}
+
+// Persist per-provider settings (e.g. Asana's chosen workspace/project).
+export async function updateIntegrationMeta(provider, meta) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase.from('integrations')
+    .update({ meta, updated_at: new Date().toISOString() })
+    .eq('provider', provider);
+  if (error) throw error;
 }
 
 export async function disconnect(provider) {
@@ -103,7 +136,8 @@ export async function callProvider(provider, { url, method = 'GET', body } = {})
       if (text) {
         try {
           const j = JSON.parse(text);
-          detail = j?.error?.message || j?.error?.detail || j?.error || j?.detail || text;
+          detail = j?.error?.message || j?.error?.detail || j?.errors?.[0]?.message
+            || j?.error || j?.detail || text;
         } catch { detail = text; }
       }
     } catch { /* keep generic message */ }

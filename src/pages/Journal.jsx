@@ -10,6 +10,7 @@ import {
   getHabitLogsForDate, toggleHabitLog,
 } from '../lib/api/journal.js';
 import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread } from '../lib/integrations.js';
+import { AsanaHours } from '../components/AsanaHours.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -1056,6 +1057,9 @@ export function Journal() {
 
             {/* Client emails still waiting for a reply */}
             <GmailInbox />
+
+            {/* Asana — team hours for the selected day */}
+            <AsanaHours date={date} />
 
             {/* Mood */}
             <div className="card">
