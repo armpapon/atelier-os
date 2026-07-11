@@ -366,21 +366,36 @@ function GmailInbox() {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const list = await callProvider('google', {
-        url: 'https://gmail.googleapis.com/gmail/v1/users/me/threads?' +
-          new URLSearchParams({ q: 'in:inbox newer_than:7d', maxResults: '15' }),
-      });
-      if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
+      // Walk the whole inbox (no time limit) so every un-replied thread shows,
+      // however old. Cap the scan so a huge inbox can't run away.
+      const SCAN_CAP = 150;   // most inbox threads to inspect
+      const BATCH = 12;       // concurrent thread fetches per wave
+      const ids = [];
+      let pageToken = '';
+      do {
+        const params = new URLSearchParams({ q: 'in:inbox', maxResults: '100' });
+        if (pageToken) params.set('pageToken', pageToken);
+        const list = await callProvider('google', {
+          url: 'https://gmail.googleapis.com/gmail/v1/users/me/threads?' + params,
+        });
+        if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
+        for (const t of (list.threads || [])) ids.push(t.id);
+        pageToken = list.nextPageToken || '';
+      } while (pageToken && ids.length < SCAN_CAP);
 
-      const details = await Promise.all((list.threads || []).map(t => {
-        const p = new URLSearchParams({ format: 'metadata' });
-        p.append('metadataHeaders', 'From');
-        p.append('metadataHeaders', 'Subject');
-        p.append('metadataHeaders', 'To');
-        return callProvider('google', {
-          url: `https://gmail.googleapis.com/gmail/v1/users/me/threads/${t.id}?${p}`,
-        }).catch(() => null);
-      }));
+      const details = [];
+      for (let i = 0; i < Math.min(ids.length, SCAN_CAP); i += BATCH) {
+        const wave = await Promise.all(ids.slice(i, i + BATCH).map(id => {
+          const p = new URLSearchParams({ format: 'metadata' });
+          p.append('metadataHeaders', 'From');
+          p.append('metadataHeaders', 'Subject');
+          p.append('metadataHeaders', 'To');
+          return callProvider('google', {
+            url: `https://gmail.googleapis.com/gmail/v1/users/me/threads/${id}?${p}`,
+          }).catch(() => null);
+        }));
+        details.push(...wave);
+      }
 
       const waiting = [];
       for (const th of details) {
@@ -426,7 +441,7 @@ function GmailInbox() {
   return (
     <div className="card">
       <div className="card__head">
-        <div className="card__title">เมลค้างตอบ</div>
+        <div className="card__title">เมลค้างตอบ{items && items.length ? ` (${items.length})` : ''}</div>
         {status === 'connected' && (
           <button onClick={load} disabled={busy} title="รีเฟรช"
             style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
