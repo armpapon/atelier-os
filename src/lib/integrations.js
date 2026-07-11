@@ -69,6 +69,25 @@ export async function disconnect(provider) {
   await supabase.from('integrations').delete().eq('provider', provider);
 }
 
+// ── Gmail "เมลค้างตอบ" manual dismiss ────────────────────────────────────────
+// Threads the user marked as handled. dismissed_ts = the latest message's
+// timestamp at dismissal, so a newer client message resurfaces the thread.
+export async function listGmailDismissed() {
+  if (!supabase) return [];
+  const { data } = await supabase.from('gmail_dismissed').select('thread_id, dismissed_ts');
+  return data || [];
+}
+
+export async function dismissGmailThread(threadId, lastTs) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not logged in');
+  const { error } = await supabase.from('gmail_dismissed').upsert({
+    user_id: user.id, thread_id: threadId, dismissed_ts: lastTs,
+  });
+  if (error) throw error;
+}
+
 // Call a provider API through the authenticated proxy.
 export async function callProvider(provider, { url, method = 'GET', body } = {}) {
   const { data, error } = await supabase.functions.invoke('provider-proxy', {

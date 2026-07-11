@@ -9,7 +9,7 @@ import {
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
 } from '../lib/api/journal.js';
-import { startGoogleAuth, getIntegration, callProvider } from '../lib/integrations.js';
+import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread } from '../lib/integrations.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -370,6 +370,13 @@ function GmailInbox() {
       // however old. Cap the scan so a huge inbox can't run away.
       const SCAN_CAP = 150;   // most inbox threads to inspect
       const BATCH = 12;       // concurrent thread fetches per wave
+
+      // Threads she manually marked as handled (e.g. resolved by phone).
+      // Keyed by thread id → ts of the last message at dismissal time.
+      const dismissed = new Map(
+        (await listGmailDismissed().catch(() => [])).map(d => [d.thread_id, Number(d.dismissed_ts)]),
+      );
+
       const ids = [];
       let pageToken = '';
       do {
@@ -407,12 +414,16 @@ function GmailInbox() {
         if (!from.domain || from.domain === ORG_DOMAIN) continue;
         // …and it's a real person, not a platform/no-reply notification.
         if (isAutomatedSender(from.email)) continue;
+        const ts = Number(last.internalDate) || Date.now();
+        // Manually dismissed — stays hidden unless the client mailed again later.
+        const dts = dismissed.get(th.id);
+        if (dts && ts <= dts) continue;
         waiting.push({
           id: th.id,
           name: from.name,
           subject: gmailHeader(msgs[0], 'Subject') || '(ไม่มีหัวข้อ)',
           to: extractEmails(gmailHeader(last, 'To')).join(', '),
-          ts: Number(last.internalDate) || Date.now(),
+          ts,
         });
       }
       waiting.sort((a, b) => b.ts - a.ts);
@@ -437,6 +448,18 @@ function GmailInbox() {
     window.addEventListener('loop:oauth-connected', run);
     return () => { cancelled = true; window.removeEventListener('loop:oauth-connected', run); };
   }, [load]);
+
+  // Mark a thread as handled (answered by phone, no reply needed, …).
+  // It stays hidden unless the client sends a newer message in that thread.
+  const handleDismiss = async (e, m) => {
+    e.preventDefault(); e.stopPropagation();
+    try {
+      await dismissGmailThread(m.id, m.ts);
+      setItems(prev => (prev || []).filter(x => x.id !== m.id));
+    } catch (err) {
+      alert('ซ่อนไม่สำเร็จ: ' + (err.message || err));
+    }
+  };
 
   return (
     <div className="card">
@@ -468,9 +491,18 @@ function GmailInbox() {
               <a key={m.id} href={`https://mail.google.com/mail/u/0/#inbox/${m.id}`}
                 target="_blank" rel="noopener noreferrer"
                 style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--surface-2)', textDecoration: 'none' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
-                  <span style={{ flexShrink: 0 }}>ค้าง {waitingLabel(m.ts)}</span>
+                  <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    ค้าง {waitingLabel(m.ts)}
+                    <button onClick={e => handleDismiss(e, m)}
+                      title="จัดการแล้ว (เช่น โทรคุยแล้ว) — เอาออกจากลิสต์"
+                      style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '2px 5px' }}
+                      onMouseEnter={ev => { ev.currentTarget.style.color = 'var(--amber-deep)'; ev.currentTarget.style.borderColor = 'var(--amber)'; }}
+                      onMouseLeave={ev => { ev.currentTarget.style.color = 'var(--ink-3)'; ev.currentTarget.style.borderColor = 'var(--line)'; }}>
+                      ✓
+                    </button>
+                  </span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</div>
                 {m.to && (
