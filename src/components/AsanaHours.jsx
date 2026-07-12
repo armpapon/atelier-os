@@ -1,8 +1,10 @@
-// ── Asana — team hours per person for the selected day ───────────────────────
-// Phase 3: the wife's team tags estimated hours in task names ("[3 Hr] ทำ artwork")
-// and marks ready-to-start work with an emoji prefix. This card sums hours per
-// assignee for tasks due on the Journal's selected date, flags anyone under
-// 8 hr, and shows how many of each person's tasks are ready (emoji-prefixed).
+// ── Asana — team hours dashboard, per person per day ─────────────────────────
+// Patt's real workflow (clarified 2026-07-12): each employee plans their day by
+// placing task cards on their own calendar with hours in the name, e.g.
+// "ทำ artwork (3Hr)". She wants, per selected day: did each person fill 8 hr,
+// and hours by status — ✅ Finished (completed in Asana), 😄 On Process (emoji
+// prefix = actually workable), ❌ Waiting (no emoji yet). Person-centric: tasks
+// are pulled by assignee across all projects, not from a single project.
 // Auth = Personal Access Token pasted in this card (stored via RLS-guarded
 // upsert, validated through provider-proxy — never expires, no refresh).
 import { useState, useEffect, useCallback } from 'react';
@@ -12,20 +14,22 @@ import {
 
 const ASANA_API = 'https://app.asana.com/api/1.0';
 
-// Hour tag, forgiving: [3 Hr] [3hr] [0.5 hr.] [2 ชม.] — anywhere in the name.
-const HOUR_TAG = /\[\s*(\d+(?:[.,]\d+)?)\s*(?:h(?:(?:ou)?rs?)?|ชม)\.?\s*\]/iu;
+// Hour tag, forgiving: (3Hr) [3 Hr] (0.5 hr.) (2 ชม.) — anywhere in the name.
+const HOUR_TAG = /[[(]\s*(\d+(?:[.,]\d+)?)\s*(?:h(?:(?:ou)?rs?)?|ชม)\.?\s*[\])]/iu;
 export function taskHours(name = '') {
   const m = name.match(HOUR_TAG);
   return m ? parseFloat(m[1].replace(',', '.')) : null;
 }
 
-// Any emoji at the start of the name = the team marked it ready to work on.
+// Any emoji at the start of the name = the team marked it workable — except
+// negation marks, which read as "blocked/waiting" even though they're emoji.
 const EMOJI_PREFIX = /^\s*\p{Extended_Pictographic}/u;
-export function isDoable(name = '') { return EMOJI_PREFIX.test(name); }
-
-function fmtHr(h) {
-  return (Math.round(h * 100) / 100).toString();
+const NEGATIVE_PREFIX = /^\s*[❌⛔🚫✖️❎]/u;
+export function isDoable(name = '') {
+  return EMOJI_PREFIX.test(name) && !NEGATIVE_PREFIX.test(name);
 }
+
+function fmtHr(h) { return (Math.round(h * 100) / 100).toString(); }
 
 // GET an Asana collection, following offset pagination (capped for safety).
 async function asanaGetAll(path, params = {}) {
@@ -42,7 +46,43 @@ async function asanaGetAll(path, params = {}) {
   return out;
 }
 
-const MIN_HOURS = 8;
+// All of the team's tasks due on `date`. Search API filters due_on server-side
+// but is premium-only — on a free workspace we fall back to walking each
+// person's task list and filtering the date client-side.
+async function fetchDayTasks(wsGid, team, date) {
+  try {
+    const qs = new URLSearchParams({
+      'assignee.any': team.map(m => m.gid).join(','),
+      due_on: date, limit: '100',
+      opt_fields: 'name,assignee.gid,completed',
+    });
+    const res = await callProvider('asana', {
+      url: `${ASANA_API}/workspaces/${wsGid}/tasks/search?${qs}`,
+    });
+    if (res?.errors) throw new Error(res.errors[0]?.message || JSON.stringify(res.errors));
+    return res.data || [];
+  } catch (e) {
+    const msg = String(e.message || e);
+    if (!/premium|payment|upgrade|not available|402/i.test(msg)) throw e;
+    const all = [];
+    for (const m of team) {
+      const rows = await asanaGetAll('/tasks', {
+        assignee: m.gid, workspace: wsGid,
+        completed_since: `${date}T00:00:00.000Z`,
+        opt_fields: 'name,assignee.gid,due_on,completed',
+      });
+      all.push(...rows.filter(t => t.due_on === date));
+    }
+    return all;
+  }
+}
+
+const TARGET = 8;
+const STATUSES = [
+  { key: 'done', icon: '✅', label: 'Finished' },
+  { key: 'proc', icon: '😄', label: 'On Process' },
+  { key: 'wait', icon: '❌', label: 'Waiting' },
+];
 
 export function AsanaHours({ date }) {
   const [integ, setInteg] = useState(undefined); // undefined=loading, null=disconnected
@@ -51,13 +91,15 @@ export function AsanaHours({ date }) {
   const [picking, setPicking] = useState(false);
   const [workspaces, setWorkspaces] = useState([]);
   const [wsGid, setWsGid] = useState('');
-  const [projects, setProjects] = useState(null);
-  const [projGid, setProjGid] = useState('');
+  const [members, setMembers] = useState(null);
+  const [memberFilter, setMemberFilter] = useState('');
+  const [selected, setSelected] = useState(new Set());
   const [people, setPeople] = useState(null);
   const [expanded, setExpanded] = useState(null);
 
   const meta = integ?.meta || {};
-  const projectGid = meta.asana_project_gid;
+  const team = meta.asana_team || [];
+  const ready = !!(meta.asana_workspace_gid && team.length);
 
   const refreshInteg = useCallback(
     () => getIntegration('asana').then(i => { setInteg(i ?? null); return i; }).catch(() => setInteg(null)),
@@ -65,40 +107,40 @@ export function AsanaHours({ date }) {
   );
   useEffect(() => { refreshInteg(); }, [refreshInteg]);
 
-  // ── Load + summarize the selected day's tasks ──────────────────────────────
+  // ── Load + summarize the selected day ──────────────────────────────────────
   const load = useCallback(async () => {
-    if (!projectGid) return;
+    if (!ready) return;
     setBusy(true);
     try {
-      const tasks = await asanaGetAll('/tasks', {
-        project: projectGid,
-        opt_fields: 'name,assignee.name,due_on,completed',
-      });
-      const byPerson = new Map();
+      const tasks = await fetchDayTasks(meta.asana_workspace_gid, team, date);
+      // Seed from the team list so someone with zero cards still shows (0/8).
+      const byGid = new Map(team.map(m => [m.gid, {
+        gid: m.gid, name: m.name, done: 0, proc: 0, wait: 0, untagged: 0, tasks: [],
+      }]));
       for (const t of tasks) {
-        if (t.due_on !== date) continue;
-        const who = t.assignee?.name || 'ไม่ระบุคนทำ';
-        if (!byPerson.has(who)) byPerson.set(who, { name: who, hours: 0, tagged: 0, doable: 0, tasks: [] });
-        const p = byPerson.get(who);
+        const p = byGid.get(t.assignee?.gid);
+        if (!p) continue;
         const hrs = taskHours(t.name);
-        const doable = isDoable(t.name);
-        if (hrs != null) { p.hours += hrs; p.tagged++; }
-        if (doable) p.doable++;
-        p.tasks.push({ gid: t.gid, name: t.name, hrs, done: !!t.completed, doable });
+        const status = t.completed ? 'done' : isDoable(t.name) ? 'proc' : 'wait';
+        if (hrs == null) p.untagged++;
+        else p[status] += hrs;
+        p.tasks.push({ gid: t.gid, name: t.name, hrs, status });
       }
-      // Least-loaded people first so the ones needing work assigned surface on top.
-      setPeople([...byPerson.values()].sort((a, b) => a.hours - b.hours));
+      const rows = [...byGid.values()].map(p => ({ ...p, total: p.done + p.proc + p.wait }));
+      // Least-filled people first — they're the ones Patt needs to chase.
+      rows.sort((a, b) => a.total - b.total);
+      setPeople(rows);
       setExpanded(null);
     } catch (e) {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) setInteg(null);
       else alert('ดึงงาน Asana ไม่สำเร็จ: ' + msg);
     } finally { setBusy(false); }
-  }, [projectGid, date]);
+  }, [ready, meta.asana_workspace_gid, team, date]);
 
-  useEffect(() => { if (projectGid && !picking) load(); }, [projectGid, picking, load]);
+  useEffect(() => { if (ready && !picking) load(); }, [ready, picking, load]);
 
-  // ── Connect: paste PAT → validate → pick workspace/project ────────────────
+  // ── Connect: paste PAT → validate → pick workspace + team ─────────────────
   const connect = async () => {
     const token = pat.trim();
     if (!token) return;
@@ -116,9 +158,9 @@ export function AsanaHours({ date }) {
     } finally { setBusy(false); }
   };
 
-  // Entering picker later (⚙) — workspace list needs re-fetching.
   const openPicker = async () => {
     setPicking(true);
+    setSelected(new Set(team.map(m => m.gid)));
     if (!workspaces.length) {
       try {
         const me = await callProvider('asana', {
@@ -131,27 +173,33 @@ export function AsanaHours({ date }) {
     }
   };
 
-  // Workspace chosen → list its projects.
+  // Workspace chosen → list its members.
   useEffect(() => {
     if (!picking || !wsGid) return;
     let cancelled = false;
-    setProjects(null);
-    asanaGetAll('/projects', { workspace: wsGid, archived: 'false', opt_fields: 'name' })
-      .then(rows => { if (!cancelled) { setProjects(rows); setProjGid(rows[0]?.gid || ''); } })
-      .catch(e => { if (!cancelled) alert('โหลด project ไม่สำเร็จ: ' + (e.message || e)); });
+    setMembers(null);
+    asanaGetAll('/users', { workspace: wsGid, opt_fields: 'name' })
+      .then(rows => { if (!cancelled) setMembers(rows); })
+      .catch(e => { if (!cancelled) alert('โหลดรายชื่อไม่สำเร็จ: ' + (e.message || e)); });
     return () => { cancelled = true; };
   }, [picking, wsGid]);
 
+  const toggleMember = (gid) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(gid) ? next.delete(gid) : next.add(gid);
+    return next;
+  });
+
   const savePick = async () => {
     const ws = workspaces.find(w => w.gid === wsGid);
-    const pr = (projects || []).find(p => p.gid === projGid);
-    if (!pr) return;
+    const picked = (members || []).filter(m => selected.has(m.gid))
+      .map(m => ({ gid: m.gid, name: m.name }));
+    if (!picked.length) return;
     setBusy(true);
     try {
       await updateIntegrationMeta('asana', {
-        ...meta,
         asana_workspace_gid: ws?.gid || wsGid, asana_workspace_name: ws?.name || '',
-        asana_project_gid: pr.gid, asana_project_name: pr.name,
+        asana_team: picked,
       });
       await refreshInteg();
       setPicking(false);
@@ -162,24 +210,34 @@ export function AsanaHours({ date }) {
   const handleDisconnect = async () => {
     if (!confirm('ยกเลิกการเชื่อม Asana? (token จะถูกลบ)')) return;
     await disconnect('asana');
-    setInteg(null); setPicking(false); setPeople(null); setWorkspaces([]);
+    setInteg(null); setPicking(false); setPeople(null); setWorkspaces([]); setMembers(null);
   };
 
-  const selStyle = {
+  const inputStyle = {
     width: '100%', padding: '7px 8px', fontSize: 12, color: 'var(--ink)',
     background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
   };
   const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
+  const linkBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--ink-3)', padding: 0 };
+
+  // Team-wide totals for the overview strip.
+  const sum = (people || []).reduce(
+    (a, p) => ({
+      done: a.done + p.done, proc: a.proc + p.proc, wait: a.wait + p.wait,
+      full: a.full + (p.total >= TARGET ? 1 : 0),
+    }),
+    { done: 0, proc: 0, wait: 0, full: 0 },
+  );
 
   return (
     <div className="card">
       <div className="card__head">
         <div className="card__title">ชั่วโมงทีม · Asana</div>
-        {integ && projectGid && !picking && (
+        {integ && ready && !picking && (
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <button onClick={load} disabled={busy} title="รีเฟรช"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
-            <button onClick={openPicker} title="เปลี่ยน project"
+            <button onClick={openPicker} title="เปลี่ยนทีม / workspace"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
           </span>
         )}
@@ -197,95 +255,147 @@ export function AsanaHours({ date }) {
           <input type="password" value={pat} onChange={e => setPat(e.target.value)}
             placeholder="วาง token ที่นี่" autoComplete="off"
             onKeyDown={e => e.key === 'Enter' && connect()}
-            style={{ ...selStyle, fontFamily: 'var(--f-mono)' }} />
+            style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
           <button className="btn btn--ghost" onClick={connect} disabled={busy || !pat.trim()}>
             {busy ? 'กำลังเช็ค token...' : '🔗 เชื่อม Asana'}
           </button>
         </div>
-      ) : picking || !projectGid ? (
-        /* ── Pick workspace + project ── */
+      ) : picking || !ready ? (
+        /* ── Pick workspace + team members ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!workspaces.length ? (
-            <button className="btn btn--ghost" onClick={openPicker}>เลือก workspace / project</button>
+            <button className="btn btn--ghost" onClick={openPicker}>เลือก workspace / ทีม</button>
           ) : (
             <>
               <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Workspace</div>
-              <select value={wsGid} onChange={e => setWsGid(e.target.value)} style={selStyle}>
+              <select value={wsGid} onChange={e => setWsGid(e.target.value)} style={inputStyle}>
                 {workspaces.map(w => <option key={w.gid} value={w.gid}>{w.name}</option>)}
               </select>
-              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Project</div>
-              {projects === null ? (
-                <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>กำลังโหลด project...</div>
-              ) : !projects.length ? (
-                <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>ไม่พบ project ใน workspace นี้</div>
+              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+                คนในทีม{selected.size ? ` · เลือก ${selected.size}` : ''}
+              </div>
+              {members === null ? (
+                <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>กำลังโหลดรายชื่อ...</div>
+              ) : !members.length ? (
+                <div style={{ fontSize: 12, color: 'var(--ink-3)' }}>ไม่พบสมาชิกใน workspace นี้</div>
               ) : (
-                <select value={projGid} onChange={e => setProjGid(e.target.value)} style={selStyle}>
-                  {projects.map(p => <option key={p.gid} value={p.gid}>{p.name}</option>)}
-                </select>
+                <>
+                  {members.length > 8 && (
+                    <input value={memberFilter} onChange={e => setMemberFilter(e.target.value)}
+                      placeholder="ค้นหาชื่อ..." style={inputStyle} />
+                  )}
+                  <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {members
+                      .filter(m => !memberFilter || m.name.toLowerCase().includes(memberFilter.toLowerCase()))
+                      .map(m => (
+                        <label key={m.gid}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 13, color: 'var(--ink)', background: selected.has(m.gid) ? 'var(--surface-2)' : 'transparent' }}>
+                          <input type="checkbox" checked={selected.has(m.gid)} onChange={() => toggleMember(m.gid)} />
+                          {m.name}
+                        </label>
+                      ))}
+                  </div>
+                </>
               )}
-              <button className="btn btn--ghost" onClick={savePick} disabled={busy || !projGid}>
-                {busy ? 'กำลังบันทึก...' : '✓ ใช้ project นี้'}
+              <button className="btn btn--ghost" onClick={savePick} disabled={busy || !selected.size}>
+                {busy ? 'กำลังบันทึก...' : `✓ ใช้ทีมนี้ (${selected.size} คน)`}
               </button>
             </>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            {projectGid
-              ? <button onClick={() => setPicking(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--ink-3)', padding: 0 }}>‹ กลับ</button>
+            {ready
+              ? <button onClick={() => setPicking(false)} style={linkBtn}>‹ กลับ</button>
               : <span />}
-            <button onClick={handleDisconnect}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--ink-3)', padding: 0 }}>
-              ยกเลิกการเชื่อม
-            </button>
+            <button onClick={handleDisconnect} style={linkBtn}>ยกเลิกการเชื่อม</button>
           </div>
         </div>
       ) : (
-        /* ── Day summary ── */
+        /* ── Day dashboard ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ ...mono10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {meta.asana_project_name} · due {formatShort(date)}
+            {meta.asana_workspace_name || 'Asana'} · due {formatShort(date)}
           </div>
           {busy && people === null ? (
             <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '14px 0', fontSize: 12 }}>กำลังดึง...</div>
-          ) : people && !people.length ? (
-            <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '14px 0', fontSize: 12 }}>
-              ไม่มีงาน due วันนี้ในโปรเจคนี้
-            </div>
-          ) : people ? people.map(p => {
-            const low = p.hours < MIN_HOURS;
-            const open = expanded === p.name;
-            return (
-              <div key={p.name}
-                style={{ border: `1px solid ${low ? 'var(--amber)' : 'var(--line)'}`, borderRadius: 'var(--r-sm)', background: 'var(--surface-2)' }}>
-                <button onClick={() => setExpanded(open ? null : p.name)}
-                  style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-                  <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
-                    <span style={mono10}>{p.doable}/{p.tasks.length} พร้อมทำ</span>
-                  </span>
-                  <span style={{ flexShrink: 0, textAlign: 'right' }}>
-                    <span style={{ display: 'block', fontFamily: 'var(--f-mono)', fontSize: 14, color: low ? 'var(--amber-deep)' : 'var(--ink)' }}>
-                      {p.tagged ? `${fmtHr(p.hours)} ชม.` : '—'}
-                    </span>
-                    {low && <span style={{ ...mono10, color: 'var(--amber-deep)' }}>ต่ำกว่า {MIN_HOURS} ชม.</span>}
-                  </span>
-                </button>
-                {open && (
-                  <div style={{ borderTop: '1px solid var(--line)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {p.tasks.map(t => (
-                      <div key={t.gid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
-                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink-2)', textDecoration: t.done ? 'line-through' : 'none' }}>
-                          {t.doable ? '' : '· '}{t.name}
-                        </span>
-                        <span style={{ ...mono10, flexShrink: 0 }}>{t.hrs != null ? `${fmtHr(t.hrs)} ชม.` : '—'}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          ) : people ? (
+            <>
+              {/* Overview strip */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <OverviewTile value={`${sum.full}/${people.length}`} label={`คนครบ ${TARGET} Hr`} />
+                <OverviewTile value={`${fmtHr(sum.done)} ชม.`} label="✅ Finished" />
+                <OverviewTile value={`${fmtHr(sum.proc)} ชม.`} label="😄 On Process" />
+                <OverviewTile value={`${fmtHr(sum.wait)} ชม.`} label="❌ Waiting" />
               </div>
-            );
-          }) : null}
+
+              {/* Per person */}
+              {people.map(p => {
+                const low = p.total < TARGET;
+                const open = expanded === p.gid;
+                return (
+                  <div key={p.gid}
+                    style={{ border: `1px solid ${low ? 'var(--warning)' : 'var(--line)'}`, borderRadius: 'var(--r-sm)', background: low ? 'var(--warning-soft)' : 'var(--surface-2)' }}>
+                    <button onClick={() => setExpanded(open ? null : p.gid)}
+                      style={{ display: 'block', width: '100%', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        <span style={{ flexShrink: 0, fontFamily: 'var(--f-mono)', fontSize: 12, color: low ? 'var(--amber-deep)' : 'var(--profit)' }}>
+                          {fmtHr(p.total)}/{TARGET}{low ? ` · ขาด ${fmtHr(TARGET - p.total)}` : ' ✓'}
+                        </span>
+                      </div>
+                      <div style={{ height: 4, background: low ? 'var(--surface-2)' : 'var(--bg-2)', borderRadius: 2, margin: '6px 0', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(100, (p.total / TARGET) * 100)}%`, height: '100%', background: low ? 'var(--warning)' : 'var(--profit)' }} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {STATUSES.map(s => (
+                          <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: p[s.key] ? 'var(--ink-2)' : 'var(--ink-4)' }}>
+                            <span>{s.icon} {s.label}</span>
+                            <span style={{ fontFamily: 'var(--f-mono)' }}>{fmtHr(p[s.key])} Hours</span>
+                          </div>
+                        ))}
+                        {p.untagged > 0 && (
+                          <div style={{ fontSize: 10, color: 'var(--amber-deep)' }}>
+                            ⚠ งานไม่ระบุ ชม. อีก {p.untagged} ใบ — ตัวเลขยังไม่ครบจริง
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                    {open && p.tasks.length > 0 && (
+                      <div style={{ borderTop: '1px solid var(--line)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {p.tasks.map(t => (
+                          <div key={t.gid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
+                            <span style={{
+                              minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              color: t.status === 'wait' ? 'var(--ink-3)' : 'var(--ink-2)',
+                              textDecoration: t.status === 'done' ? 'line-through' : 'none',
+                            }}>{t.name}</span>
+                            <span style={{ ...mono10, flexShrink: 0 }}>
+                              {t.hrs != null ? `${fmtHr(t.hrs)} Hr` : '—'} {STATUSES.find(s => s.key === t.status)?.icon}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {open && !p.tasks.length && (
+                      <div style={{ borderTop: '1px solid var(--line)', padding: '6px 10px', fontSize: 12, color: 'var(--ink-3)' }}>
+                        ยังไม่ได้วางการ์ดงานวันนี้เลย
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+function OverviewTile({ value, label }) {
+  return (
+    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 6px', textAlign: 'center' }}>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 15, color: 'var(--ink)' }}>{value}</div>
+      <div style={{ fontSize: 10, color: 'var(--ink-3)', marginTop: 2 }}>{label}</div>
     </div>
   );
 }
