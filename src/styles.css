@@ -23,7 +23,7 @@
   /* ── Text — high contrast warm charcoal ────────────────────────────────── */
   --text-primary:   #2f2923;
   --text-secondary: #6f6254;
-  --text-muted:     #9a8b7a;
+  --text-muted:     #7c6d57;   /* darkened from #9a8b7a: ~2.9:1 → ~4.4:1 on ivory, legible on tiny mono labels */
   --text-inverse:   #fffaf0;
 
   --ink:   var(--text-primary);
