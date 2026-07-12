@@ -5,28 +5,31 @@ import { signOut } from '../lib/useAuth.js';
 import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
 import { LoopMark } from './LoopMark.jsx';
 
+// Shared nav model — Sidebar (desktop) + MobileNav (bottom bar) render from this
+export const NAV_GROUPS = [
+  { group: 'หลัก', children: [
+    { id: 'dashboard', label: 'แดชบอร์ด',    icon: 'home',    badge: null },
+    { id: 'journal',   label: 'Daily Journal', icon: 'journal', badge: '6' },
+  ]},
+  { group: 'เรียนรู้ & ทำเงิน', children: [
+    { id: 'trading',          label: 'Trading Journal',  icon: 'trade',  badge: null },
+    { id: 'learning',         label: 'Learning Hub',     icon: 'book',   badge: null },
+    { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null },
+    { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
+  ]},
+  { group: 'ชีวิต', children: [
+    { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },
+    { id: 'life-calendar', label: 'Life Calendar', icon: 'hourglass', badge: null },
+    { id: 'goals',  label: 'เป้าหมาย & OKR', icon: 'target', badge: 'Soon' },
+    { id: 'brain',  label: 'Second Brain',   icon: 'brain',  badge: null   },
+  ]},
+];
+
 export function Sidebar({ active, onChange, user, collapsed = false, onToggleCollapse }) {
   const [showVersion, setShowVersion] = useState(false);
   const currentVersion = CHANGELOG[0]?.version || 'v0.5';
 
-  const items = [
-    { group: 'หลัก', children: [
-      { id: 'dashboard', label: 'แดชบอร์ด',    icon: 'home',    badge: null },
-      { id: 'journal',   label: 'Daily Journal', icon: 'journal', badge: '6' },
-    ]},
-    { group: 'เรียนรู้ & ทำเงิน', children: [
-      { id: 'trading',          label: 'Trading Journal',  icon: 'trade',  badge: null },
-      { id: 'learning',         label: 'Learning Hub',     icon: 'book',   badge: null },
-      { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null },
-      { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
-    ]},
-    { group: 'ชีวิต', children: [
-      { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },
-      { id: 'life-calendar', label: 'Life Calendar', icon: 'hourglass', badge: null },
-      { id: 'goals',  label: 'เป้าหมาย & OKR', icon: 'target', badge: 'Soon' },
-      { id: 'brain',  label: 'Second Brain',   icon: 'brain',  badge: null   },
-    ]},
-  ];
+  const items = NAV_GROUPS;
 
   const displayName    = user?.user_metadata?.name || user?.email?.split('@')[0] || 'อาทิตย์';
   const displayInitial = (displayName[0] || 'A').toUpperCase();

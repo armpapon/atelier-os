@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar.jsx';
+import { MobileNav } from './components/MobileNav.jsx';
 import { Icon } from './components/Icon.jsx';
 import { TweaksPanel } from './components/TweaksPanel.jsx';
 import { ComingSoon } from './components/ComingSoon.jsx';
@@ -16,9 +17,15 @@ import { Family } from './pages/Family.jsx';
 import { SecondBrain } from './pages/SecondBrain.jsx';
 import { LifeCalendar } from './pages/LifeCalendar.jsx';
 import { useAuth } from './lib/useAuth.js';
+import { useMediaQuery, MOBILE_QUERY } from './lib/useMediaQuery.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
 import { handleOAuthRedirect } from './lib/integrations.js';
 import { LoopBrand } from './components/LoopMark.jsx';
+
+// Pages already adapted for narrow screens (phases 3-5 of the mobile plan).
+// Pages NOT in this set render at their designed desktop width inside a
+// horizontal-pan container on mobile — readable & tappable in the meantime.
+const MOBILE_READY = new Set([]);
 
 // ── Preview mode: ?preview=1 in URL bypasses login (for design review) ──────
 // Note: Supabase RLS still blocks all writes & private data — only the
@@ -35,6 +42,7 @@ export default function App() {
   const [density, setDensity] = useState(() => localStorage.getItem('atelier:density') || 'comfortable');
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('loop:sidebar') === 'collapsed');
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const previewMode = isPreviewMode();
 
@@ -102,11 +110,15 @@ export default function App() {
 
   return (
     <div className="app" data-density={density} data-sidebar={sidebarCollapsed ? 'collapsed' : 'expanded'}>
-      <Sidebar
-        active={active} onChange={setActive} user={user}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(v => !v)}
-      />
+      {isMobile ? (
+        <MobileNav active={active} onChange={setActive} user={user} />
+      ) : (
+        <Sidebar
+          active={active} onChange={setActive} user={user}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+        />
+      )}
       <main className="main" key={active}>
         {previewMode && (
           <div style={{
@@ -142,7 +154,14 @@ export default function App() {
             <span>Supabase ยังไม่ได้ตั้งค่า · ข้อมูลเป็น mock</span>
           </div>
         )}
-        <div className="fade-in">{render()}</div>
+        {isMobile && !MOBILE_READY.has(active) ? (
+          // Interim: un-adapted page renders at designed width, pans horizontally
+          <div className="fade-in" style={{ overflowX: 'auto' }}>
+            <div style={{ minWidth: 1024 }}>{render()}</div>
+          </div>
+        ) : (
+          <div className="fade-in">{render()}</div>
+        )}
       </main>
 
       {!tweaksOpen && (
@@ -152,7 +171,8 @@ export default function App() {
           aria-label="เปิด Tweaks"
           className="focus-ring"
           style={{
-            position: 'fixed', right: 20, bottom: 20, zIndex: 999,
+            position: 'fixed', right: 20, zIndex: 999,
+            bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 20,
             width: 44, height: 44, borderRadius: '50%',
             background: 'var(--accent-strong)', color: 'var(--text-inverse)',
             border: 0, cursor: 'pointer', display: 'flex',

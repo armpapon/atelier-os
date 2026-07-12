@@ -108,6 +108,13 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 .app { display: grid; grid-template-columns: 240px 1fr; height: 100vh; width: 100vw; transition: grid-template-columns 180ms ease; }
 .app[data-sidebar="collapsed"] { grid-template-columns: 64px 1fr; }
 @media (prefers-reduced-motion: reduce) { .app { transition: none; } }
+@supports (height: 100dvh) { .app { height: 100dvh; } } /* mobile Safari dynamic toolbar */
+
+/* Narrow screens: sidebar column disappears — MobileNav (bottom bar) takes over */
+@media (max-width: 1023px) {
+  .app, .app[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
+  .main { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+}
 
 .sidebar {
   background: var(--bg-2); border-right: 1px solid var(--line);
