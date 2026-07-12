@@ -25,7 +25,7 @@ import { LoopBrand } from './components/LoopMark.jsx';
 // Pages already adapted for narrow screens (phases 3-5 of the mobile plan).
 // Pages NOT in this set render at their designed desktop width inside a
 // horizontal-pan container on mobile — readable & tappable in the meantime.
-const MOBILE_READY = new Set([]);
+const MOBILE_READY = new Set(['dashboard', 'journal']);
 
 // ── Preview mode: ?preview=1 in URL bypasses login (for design review) ──────
 // Note: Supabase RLS still blocks all writes & private data — only the
@@ -160,7 +160,8 @@ export default function App() {
             <div style={{ minWidth: 1024 }}>{render()}</div>
           </div>
         ) : (
-          <div className="fade-in">{render()}</div>
+          // .m-ready scopes the mobile-layout CSS to adapted pages only
+          <div className={`fade-in${isMobile ? ' m-ready' : ''}`}>{render()}</div>
         )}
       </main>
 

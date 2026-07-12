@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase.js';
+import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import {
   getManifest, upsertManifest,
   getThemes, upsertThemes,
@@ -60,6 +61,7 @@ export function Dashboard({ onNav, user }) {
 
   const today = formatToday();
   const displayName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'อาทิตย์';
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleManifestSave = async (input) => { await upsertManifest(input); refresh(); };
@@ -82,7 +84,7 @@ export function Dashboard({ onNav, user }) {
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.22em', marginBottom: 6 }}>
             ạ ATELIER OS · LIFE OS
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 32, color: 'var(--ink)', lineHeight: 1.1 }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 26 : 32, color: 'var(--ink)', lineHeight: 1.1 }}>
             {today.greeting}, <em style={{ color: 'var(--amber)' }}>{displayName}</em>
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 6 }}>
@@ -114,7 +116,7 @@ export function Dashboard({ onNav, user }) {
       <ThemesCard themes={themes} onSave={handleThemesSave} />
 
       {/* Section 3: Goals + Today's Focus */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 14 }}>
         <GoalsList
           goals={goals}
           onAdd={handleGoalAdd}

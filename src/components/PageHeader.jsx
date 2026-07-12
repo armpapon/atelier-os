@@ -8,7 +8,7 @@ export function PageHeader({ eyebrow, title, em, sub, meta, actions }) {
         </h1>
         {sub && <div className="page-header__sub">{sub}</div>}
       </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+      <div className="page-header__aside" style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
         {meta && <div className="page-header__meta">{meta}</div>}
         {actions}
       </div>
