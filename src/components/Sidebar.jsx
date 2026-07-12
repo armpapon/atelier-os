@@ -5,7 +5,7 @@ import { signOut } from '../lib/useAuth.js';
 import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
 import { LoopMark } from './LoopMark.jsx';
 
-export function Sidebar({ active, onChange, user }) {
+export function Sidebar({ active, onChange, user, collapsed = false, onToggleCollapse }) {
   const [showVersion, setShowVersion] = useState(false);
   const currentVersion = CHANGELOG[0]?.version || 'v0.5';
 
@@ -45,42 +45,62 @@ export function Sidebar({ active, onChange, user }) {
         borderRight: '1px solid var(--border)',
       }}>
         {/* Brand */}
-        <div style={{
-          padding: '20px 14px 22px', borderBottom: '1px solid var(--border)',
-          marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
-            <LoopMark size={26} />
-          </span>
-          <span style={{
-            fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 500,
-            color: 'var(--text-primary)', letterSpacing: '-0.005em',
-          }}>Loop</span>
-          <button onClick={() => setShowVersion(true)}
-            title="Version history" aria-label="Version history"
-            style={{
-              marginLeft: 'auto', background: 'transparent', border: 'none',
-              fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
-              cursor: 'pointer', padding: '3px 7px', borderRadius: 'var(--radius-pill)',
-              transition: 'all 130ms',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
-            {currentVersion}
-          </button>
-        </div>
+        {collapsed ? (
+          <div style={{
+            padding: '20px 0 18px', borderBottom: '1px solid var(--border)',
+            marginBottom: 14, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', gap: 14,
+          }}>
+            <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
+              <LoopMark size={24} />
+            </span>
+            <CollapseToggle collapsed onClick={onToggleCollapse} />
+          </div>
+        ) : (
+          <div style={{
+            padding: '20px 14px 22px', borderBottom: '1px solid var(--border)',
+            marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <span style={{ color: 'var(--accent)', display: 'inline-flex' }}>
+              <LoopMark size={26} />
+            </span>
+            <span style={{
+              fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 500,
+              color: 'var(--text-primary)', letterSpacing: '-0.005em',
+            }}>Loop</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <button onClick={() => setShowVersion(true)}
+                title="Version history" aria-label="Version history"
+                style={{
+                  background: 'transparent', border: 'none',
+                  fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
+                  cursor: 'pointer', padding: '3px 7px', borderRadius: 'var(--radius-pill)',
+                  transition: 'all 130ms',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                {currentVersion}
+              </button>
+              <CollapseToggle onClick={onToggleCollapse} />
+            </div>
+          </div>
+        )}
 
         {/* Nav groups */}
         {items.map((group, gi) => (
-          <div key={gi} style={{ marginBottom: 22 }}>
-            <div style={{
-              fontFamily: 'var(--f-mono)', fontSize: 10,
-              letterSpacing: '0.18em', textTransform: 'uppercase',
-              color: 'var(--text-muted)', padding: '0 14px 10px', fontWeight: 500,
-            }}>{group.group}</div>
+          <div key={gi} style={{ marginBottom: collapsed ? 12 : 22 }}>
+            {collapsed
+              ? (gi > 0 && <div style={{ height: 1, background: 'var(--border)', margin: '0 14px 12px' }} />)
+              : (
+                <div style={{
+                  fontFamily: 'var(--f-mono)', fontSize: 10,
+                  letterSpacing: '0.18em', textTransform: 'uppercase',
+                  color: 'var(--text-muted)', padding: '0 14px 10px', fontWeight: 500,
+                }}>{group.group}</div>
+              )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {group.children.map(item => (
-                <NavItem key={item.id} item={item} active={active === item.id} onClick={() => onChange(item.id)} />
+                <NavItem key={item.id} item={item} active={active === item.id} collapsed={collapsed} onClick={() => onChange(item.id)} />
               ))}
             </div>
           </div>
@@ -88,17 +108,18 @@ export function Sidebar({ active, onChange, user }) {
 
         {/* Footer — user */}
         <div style={{
-          marginTop: 'auto', padding: '14px 12px 12px',
+          marginTop: 'auto', padding: collapsed ? '14px 0 12px' : '14px 12px 12px',
           borderTop: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', gap: 10,
+          display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 10,
         }}>
-          <div style={{
+          <div title={collapsed ? displayName : undefined} style={{
             width: 36, height: 36, borderRadius: '50%',
             background: 'var(--accent-soft)', color: 'var(--accent-strong)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: 'var(--f-display)', fontSize: 16, fontWeight: 500,
             flexShrink: 0,
           }}>{displayInitial}</div>
+          {!collapsed && (
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontSize: 13, color: 'var(--text-primary)', fontWeight: 500,
@@ -109,7 +130,8 @@ export function Sidebar({ active, onChange, user }) {
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{subText}</div>
           </div>
-          {user && (
+          )}
+          {!collapsed && user && (
             <button onClick={handleSignOut} title="ออกจากระบบ" aria-label="ออกจากระบบ" style={{
               background: 'transparent', border: 0, color: 'var(--text-muted)',
               cursor: 'pointer', padding: 6, borderRadius: 6,
@@ -133,21 +155,48 @@ export function Sidebar({ active, onChange, user }) {
   );
 }
 
-function NavItem({ item, active, onClick }) {
+function CollapseToggle({ collapsed = false, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      title={collapsed ? 'ขยายเมนู' : 'ยุบเมนู'}
+      aria-label={collapsed ? 'ขยายเมนู' : 'ยุบเมนู'}
+      className="focus-ring"
+      style={{
+        background: 'transparent', border: 0, color: 'var(--text-muted)',
+        cursor: 'pointer', padding: 5, borderRadius: 'var(--r-sm)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 130ms',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <line x1="9" y1="4" x2="9" y2="20" />
+      </svg>
+    </button>
+  );
+}
+
+function NavItem({ item, active, onClick, collapsed = false }) {
   const isSoon = item.badge === 'Soon';
   return (
     <button
       onClick={onClick}
       className="focus-ring"
+      title={collapsed ? item.label : undefined}
       style={{
-        display: 'flex', alignItems: 'center', gap: 11,
-        width: 'calc(100% - 16px)', margin: '0 8px', padding: '9px 12px',
+        display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 11,
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        width: collapsed ? 'calc(100% - 12px)' : 'calc(100% - 16px)',
+        margin: collapsed ? '0 6px' : '0 8px', padding: collapsed ? '10px 0' : '9px 12px',
         background: active ? 'var(--accent-soft)' : 'transparent',
         color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
         border: 0, borderRadius: 'var(--radius-control)',
         fontFamily: 'var(--f-body)', fontSize: 13.5, fontWeight: active ? 500 : 400,
         cursor: 'pointer', textAlign: 'left', position: 'relative',
-        transition: 'all 130ms',
+        transition: 'background 130ms, color 130ms',
       }}
       onMouseEnter={e => {
         if (!active) {
@@ -163,7 +212,7 @@ function NavItem({ item, active, onClick }) {
       }}>
       {active && (
         <span style={{
-          position: 'absolute', left: -8, top: '50%', transform: 'translateY(-50%)',
+          position: 'absolute', left: collapsed ? -6 : -8, top: '50%', transform: 'translateY(-50%)',
           width: 3, height: 18, background: 'var(--accent)', borderRadius: '0 3px 3px 0',
         }} />
       )}
@@ -175,10 +224,12 @@ function NavItem({ item, active, onClick }) {
       }}>
         <Icon name={item.icon} size={16} />
       </span>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {item.label}
-      </span>
-      {item.badge && (
+      {!collapsed && (
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {item.label}
+        </span>
+      )}
+      {!collapsed && item.badge && (
         <Badge tone={isSoon ? 'outline' : (active ? 'accent' : 'neutral')} size="sm">
           {item.badge}
         </Badge>

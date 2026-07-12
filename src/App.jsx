@@ -34,6 +34,7 @@ export default function App() {
   const [accent, setAccent]   = useState(() => localStorage.getItem('atelier:accent') || '#b27a42');
   const [density, setDensity] = useState(() => localStorage.getItem('atelier:density') || 'comfortable');
   const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('loop:sidebar') === 'collapsed');
 
   const previewMode = isPreviewMode();
 
@@ -55,6 +56,7 @@ export default function App() {
     document.documentElement.style.setProperty('--amber', accent);
   }, [accent]);
   useEffect(() => { localStorage.setItem('atelier:density', density); }, [density]);
+  useEffect(() => { localStorage.setItem('loop:sidebar', sidebarCollapsed ? 'collapsed' : 'expanded'); }, [sidebarCollapsed]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   if (loading && !previewMode) {
@@ -99,8 +101,12 @@ export default function App() {
   };
 
   return (
-    <div className="app" data-density={density}>
-      <Sidebar active={active} onChange={setActive} user={user} />
+    <div className="app" data-density={density} data-sidebar={sidebarCollapsed ? 'collapsed' : 'expanded'}>
+      <Sidebar
+        active={active} onChange={setActive} user={user}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+      />
       <main className="main" key={active}>
         {previewMode && (
           <div style={{
