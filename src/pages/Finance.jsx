@@ -13,6 +13,7 @@ import {
   listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
 } from '../lib/api/finance.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
+import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
 import { KPICard, formatBaht } from '../components/dashboard/KPICard.jsx';
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
@@ -507,6 +508,7 @@ function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
 // ════════════════════════════════════════════════════════════════════════════
 export function FinanceView({ scope }) {
   const meta = SCOPE_META[scope] || SCOPE_META.personal;
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   // Always default to today's month on page open.
   // (User can still navigate to other months via MonthNav during the session
@@ -651,7 +653,7 @@ export function FinanceView({ scope }) {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
-      <div className="page-body" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="page-body" style={{ padding: isMobile ? '16px 14px 40px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
@@ -659,7 +661,7 @@ export function FinanceView({ scope }) {
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.18em', marginBottom: 5 }}>
               FINANCIAL PLANNER · {formatThaiMonth(yearMonth).toUpperCase()} · {accounts.length} บัญชี
             </div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color: 'var(--ink)', lineHeight: 1.1 }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--ink)', lineHeight: 1.1 }}>
               การเงิน <em style={{ color: meta.accent }}>{meta.label}</em>
             </div>
             <div style={{ fontSize: 13, color: 'var(--ink-3)', marginTop: 5 }}>
@@ -701,7 +703,7 @@ export function FinanceView({ scope }) {
         )}
 
         {/* Row 1: KPI cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 14 }}>
           <KPICard
             label="รายรับเดือนนี้" sub={`${txns.filter(t => t.amount > 0).length} ครั้ง`}
             value={'+' + formatBaht(thisSum.income, { compact: true })}
@@ -740,7 +742,7 @@ export function FinanceView({ scope }) {
         <CashFlowForecastCard forecast={forecast} />
 
         {/* Row 3: Categories + Top 10 */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
           <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
           <TopExpenses data={top10} />
         </div>
@@ -762,14 +764,14 @@ export function FinanceView({ scope }) {
         />
 
         {/* Row 5: Net Worth + Emergency Fund + Heatmap */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1.2fr', gap: 14 }}>
           <NetWorthCard accounts={accounts} />
           <EmergencyFundCard coverage={emergencyFund} accounts={accounts} onAccountToggle={refresh} />
           <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
         </div>
 
         {/* Row 6: Accounts + Goals (CRUD) */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
           {/* Accounts */}
           <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '18px 20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
@@ -951,6 +953,10 @@ export function FinanceView({ scope }) {
             />
           ) : (
             <>
+              {/* On mobile the dense 7-column table pans horizontally inside its
+                  own card (min-width keeps columns aligned) — inline-edit stays intact */}
+              <div style={{ overflowX: isMobile ? 'auto' : 'visible' }}>
+              <div style={{ minWidth: isMobile ? 680 : 'auto' }}>
               <div style={{
                 display: 'grid', gridTemplateColumns: '32px 90px 1.3fr 1.2fr 130px 110px 60px', gap: 10,
                 padding: '6px 12px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
@@ -1079,6 +1085,8 @@ export function FinanceView({ scope }) {
                     </div>
                   );
                 })}
+              </div>
+              </div>
               </div>
             </>
           )}
