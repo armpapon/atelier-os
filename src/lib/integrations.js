@@ -7,6 +7,16 @@ import { supabase } from './supabase.js';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
+// Every Google scope the app uses. Connect buttons always request the full
+// set (with include_granted_scopes) so a re-consent never drops a scope the
+// user granted earlier — lesson from v3.11.
+export const GOOGLE_SCOPES = {
+  calendar: 'https://www.googleapis.com/auth/calendar.readonly',
+  gmail: 'https://www.googleapis.com/auth/gmail.readonly',
+  sheets: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+};
+export const ALL_GOOGLE_SCOPES = Object.values(GOOGLE_SCOPES);
+
 // Redirect back to the app root with a marker we detect on load.
 export function googleRedirectUri() {
   return `${window.location.origin}/?oauth=google`;

@@ -9,8 +9,9 @@ import {
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
 } from '../lib/api/journal.js';
-import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread } from '../lib/integrations.js';
+import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread, ALL_GOOGLE_SCOPES } from '../lib/integrations.js';
 import { AsanaHours } from '../components/AsanaHours.jsx';
+import { SheetTimeline } from '../components/SheetTimeline.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -203,8 +204,6 @@ function PasteScheduleModal({ date, onSave, onClose }) {
 }
 
 // ── Google Calendar — connect + pull the day's meetings into the checklist ────
-const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
-const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 // Colleagues sit on this domain; anyone else emailing in is treated as a client.
 const ORG_DOMAIN = 'sealinteractive.com';
 
@@ -302,7 +301,7 @@ function GoogleCalendarButton({ date, existing, onImported }) {
   if (status === 'loading') return null;
   if (status === 'disconnected')
     return (
-      <button className="btn btn--ghost" onClick={() => startGoogleAuth([CALENDAR_SCOPE])}
+      <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}
         title="เชื่อม Google Calendar เพื่อดึงตารางประชุมอัตโนมัติ">🗓 เชื่อม Google</button>
     );
   return (
@@ -478,7 +477,7 @@ function GmailInbox() {
             <div style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 10, lineHeight: 1.5 }}>
               เชื่อม Gmail เพื่อดูเมลลูกค้าที่ยังไม่ได้ตอบ
             </div>
-            <button className="btn btn--ghost" onClick={() => startGoogleAuth([CALENDAR_SCOPE, GMAIL_SCOPE])}>
+            <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}>
               ✉️ เชื่อม Gmail
             </button>
           </div>
@@ -1060,6 +1059,9 @@ export function Journal() {
 
             {/* Asana — team hours for the selected day */}
             <AsanaHours date={date} />
+
+            {/* Working Timeline — AE job sheet + billing chase */}
+            <SheetTimeline date={date} />
 
             {/* Mood */}
             <div className="card">
