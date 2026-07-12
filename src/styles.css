@@ -608,4 +608,8 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 
   /* Roomier tap targets */
   .m-ready .btn { min-height: 40px; }
+
+  /* Filter tab strips scroll sideways instead of clipping the last tab */
+  .m-ready .tabs { overflow-x: auto; }
+  .m-ready .tab { white-space: nowrap; flex: none; }
 }

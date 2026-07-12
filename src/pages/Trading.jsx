@@ -7,6 +7,7 @@ import { PnLCalendar } from '../components/trading/PnLCalendar.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
 import { useAuth } from '../lib/useAuth.js';
+import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 
 const SESSION_COLOR = {
   'London KZ':      'var(--blue)',
@@ -18,6 +19,7 @@ const SESSION_COLOR = {
 
 export function Trading() {
   const { user } = useAuth();
+  const isMobile = useMediaQuery(MOBILE_QUERY);
   const [trades, setTrades]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -88,14 +90,14 @@ export function Trading() {
   }, [trades]);
 
   return (
-    <div className="page-body" style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div className="page-body" style={{ padding: isMobile ? '16px 14px 40px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em' }}>
             📈 TRADING JOURNAL · ICT METHODOLOGY
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 30, color: 'var(--text-primary)', marginTop: 6, lineHeight: 1.1 }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--text-primary)', marginTop: 6, lineHeight: 1.1 }}>
             Trading <em style={{ color: 'var(--accent)' }}>Journal</em>
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 5 }}>
@@ -125,7 +127,7 @@ export function Trading() {
       {/* Daily Trading Plan — Weekly bias + Daily bias + charts */}
       <DailyPlanCard />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: isMobile ? 10 : 12 }}>
         <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} />
         <KPI label="Win Rate"        value={`${stats.winRate}%`}
           color={stats.winRate >= 50 ? 'var(--success)' : 'var(--accent-strong)'} />
@@ -154,7 +156,7 @@ export function Trading() {
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', gap: 14 }}>
         <Card>
           <CardHeader eyebrow="Equity Curve" title="ยอดบัญชี (USD)"
             meta={`${equityPoints.length} trade · max DD $${Math.abs(stats.maxDrawdown).toFixed(2)}`} />
@@ -287,7 +289,8 @@ function EquityChart({ data }) {
 
 function TradeTable({ trades, onView, onDelete }) {
   return (
-    <div style={{ overflow: 'hidden', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}>
+    <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}>
+      <div style={{ minWidth: 620 }}>
       <div style={{
         display: 'grid', gridTemplateColumns: '70px 60px 50px 1fr 60px 100px 90px 40px',
         gap: 10, padding: '8px 12px', background: 'var(--surface-muted)',
@@ -343,6 +346,7 @@ function TradeTable({ trades, onView, onDelete }) {
               style={{ background: 'none', border: 0, color: 'var(--text-muted)', fontSize: 15, cursor: 'pointer', padding: 4 }}>×</button>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

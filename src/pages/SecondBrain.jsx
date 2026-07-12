@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { Badge, EmptyState } from '../components/ui/index.js';
+import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import {
   listNotes, listAllTags, listBacklinks, parseWikiLinks,
   createNote, updateNote, deleteNote,
@@ -532,6 +533,7 @@ function TemplatePicker({ onPick, onClose }) {
 
 // ── Main page ───────────────────────────────────────────────────────────────
 export function SecondBrain() {
+  const isMobile = useMediaQuery(MOBILE_QUERY);
   const [notes, setNotes] = useState([]);
   const [allTags, setAllTags] = useState([]);
   const [titleIndex, setTitleIndex] = useState(new Map());
@@ -654,7 +656,7 @@ export function SecondBrain() {
             onAction={() => setShowTemplates(true)}
           />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 24, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '320px 1fr', gap: isMobile ? 16 : 24, alignItems: 'start' }}>
             {/* Left: search + tags + list */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ position: 'relative' }}>

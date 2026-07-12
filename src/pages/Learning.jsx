@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { thumbBg } from '../lib/helpers.js';
+import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import {
   listSources, createSource, updateSource, deleteSource, uploadCoverImage,
   listNotes, createNote, deleteNote,
@@ -320,6 +321,7 @@ function NoteCard({ note, onDelete }) {
 
 // ── Study Mode: YouTube Player + Notes ─────────────────────────────────────────
 function StudyMode({ source, onBack, onUpdate }) {
+  const isMobile = useMediaQuery(MOBILE_QUERY);
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
@@ -365,9 +367,9 @@ function StudyMode({ source, onBack, onUpdate }) {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 0, height: 'calc(100vh - 120px)', overflow: 'hidden' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 380px', gap: 0, height: isMobile ? 'auto' : 'calc(100vh - 120px)', overflow: isMobile ? 'visible' : 'hidden' }}>
       {/* Left: Video + controls */}
-      <div style={{ overflow: 'auto', padding: '24px 20px 24px 40px', borderRight: '1px solid var(--line)' }}>
+      <div style={{ overflow: isMobile ? 'visible' : 'auto', padding: isMobile ? '16px 14px' : '24px 20px 24px 40px', borderRight: isMobile ? 'none' : '1px solid var(--line)' }}>
         {/* Back button + title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
           <button onClick={onBack} className="btn btn--ghost btn--sm">
