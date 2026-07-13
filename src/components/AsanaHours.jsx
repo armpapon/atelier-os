@@ -35,7 +35,16 @@ export function isDoable(name = '') {
   return EMOJI_PREFIX.test(name) && !NEGATIVE_PREFIX.test(name);
 }
 
-function fmtHr(h) { return (Math.round(h * 100) / 100).toString(); }
+// Show hours as "8 hr 30 min" / "8 hr" / "30 min" — easier to read than 8.5.
+function fmtHr(h) {
+  const totalMin = Math.round((h || 0) * 60);
+  const hr = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  if (hr && min) return `${hr} hr ${min} min`;
+  if (hr) return `${hr} hr`;
+  if (min) return `${min} min`;
+  return '0 hr';
+}
 
 // GET an Asana collection, following offset pagination (capped for safety).
 async function asanaGetAll(path, params = {}) {
@@ -339,10 +348,10 @@ export function AsanaHours({ date }) {
             <>
               {/* Overview strip */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                <OverviewTile value={`${sum.full}/${people.length}`} label={`คนครบ ${TARGET} Hr`} />
-                <OverviewTile value={`${fmtHr(sum.done)} ชม.`} label="✅ Finished" />
-                <OverviewTile value={`${fmtHr(sum.proc)} ชม.`} label="😄 On Process" />
-                <OverviewTile value={`${fmtHr(sum.wait)} ชม.`} label="❌ Waiting" />
+                <OverviewTile value={`${sum.full}/${people.length}`} label={`คนครบ ${fmtHr(TARGET)}`} />
+                <OverviewTile value={fmtHr(sum.done)} label="✅ Finished" />
+                <OverviewTile value={fmtHr(sum.proc)} label="😄 On Process" />
+                <OverviewTile value={fmtHr(sum.wait)} label="❌ Waiting" />
               </div>
 
               {/* Per person */}
@@ -357,7 +366,7 @@ export function AsanaHours({ date }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                         <span style={{ flexShrink: 0, fontFamily: 'var(--f-mono)', fontSize: 12, color: low ? 'var(--amber-deep)' : 'var(--profit)' }}>
-                          {fmtHr(p.total)}/{TARGET}{low ? ` · ขาด ${fmtHr(TARGET - p.total)}` : ' ✓'}
+                          {fmtHr(p.total)} / {fmtHr(TARGET)}{low ? ` · ขาด ${fmtHr(TARGET - p.total)}` : ' ✓'}
                         </span>
                       </div>
                       <div style={{ height: 4, background: low ? 'var(--surface-2)' : 'var(--bg-2)', borderRadius: 2, margin: '6px 0', overflow: 'hidden' }}>
@@ -367,7 +376,7 @@ export function AsanaHours({ date }) {
                         {STATUSES.map(s => (
                           <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: p[s.key] ? 'var(--ink-2)' : 'var(--ink-4)' }}>
                             <span>{s.icon} {s.label}</span>
-                            <span style={{ fontFamily: 'var(--f-mono)' }}>{fmtHr(p[s.key])} Hours</span>
+                            <span style={{ fontFamily: 'var(--f-mono)' }}>{fmtHr(p[s.key])}</span>
                           </div>
                         ))}
                         {p.untagged > 0 && (
