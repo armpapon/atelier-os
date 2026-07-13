@@ -1,5 +1,14 @@
 import { supabase } from '../supabase.js';
 
+// Linked partner's user id (for "ด้วยกัน" shared appointments), or null if the
+// accounts aren't linked yet / the partners table doesn't exist.
+export async function getPartnerId() {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from('partners').select('partner_id').maybeSingle();
+  if (error) return null;
+  return data?.partner_id || null;
+}
+
 // ── Journal Entries (Bullet Journal) ─────────────────────────────────────────
 export async function listEntries({ date, limit = 200 } = {}) {
   if (!supabase) return [];

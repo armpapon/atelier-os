@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { DayCountdown } from '../components/DayCountdown.jsx';
 import {
+  getPartnerId,
   listEntries, listRecentDates, listUpcomingEvents, listEntriesInRange,
   createEntry, bulkCreateEntries, toggleEntry, updateEntry, deleteEntry,
   getMoodForDate, upsertMood,
@@ -615,12 +616,13 @@ const MOODS = [
 const TAGS = ['TRADE', 'LEARN', 'FAMILY', 'HEALTH', 'WORK', 'FINANCE'];
 
 // ── Add Entry Form ────────────────────────────────────────────────────────────
-function AddEntryForm({ date, onSave, onClose }) {
+function AddEntryForm({ date, onSave, onClose, partnerId }) {
   const [type, setType] = useState('task');
   const [text, setText] = useState('');
   const [tag, setTag] = useState('');
   const [time, setTime] = useState('');
   const [location, setLocation] = useState('');
+  const [shareWith, setShareWith] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -628,13 +630,17 @@ function AddEntryForm({ date, onSave, onClose }) {
     if (!text.trim()) return;
     setSaving(true);
     try {
-      await createEntry({
+      const payload = {
         entry_date: date, bullet_type: type, text: text.trim(), tag: tag || null, done: false,
         event_time: type === 'event' && time ? time : null,
         location: type === 'event' && location.trim() ? location.trim() : null,
-      });
+      };
+      // Only reference shared_with when actually sharing — keeps inserts working
+      // even before the migration adds the column.
+      if (type === 'event' && shareWith && partnerId) payload.shared_with = partnerId;
+      await createEntry(payload);
       onSave();
-      setText(''); setTime(''); setLocation('');
+      setText(''); setTime(''); setLocation(''); setShareWith(false);
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
 
@@ -679,6 +685,15 @@ function AddEntryForm({ date, onSave, onClose }) {
             }}
           />
         </div>
+      )}
+
+      {/* Shared appointment — only when accounts are linked */}
+      {type === 'event' && partnerId && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--paper-ink)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={shareWith} onChange={e => setShareWith(e.target.checked)}
+            style={{ width: 15, height: 15, accentColor: 'var(--amber)', cursor: 'pointer' }} />
+          👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
+        </label>
       )}
 
       {/* Text */}
@@ -757,7 +772,7 @@ function HabitModal({ onSave, onClose }) {
 }
 
 // ── Entry Details (note + event time/location + Google Calendar) ───────────────
-function EntryDetails({ entry, date, onUpdate }) {
+function EntryDetails({ entry, date, onUpdate, partnerId }) {
   const [note, setNote] = useState(entry.note || '');
   const [time, setTime] = useState(entry.event_time ? entry.event_time.slice(0, 5) : '');
   const [endTime, setEndTime] = useState(entry.event_end_time ? entry.event_end_time.slice(0, 5) : '');
@@ -805,6 +820,16 @@ function EntryDetails({ entry, date, onUpdate }) {
           </label>
         </div>
       )}
+      {/* Shared appointment toggle — only on my own events (hidden on ones a
+          partner shared to me: shared_with then points at me, not at partnerId) */}
+      {isEvent && partnerId && (!entry.shared_with || entry.shared_with === partnerId) && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--paper-ink)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={entry.shared_with === partnerId}
+            onChange={e => onUpdate(entry.id, { shared_with: e.target.checked ? partnerId : null })}
+            style={{ width: 15, height: 15, accentColor: 'var(--amber)', cursor: 'pointer' }} />
+          👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
+        </label>
+      )}
       <textarea
         value={note} rows={3} placeholder="รายละเอียดเพิ่มเติม..."
         onChange={e => setNote(e.target.value)}
@@ -841,6 +866,7 @@ export function Journal() {
   const [habits, setHabits] = useState([]);
   const [habitLogs, setHabitLogs] = useState([]);
   const [upcoming, setUpcoming] = useState([]);
+  const [partnerId, setPartnerId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showHabitModal, setShowHabitModal] = useState(false);
@@ -851,15 +877,16 @@ export function Journal() {
 
   const refresh = useCallback(async () => {
     try {
-      const [e, rd, m, h, hl, up] = await Promise.all([
+      const [e, rd, m, h, hl, up, pid] = await Promise.all([
         listEntries({ date }),
         listRecentDates(14),
         getMoodForDate(date),
         listHabits(),
         getHabitLogsForDate(date),
         listUpcomingEvents(),
+        getPartnerId().catch(() => null),
       ]);
-      setEntries(e); setRecentDates(rd); setMood(m); setHabits(h); setHabitLogs(hl); setUpcoming(up);
+      setEntries(e); setRecentDates(rd); setMood(m); setHabits(h); setHabitLogs(hl); setUpcoming(up); setPartnerId(pid);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [date]);
 
@@ -1006,6 +1033,7 @@ export function Journal() {
             {showAddEntry && (
               <AddEntryForm
                 date={date}
+                partnerId={partnerId}
                 onSave={() => { refresh(); }}
                 onClose={() => setShowAddEntry(false)}
               />
@@ -1054,6 +1082,7 @@ export function Journal() {
                         <span className={`bujo-line__bullet bujo-line__bullet--${entry.done ? 'done' : entry.bullet_type}`} />
                         <span className="bujo-line__text">{entry.text}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {entry.shared_with && <span className="bujo-line__tag" title="นัดด้วยกัน">👥</span>}
                           {entry.event_time && <span className="bujo-line__tag">{fmtEventRange(entry)}</span>}
                           {entry.tag && <span className="bujo-line__tag">{entry.tag}</span>}
                           {isCheckable(entry) && (
@@ -1074,7 +1103,7 @@ export function Journal() {
                             style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
                         </div>
                       </div>
-                      {isExpanded && <EntryDetails entry={entry} date={date} onUpdate={handleEntryUpdate} />}
+                      {isExpanded && <EntryDetails entry={entry} date={date} partnerId={partnerId} onUpdate={handleEntryUpdate} />}
                     </div>
                   );
                 })}
