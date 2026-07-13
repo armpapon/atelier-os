@@ -348,8 +348,10 @@ function TodayHero({
                 display: 'flex', gap: 10, padding: '7px 0',
                 borderBottom: i < agenda.length - 1 ? '1px dotted var(--line)' : 0,
               }}>
-                <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', width: 42, flexShrink: 0 }}>
-                  {ev.event_time ? ev.event_time.slice(0, 5) : '—'}
+                <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', width: 78, flexShrink: 0 }}>
+                  {ev.event_time
+                    ? (ev.event_end_time ? `${ev.event_time.slice(0, 5)}–${ev.event_end_time.slice(0, 5)}` : ev.event_time.slice(0, 5))
+                    : '—'}
                 </span>
                 <span style={{ fontSize: 13, color: 'var(--ink-2)', flex: 1 }}>{ev.text}</span>
               </div>

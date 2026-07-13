@@ -33,6 +33,14 @@ function weekday(dateStr) {
   return d.toLocaleDateString('th-TH', { weekday: 'short' });
 }
 
+// "12:00–13:00" when the calendar gave an end time, else just "12:00"
+function fmtEventRange(entry) {
+  if (!entry?.event_time) return '';
+  const start = entry.event_time.slice(0, 5);
+  const end = entry.event_end_time ? entry.event_end_time.slice(0, 5) : null;
+  return end ? `${start}–${end}` : start;
+}
+
 function relativeDayLabel(dateStr) {
   const diffDays = Math.round(
     (new Date(dateStr + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000
@@ -945,7 +953,7 @@ export function Journal() {
                     <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#6b5544' }}>
                       <span style={{ color: '#b09070' }}>—</span>
                       <span style={{ flex: 1 }}>{entry.text}</span>
-                      {entry.event_time && <span className="bujo-line__tag">{entry.event_time.slice(0, 5)}</span>}
+                      {entry.event_time && <span className="bujo-line__tag">{fmtEventRange(entry)}</span>}
                       <button onClick={() => handleDelete(entry.id)}
                         style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
                     </div>
@@ -977,7 +985,7 @@ export function Journal() {
                         <span className={`bujo-line__bullet bujo-line__bullet--${entry.done ? 'done' : entry.bullet_type}`} />
                         <span className="bujo-line__text">{entry.text}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {entry.event_time && <span className="bujo-line__tag">{entry.event_time.slice(0, 5)}</span>}
+                          {entry.event_time && <span className="bujo-line__tag">{fmtEventRange(entry)}</span>}
                           {entry.tag && <span className="bujo-line__tag">{entry.tag}</span>}
                           {entry.bullet_type === 'task' && (
                             <button onClick={() => handleToggle(entry.id, entry.done)}
@@ -1045,7 +1053,7 @@ export function Journal() {
                       }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
                         <span>{relativeDayLabel(ev.entry_date)}</span>
-                        <span>{ev.event_time.slice(0, 5)}</span>
+                        <span>{fmtEventRange(ev)}</span>
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--ink)' }}>{ev.text}</div>
                       {ev.location && (
