@@ -399,15 +399,18 @@ function gmailHeader(msg, name) {
   return h ? h.value : '';
 }
 
-// A client 👍/🎉 reaction to our email is a separate thread message with no real
-// text — just emoji. It isn't a reply we owe, so it shouldn't mark the thread as
-// waiting. Conservative: only treat a message as a reaction when its snippet is
-// emoji-only (any actual text → real email, never hidden).
+// A client 👍/🎉 reaction to our email is a separate thread message — it isn't a
+// reply we owe, so it shouldn't mark the thread as waiting. Gmail's reaction
+// snippets look like "🎉 Name reacted via Gmail" / "👍 Name ส่งรีแอ็กชั่น", so we
+// require an emoji AND either no other text (emoji-only) or the reaction phrase.
+// A real email with an emoji but real text is never treated as a reaction.
 function isReactionMessage(msg) {
   const s = (msg?.snippet || '').trim();
   if (!s) return false;
   if (!/\p{Extended_Pictographic}/u.test(s)) return false;
-  return s.replace(/[\p{Extended_Pictographic}‍️\s\p{P}\p{S}]/gu, '').length === 0;
+  const textOnly = s.replace(/[\p{Extended_Pictographic}‍️\s\p{P}\p{S}]/gu, '');
+  if (textOnly.length === 0) return true;              // emoji-only
+  return /reacted|รีแอ/iu.test(s);                     // "reacted via Gmail" / "ส่งรีแอ็กชั่น"
 }
 
 function waitingLabel(ms) {
@@ -419,10 +422,6 @@ function waitingLabel(ms) {
 }
 
 const GMAIL_CACHE = 'gmail:waiting';
-// Temporary: open the app with ?maildebug=1 to dump each waiting thread's last
-// few messages (sender domain + snippet) so we can see why it's flagged.
-const MAIL_DEBUG = typeof window !== 'undefined'
-  && new URLSearchParams(window.location.search).get('maildebug') === '1';
 
 function GmailInbox() {
   const [status, setStatus] = useState('loading'); // loading | connected | disconnected
@@ -497,10 +496,6 @@ function GmailInbox() {
           subject: gmailHeader(msgs[0], 'Subject') || '(ไม่มีหัวข้อ)',
           to: extractEmails(gmailHeader(last, 'To')).join(', '),
           ts,
-          _dbg: MAIL_DEBUG ? msgs.slice(-5).map(m => {
-            const f = parseFrom(gmailHeader(m, 'From'));
-            return `${f.domain || '?'} · ${(m.snippet || '∅').slice(0, 40)}`;
-          }) : null,
         });
       }
       waiting.sort((a, b) => b.ts - a.ts);
@@ -591,11 +586,6 @@ function GmailInbox() {
                 {m.to && (
                   <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     ถึง: {m.to}
-                  </div>
-                )}
-                {m._dbg && (
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--loss)', marginTop: 4, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                    {m._dbg.map((d, i) => <div key={i}>{i + 1}. {d}</div>)}
                   </div>
                 )}
               </a>
