@@ -41,6 +41,12 @@ function fmtEventRange(entry) {
   return end ? `${start}–${end}` : start;
 }
 
+// Which bullet types can be ticked "done" — meetings pulled from the calendar
+// are checkable too, so you can mark them handled.
+function isCheckable(entry) {
+  return entry?.bullet_type === 'task' || entry?.bullet_type === 'event';
+}
+
 function relativeDayLabel(dateStr) {
   const diffDays = Math.round(
     (new Date(dateStr + 'T00:00:00') - new Date(todayStr() + 'T00:00:00')) / 86400000
@@ -237,6 +243,14 @@ function gcalEventToEntry(ev, date) {
   return row;                                     // all-day → event bullet, no time
 }
 
+// All-day "Office" / work-status markers on the calendar aren't meetings —
+// skip them on import so they don't clutter the day. Matched as a whole title
+// only (so "Post-Office meeting" etc. are never dropped).
+function isOfficeMarker(text = '') {
+  const t = text.trim().toLowerCase().replace(/[^a-z฀-๿]/g, '');
+  return t === 'office' || t === 'ออฟฟิศ' || t === 'เข้าออฟฟิศ';
+}
+
 // Leave / out-of-office entries are informational (who's away) — not tasks for
 // the day. Kept conservative so real meetings never get hidden by mistake.
 function isLeaveEntry(text = '') {
@@ -279,12 +293,13 @@ function GoogleCalendarButton({ date, existing, onImported }) {
       });
       if (res?.error) throw new Error(res.error.message || JSON.stringify(res.error));
 
-      // Drop events the user declined; map the rest.
+      // Drop events the user declined and all-day "Office" status markers; map the rest.
       const rows = (res.items || [])
         .filter(ev => {
           const me = (ev.attendees || []).find(a => a.self);
           return !me || me.responseStatus !== 'declined';
         })
+        .filter(ev => !isOfficeMarker(ev.summary || ''))
         .map(ev => gcalEventToEntry(ev, date));
 
       // Dedup against what's already on this day (text + time).
@@ -981,13 +996,13 @@ export function Journal() {
                     <div key={entry.id}>
                       <div className={`bujo-line ${entry.done ? 'bujo-line--done' : ''}`}
                         style={{ cursor: 'pointer' }}
-                        onDoubleClick={() => entry.bullet_type === 'task' && handleToggle(entry.id, entry.done)}>
+                        onDoubleClick={() => isCheckable(entry) && handleToggle(entry.id, entry.done)}>
                         <span className={`bujo-line__bullet bujo-line__bullet--${entry.done ? 'done' : entry.bullet_type}`} />
                         <span className="bujo-line__text">{entry.text}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {entry.event_time && <span className="bujo-line__tag">{fmtEventRange(entry)}</span>}
                           {entry.tag && <span className="bujo-line__tag">{entry.tag}</span>}
-                          {entry.bullet_type === 'task' && (
+                          {isCheckable(entry) && (
                             <button onClick={() => handleToggle(entry.id, entry.done)}
                               title={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}
                               style={{ opacity: 0.5, fontSize: 12, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>
