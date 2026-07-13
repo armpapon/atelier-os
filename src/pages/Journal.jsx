@@ -932,6 +932,8 @@ export function Journal() {
   // Split off "leave" entries — shown as FYI, not part of the day's checklist.
   const leaveEntries = entries.filter(e => isLeaveEntry(e.text));
   const dayEntries   = entries.filter(e => !isLeaveEntry(e.text));
+  // "นัดที่จะถึง" = future days only — today's meetings already show in the day list.
+  const futureEvents = upcoming.filter(ev => ev.entry_date > today);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--ink-3)' }}>
@@ -1104,13 +1106,13 @@ export function Journal() {
               <div className="card__head">
                 <div className="card__title">นัดที่จะถึง</div>
               </div>
-              {upcoming.length === 0 ? (
+              {futureEvents.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>
                   ไม่มีนัดใน 14 วันข้างหน้า
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {upcoming.map(ev => (
+                  {futureEvents.map(ev => (
                     <button key={ev.id} onClick={() => setDate(ev.entry_date)}
                       style={{
                         display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'left',
