@@ -17,9 +17,14 @@ const ASANA_API = 'https://app.asana.com/api/1.0';
 
 // Hour tag, forgiving: (3Hr) [3 Hr] (0.5 hr.) (2 ชม.) — anywhere in the name.
 const HOUR_TAG = /[[(]\s*(\d+(?:[.,]\d+)?)\s*(?:h(?:(?:ou)?rs?)?|ชม)\.?\s*[\])]/iu;
+// Minute tag, same brackets: (30 min) [45 mins] (30 นาที) → converted to hours.
+const MIN_TAG  = /[[(]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:ute)?s?|นาที)\.?\s*[\])]/iu;
 export function taskHours(name = '') {
-  const m = name.match(HOUR_TAG);
-  return m ? parseFloat(m[1].replace(',', '.')) : null;
+  const h = name.match(HOUR_TAG);
+  if (h) return parseFloat(h[1].replace(',', '.'));
+  const m = name.match(MIN_TAG);
+  if (m) return parseFloat(m[1].replace(',', '.')) / 60;   // minutes → hours
+  return null;
 }
 
 // Any emoji at the start of the name = the team marked it workable — except
