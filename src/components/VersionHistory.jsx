@@ -3,10 +3,19 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.26',
+    date: '2026-07-13',
+    title: 'Journal · เมลค้างตอบ กรองเมลอัตโนมัติเพิ่ม',
+    badge: 'Current',
+    changes: [
+      '🧹 กรองผู้ส่งอัตโนมัติเพิ่ม 4 ราย: Shutterstock · Asana · สวนน้ำรามายณะ · SoundCloud — ไม่โผล่ในการ์ดเมลค้างตอบอีก',
+      '🔍 เช็คจากชื่อผู้ส่งด้วย (ไม่ใช่แค่โดเมน) — เมลการตลาดที่ส่งผ่านโดเมนอื่นก็โดนกรอง',
+    ],
+  },
+  {
     version: 'v3.25',
     date: '2026-07-12',
     title: 'Journal · Working Timeline ทีม AE จาก Google Sheets + เตือนวางบิล',
-    badge: 'Current',
     changes: [
       '📋 การ์ดใหม่ Working Timeline — อ่านชีทงานของทีมสดผ่าน Google Sheets (read-only) วางลิงก์ชีทครั้งเดียวใช้ได้เลย · เลือกแท็บลูกค้าของปีปัจจุบันให้อัตโนมัติ (ข้ามแท็บบัญชี SHOPEE/Package/Boost Fee)',
       '🚨 รอวางบิล: งานที่โพสต์แล้วแต่ checkbox เก็บเงินยังไม่ครบ (ส่ง QT → เซ็น QT → ส่ง IV → เซ็น IV → จ่ายแล้ว) เรียงงานค้างนานสุดขึ้นก่อน พร้อมบอกว่าขาดขั้นไหน · โพสต์มาแล้วกี่วัน',

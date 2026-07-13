@@ -326,13 +326,16 @@ function parseFrom(from = '') {
 // Automated / notification senders (Google Play, Meta, no-reply, etc.) — never
 // something she needs to reply to. Filtered by sender (not a Gmail category
 // query, which returns nothing when the user has inbox tabs turned off).
-const AUTOMATED_DOMAINS = ['google.com', 'facebookmail.com', 'facebook.com', 'meta.com', 'metamail.com'];
-function isAutomatedSender(email = '') {
+const AUTOMATED_DOMAINS = ['google.com', 'facebookmail.com', 'facebook.com', 'meta.com', 'metamail.com', 'shutterstock.com', 'asana.com', 'soundcloud.com', 'ramayanawaterpark.com'];
+// Marketing senders that may mail from a third-party domain — match on display name.
+const AUTOMATED_NAME_RE = /ramayana|รามายณะ|shutterstock|soundcloud|asana/i;
+function isAutomatedSender(email = '', name = '') {
   const e = email.toLowerCase();
   const local = e.split('@')[0] || '';
   const domain = e.split('@')[1] || '';
   if (/(^|[._+-])(no-?reply|do-?not-?reply|donotreply|noreply|notification|notifications|notify|mailer|mailer-daemon|bounce|postmaster)([._+-]|$)/.test(local)) return true;
   if (AUTOMATED_DOMAINS.some(d => domain === d || domain.endsWith('.' + d))) return true;
+  if (name && AUTOMATED_NAME_RE.test(name)) return true;
   return false;
 }
 
@@ -413,7 +416,7 @@ function GmailInbox() {
         // Waiting on her only if the latest message is from outside the org…
         if (!from.domain || from.domain === ORG_DOMAIN) continue;
         // …and it's a real person, not a platform/no-reply notification.
-        if (isAutomatedSender(from.email)) continue;
+        if (isAutomatedSender(from.email, from.name)) continue;
         const ts = Number(last.internalDate) || Date.now();
         // Manually dismissed — stays hidden unless the client mailed again later.
         const dts = dismissed.get(th.id);
