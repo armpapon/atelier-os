@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   getIntegration, connectAsana, updateIntegrationMeta, disconnect, callProvider,
 } from '../lib/integrations.js';
+import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 
 const ASANA_API = 'https://app.asana.com/api/1.0';
 
@@ -95,6 +96,7 @@ export function AsanaHours({ date }) {
   const [memberFilter, setMemberFilter] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [people, setPeople] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
   const [expanded, setExpanded] = useState(null);
 
   const meta = integ?.meta || {};
@@ -130,6 +132,8 @@ export function AsanaHours({ date }) {
       // Least-filled people first — they're the ones Patt needs to chase.
       rows.sort((a, b) => a.total - b.total);
       setPeople(rows);
+      setCache('asana:hours:' + date, rows);
+      setLastSync(Date.now());
       setExpanded(null);
     } catch (e) {
       const msg = String(e.message || e);
@@ -138,7 +142,15 @@ export function AsanaHours({ date }) {
     } finally { setBusy(false); }
   }, [ready, meta.asana_workspace_gid, team, date]);
 
-  useEffect(() => { if (ready && !picking) load(); }, [ready, picking, load]);
+  useEffect(() => {
+    if (!ready || picking) return;
+    const key = 'asana:hours:' + date;
+    // Fresh cache → show instantly; stale/none → fetch.
+    if (cacheAge(key) <= STALE_MS) {
+      const c = getCache(key);
+      setPeople(c.data); setLastSync(c.ts);
+    } else { load(); }
+  }, [ready, picking, date, load]);
 
   // ── Connect: paste PAT → validate → pick workspace + team ─────────────────
   const connect = async () => {
@@ -235,7 +247,8 @@ export function AsanaHours({ date }) {
         <div className="card__title">ชั่วโมงทีม · Asana</div>
         {integ && ready && !picking && (
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <button onClick={load} disabled={busy} title="รีเฟรช"
+            {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
             <button onClick={openPicker} title="เปลี่ยนทีม / workspace"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>

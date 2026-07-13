@@ -10,6 +10,7 @@ import {
   getHabitLogsForDate, toggleHabitLog,
 } from '../lib/api/journal.js';
 import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread, ALL_GOOGLE_SCOPES } from '../lib/integrations.js';
+import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { AsanaHours } from '../components/AsanaHours.jsx';
 import { SheetTimeline } from '../components/SheetTimeline.jsx';
 
@@ -406,9 +407,12 @@ function waitingLabel(ms) {
   return `${Math.floor(hrs / 24)} วัน`;
 }
 
+const GMAIL_CACHE = 'gmail:waiting';
+
 function GmailInbox() {
   const [status, setStatus] = useState('loading'); // loading | connected | disconnected
-  const [items, setItems] = useState(null);        // null=not loaded yet, []=none
+  const [items, setItems] = useState(() => getCache(GMAIL_CACHE)?.data ?? null); // null=not loaded, []=none
+  const [lastSync, setLastSync] = useState(() => getCache(GMAIL_CACHE)?.ts ?? null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -476,6 +480,8 @@ function GmailInbox() {
       }
       waiting.sort((a, b) => b.ts - a.ts);
       setItems(waiting);
+      setCache(GMAIL_CACHE, waiting);
+      setLastSync(Date.now());
     } catch (e) {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) setStatus('disconnected');
@@ -490,7 +496,8 @@ function GmailInbox() {
       if (cancelled) return;
       const connected = !!(i && (i.scope || '').includes('gmail'));
       setStatus(connected ? 'connected' : 'disconnected');
-      if (connected) load();
+      // Show cached result instantly; only re-scan the inbox when it's stale.
+      if (connected && cacheAge(GMAIL_CACHE) > STALE_MS) load();
     };
     run();
     window.addEventListener('loop:oauth-connected', run);
@@ -514,8 +521,11 @@ function GmailInbox() {
       <div className="card__head">
         <div className="card__title">เมลค้างตอบ{items && items.length ? ` (${items.length})` : ''}</div>
         {status === 'connected' && (
-          <button onClick={load} disabled={busy} title="รีเฟรช"
-            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
+              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+          </span>
         )}
       </div>
 

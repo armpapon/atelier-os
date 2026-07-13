@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   startGoogleAuth, getIntegration, updateIntegrationMeta, callProvider, ALL_GOOGLE_SCOPES,
 } from '../lib/integrations.js';
+import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import {
   parseSheetId, pickClientTabs, parseTimeline, summarizeTimeline,
 } from '../lib/sheetTimeline.js';
@@ -28,6 +29,7 @@ export function SheetTimeline({ date }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
   const [tabFilter, setTabFilter] = useState('');
   const [expanded, setExpanded] = useState(null);
   const [allBilling, setAllBilling] = useState(false);
@@ -60,7 +62,10 @@ export function SheetTimeline({ date }) {
       })));
       const bad = grids.find(g => g?.error);
       if (bad) throw new Error(bad.error.message || JSON.stringify(bad.error));
-      setJobs(parseTimeline(grids.flatMap(g => g.sheets || [])));
+      const parsed = parseTimeline(grids.flatMap(g => g.sheets || []));
+      setJobs(parsed);
+      setCache('sheet:timeline:' + id, parsed);
+      setLastSync(Date.now());
       setExpanded(null);
     } catch (e) {
       const msg = String(e.message || e);
@@ -75,7 +80,14 @@ export function SheetTimeline({ date }) {
       const i = await refreshInteg();
       if (cancelled) return;
       const id = i?.meta?.timeline_sheet_id;
-      if (i && (i.scope || '').includes('spreadsheets') && id) load(id);
+      if (i && (i.scope || '').includes('spreadsheets') && id) {
+        const key = 'sheet:timeline:' + id;
+        // Fresh cache → show instantly; stale/none → read the sheet.
+        if (cacheAge(key) <= STALE_MS) {
+          const c = getCache(key);
+          setJobs(c.data); setLastSync(c.ts);
+        } else { load(id); }
+      }
     };
     run();
     window.addEventListener('loop:oauth-connected', run);
@@ -165,7 +177,8 @@ export function SheetTimeline({ date }) {
         <div className="card__title">Working Timeline · ทีม AE</div>
         {connected && sheetId && !editing && (
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรช"
+            {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
             <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.timeline_sheet_url || ''); }} title="เปลี่ยนชีท"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
