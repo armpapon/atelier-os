@@ -399,6 +399,17 @@ function gmailHeader(msg, name) {
   return h ? h.value : '';
 }
 
+// A client 👍/🎉 reaction to our email is a separate thread message with no real
+// text — just emoji. It isn't a reply we owe, so it shouldn't mark the thread as
+// waiting. Conservative: only treat a message as a reaction when its snippet is
+// emoji-only (any actual text → real email, never hidden).
+function isReactionMessage(msg) {
+  const s = (msg?.snippet || '').trim();
+  if (!s) return false;
+  if (!/\p{Extended_Pictographic}/u.test(s)) return false;
+  return s.replace(/[\p{Extended_Pictographic}‍️\s\p{P}\p{S}]/gu, '').length === 0;
+}
+
 function waitingLabel(ms) {
   const mins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
   if (mins < 60) return `${mins} นาที`;
@@ -460,9 +471,15 @@ function GmailInbox() {
       for (const th of details) {
         const msgs = th?.messages;
         if (!msgs?.length) continue;
-        const last = msgs[msgs.length - 1];
+        // Look past trailing emoji reactions to the last real message — a client
+        // 👍 on our email doesn't mean we still owe a reply.
+        let last = null;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (!isReactionMessage(msgs[i])) { last = msgs[i]; break; }
+        }
+        if (!last) continue;
         const from = parseFrom(gmailHeader(last, 'From'));
-        // Waiting on her only if the latest message is from outside the org…
+        // Waiting on her only if the latest real message is from outside the org…
         if (!from.domain || from.domain === ORG_DOMAIN) continue;
         // …and it's a real person, not a platform/no-reply notification.
         if (isAutomatedSender(from.email, from.name)) continue;
