@@ -419,6 +419,10 @@ function waitingLabel(ms) {
 }
 
 const GMAIL_CACHE = 'gmail:waiting';
+// Temporary: open the app with ?maildebug=1 to dump each waiting thread's last
+// few messages (sender domain + snippet) so we can see why it's flagged.
+const MAIL_DEBUG = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('maildebug') === '1';
 
 function GmailInbox() {
   const [status, setStatus] = useState('loading'); // loading | connected | disconnected
@@ -493,6 +497,10 @@ function GmailInbox() {
           subject: gmailHeader(msgs[0], 'Subject') || '(ไม่มีหัวข้อ)',
           to: extractEmails(gmailHeader(last, 'To')).join(', '),
           ts,
+          _dbg: MAIL_DEBUG ? msgs.slice(-5).map(m => {
+            const f = parseFrom(gmailHeader(m, 'From'));
+            return `${f.domain || '?'} · ${(m.snippet || '∅').slice(0, 40)}`;
+          }) : null,
         });
       }
       waiting.sort((a, b) => b.ts - a.ts);
@@ -583,6 +591,11 @@ function GmailInbox() {
                 {m.to && (
                   <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     ถึง: {m.to}
+                  </div>
+                )}
+                {m._dbg && (
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--loss)', marginTop: 4, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                    {m._dbg.map((d, i) => <div key={i}>{i + 1}. {d}</div>)}
                   </div>
                 )}
               </a>
