@@ -15,10 +15,12 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 
 const ASANA_API = 'https://app.asana.com/api/1.0';
 
-// Hour tag, forgiving: (3Hr) [3 Hr] (0.5 hr.) (2 ชม.) — anywhere in the name.
-const HOUR_TAG = /[[(]\s*(\d+(?:[.,]\d+)?)\s*(?:h(?:(?:ou)?rs?)?|ชม)\.?\s*[\])]/iu;
-// Minute tag, same brackets: (30 min) [45 mins] (30 นาที) → converted to hours.
-const MIN_TAG  = /[[(]\s*(\d+(?:[.,]\d+)?)\s*(?:min(?:ute)?s?|นาที)\.?\s*[\])]/iu;
+// Hour tag, forgiving — with OR without brackets: (1.5 HRS.) · 3 HR · 2 ชม.
+// The trailing lookahead keeps a unit from matching inside a longer word
+// (e.g. "harmony", "ชมพู่") so "Client 4" / "399.-" stay untagged.
+const HOUR_TAG = /(\d+(?:[.,]\d+)?)\s*(?:h(?:(?:ou)?rs?)?|ชม)(?![a-z฀-๿])/iu;
+// Minute tag, same rules: (30 min) · 45 mins · 30 นาที → converted to hours.
+const MIN_TAG  = /(\d+(?:[.,]\d+)?)\s*(?:min(?:ute)?s?|นาที)(?![a-z฀-๿])/iu;
 export function taskHours(name = '') {
   const h = name.match(HOUR_TAG);
   if (h) return parseFloat(h[1].replace(',', '.'));
