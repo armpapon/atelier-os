@@ -232,6 +232,7 @@ function hms(iso) {
 function gcalEventToEntry(ev, date) {
   const row = {
     entry_date: date, bullet_type: 'event', done: false, tag: null,
+    gcal_event_id: ev.id || null,   // stable id → re-imports update, not duplicate
     text: (ev.summary || 'ประชุม').trim(),
     location: ev.location ? ev.location.trim() : null,
     event_time: null,
@@ -302,21 +303,42 @@ function GoogleCalendarButton({ date, existing, onImported }) {
         .filter(ev => !isOfficeMarker(ev.summary || ''))
         .map(ev => gcalEventToEntry(ev, date));
 
-      // Dedup against what's already on this day (text + time).
-      const seen = new Set((existing || []).map(e => `${(e.text || '').trim()}|${e.event_time || ''}`));
-      const fresh = rows.filter(r => {
-        const key = `${r.text}|${r.event_time || ''}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      // Reconcile against what's already on this day so a moved meeting UPDATES
+      // its card (single card, latest time) instead of duplicating.
+      const byId = new Map();       // gcal_event_id → existing entry
+      const byKey = new Map();      // "text|time" → legacy entry (imported before ids existed)
+      for (const e of (existing || [])) {
+        if (e.gcal_event_id) byId.set(e.gcal_event_id, e);
+        else byKey.set(`${(e.text || '').trim()}|${e.event_time || ''}`, e);
+      }
 
-      if (!fresh.length) { alert('ไม่มีประชุมใหม่ให้เพิ่ม'); return; }
-      await bulkCreateEntries(fresh);
+      const toInsert = [];
+      let updated = 0;
+      for (const r of rows) {
+        const match = (r.gcal_event_id && byId.get(r.gcal_event_id))
+          || byKey.get(`${r.text}|${r.event_time || ''}`);
+        if (!match) { toInsert.push(r); continue; }
+        // Patch only changed fields; never touch `done` (keep the tick).
+        const patch = {};
+        if ((match.event_time || null)     !== (r.event_time || null))     patch.event_time = r.event_time || null;
+        if ((match.event_end_time || null) !== (r.event_end_time || null)) patch.event_end_time = r.event_end_time || null;
+        if ((match.text || '')             !== r.text)                     patch.text = r.text;
+        if ((match.location || null)       !== (r.location || null))       patch.location = r.location || null;
+        if (!match.gcal_event_id && r.gcal_event_id)                       patch.gcal_event_id = r.gcal_event_id;
+        if (Object.keys(patch).length) { await updateEntry(match.id, patch); updated++; }
+      }
+      if (toInsert.length) await bulkCreateEntries(toInsert);
+
+      const added = toInsert.length;
+      if (!added && !updated) { alert('ตารางตรงกับที่มีอยู่แล้ว — ไม่มีอะไรต้องอัปเดต'); return; }
+      alert(`ซิงก์แล้ว · เพิ่ม ${added} · อัปเดต ${updated} รายการ`);
       onImported();
     } catch (e) {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) { setStatus('disconnected'); alert('ยังไม่ได้เชื่อม Google — กดเชื่อมก่อน'); }
+      else if (/gcal_event_id|column|schema cache/i.test(msg)) {
+        alert('ยังไม่ได้รัน SQL — เปิด Supabase แล้วรัน migration_add_gcal_event_id.sql ก่อนนะครับ');
+      }
       else alert('ดึงตารางไม่สำเร็จ: ' + msg);
     } finally { setBusy(false); }
   };
