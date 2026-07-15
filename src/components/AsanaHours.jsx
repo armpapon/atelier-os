@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   getIntegration, connectAsana, updateIntegrationMeta, disconnect, callProvider,
 } from '../lib/integrations.js';
-import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
+import { getCache, setCache, cacheAge, clearCache, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 
 const ASANA_API = 'https://app.asana.com/api/1.0';
 
@@ -94,7 +94,25 @@ async function fetchDayTasks(wsGid, team, date) {
   }
 }
 
-const TARGET = 8;
+// Per-role daily hour targets. A lead is expected to bill fewer hours than the
+// team (Nantawan: 6 vs the default 8). Roles are user-editable and stored in
+// meta.asana_roles; these two ship as defaults and cover most teams.
+const DEFAULT_ROLES = [
+  { id: 'staff', name: 'ปกติ', target: 8 },
+  { id: 'lead', name: 'หัวหน้า', target: 6 },
+];
+const FALLBACK_TARGET = 8;
+
+function rolesOf(meta) {
+  const r = meta.asana_roles;
+  return Array.isArray(r) && r.length ? r : DEFAULT_ROLES;
+}
+function roleOf(roles, roleId) {
+  return roles.find(r => r.id === roleId) || roles[0] || null;
+}
+function newRoleId() { return 'r' + Math.random().toString(36).slice(2, 7); }
+function cleanTarget(t) { const n = parseFloat(t); return isNaN(n) ? FALLBACK_TARGET : Math.max(0, n); }
+
 const STATUSES = [
   { key: 'done', icon: '✅', label: 'Finished' },
   { key: 'proc', icon: '😄', label: 'On Process' },
@@ -111,12 +129,15 @@ export function AsanaHours({ date }) {
   const [members, setMembers] = useState(null);
   const [memberFilter, setMemberFilter] = useState('');
   const [selected, setSelected] = useState(new Set());
+  const [memberRole, setMemberRole] = useState(new Map()); // gid → roleId (during setup)
+  const [roleDraft, setRoleDraft] = useState(DEFAULT_ROLES); // roles being edited
   const [people, setPeople] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const [expanded, setExpanded] = useState(null);
 
   const meta = integ?.meta || {};
   const team = meta.asana_team || [];
+  const roles = rolesOf(meta);
   const ready = !!(meta.asana_workspace_gid && team.length);
 
   const refreshInteg = useCallback(
@@ -131,10 +152,16 @@ export function AsanaHours({ date }) {
     setBusy(true);
     try {
       const tasks = await fetchDayTasks(meta.asana_workspace_gid, team, date);
-      // Seed from the team list so someone with zero cards still shows (0/8).
-      const byGid = new Map(team.map(m => [m.gid, {
-        gid: m.gid, name: m.name, done: 0, proc: 0, wait: 0, untagged: 0, tasks: [],
-      }]));
+      // Seed from the team list so someone with zero cards still shows (0/target).
+      // Each person's target comes from their role (lead = fewer hours than staff).
+      const byGid = new Map(team.map(m => {
+        const r = roleOf(roles, m.roleId);
+        return [m.gid, {
+          gid: m.gid, name: m.name,
+          target: r ? r.target : FALLBACK_TARGET, roleName: r ? r.name : '',
+          done: 0, proc: 0, wait: 0, untagged: 0, tasks: [],
+        }];
+      }));
       for (const t of tasks) {
         const p = byGid.get(t.assignee?.gid);
         if (!p) continue;
@@ -145,8 +172,8 @@ export function AsanaHours({ date }) {
         p.tasks.push({ gid: t.gid, name: t.name, hrs, status });
       }
       const rows = [...byGid.values()].map(p => ({ ...p, total: p.done + p.proc + p.wait }));
-      // Least-filled people first — they're the ones Patt needs to chase.
-      rows.sort((a, b) => a.total - b.total);
+      // Biggest shortfall (target − filled) first — who Patt needs to chase.
+      rows.sort((a, b) => (b.target - b.total) - (a.target - a.total));
       setPeople(rows);
       setCache('asana:hours:' + date, rows);
       setLastSync(Date.now());
@@ -156,7 +183,7 @@ export function AsanaHours({ date }) {
       if (msg.includes('not_connected')) setInteg(null);
       else alert('ดึงงาน Asana ไม่สำเร็จ: ' + msg);
     } finally { setBusy(false); }
-  }, [ready, meta.asana_workspace_gid, team, date]);
+  }, [ready, meta.asana_workspace_gid, team, roles, date]);
 
   useEffect(() => {
     if (!ready || picking) return;
@@ -179,6 +206,9 @@ export function AsanaHours({ date }) {
       const ws = me?.workspaces || [];
       setWorkspaces(ws);
       setWsGid(ws[0]?.gid || '');
+      setSelected(new Set());
+      setMemberRole(new Map());
+      setRoleDraft(DEFAULT_ROLES.map(r => ({ ...r })));
       await refreshInteg();
       setPicking(true);
     } catch (e) {
@@ -189,6 +219,8 @@ export function AsanaHours({ date }) {
   const openPicker = async () => {
     setPicking(true);
     setSelected(new Set(team.map(m => m.gid)));
+    setMemberRole(new Map(team.map(m => [m.gid, m.roleId || roles[0].id])));
+    setRoleDraft(roles.map(r => ({ ...r })));
     if (!workspaces.length) {
       try {
         const me = await callProvider('asana', {
@@ -212,23 +244,48 @@ export function AsanaHours({ date }) {
     return () => { cancelled = true; };
   }, [picking, wsGid]);
 
-  const toggleMember = (gid) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(gid) ? next.delete(gid) : next.add(gid);
-    return next;
-  });
+  const toggleMember = (gid) => {
+    const adding = !selected.has(gid);
+    setSelected(prev => {
+      const next = new Set(prev);
+      adding ? next.add(gid) : next.delete(gid);
+      return next;
+    });
+    setMemberRole(prev => {
+      const next = new Map(prev);
+      if (adding) next.set(gid, roleDraft[0]?.id || 'staff');
+      else next.delete(gid);
+      return next;
+    });
+  };
+  const setRole = (gid, roleId) => setMemberRole(prev => new Map(prev).set(gid, roleId));
+
+  const addRole = () => setRoleDraft(d => [...d, { id: newRoleId(), name: '', target: FALLBACK_TARGET }]);
+  const removeRole = (id) => setRoleDraft(d => (d.length > 1 ? d.filter(r => r.id !== id) : d));
+  const patchRole = (id, patch) => setRoleDraft(d => d.map(r => (r.id === id ? { ...r, ...patch } : r)));
 
   const savePick = async () => {
     const ws = workspaces.find(w => w.gid === wsGid);
-    const picked = (members || []).filter(m => selected.has(m.gid))
-      .map(m => ({ gid: m.gid, name: m.name }));
+    const cleanRoles = roleDraft.map(r => ({
+      id: r.id, name: (r.name || '').trim() || 'ไม่มีชื่อ', target: cleanTarget(r.target),
+    }));
+    const roleIds = new Set(cleanRoles.map(r => r.id));
+    const fallback = cleanRoles[0].id;
+    const picked = (members || []).filter(m => selected.has(m.gid)).map(m => {
+      let rid = memberRole.get(m.gid) || fallback;
+      if (!roleIds.has(rid)) rid = fallback;
+      return { gid: m.gid, name: m.name, roleId: rid };
+    });
     if (!picked.length) return;
     setBusy(true);
     try {
       await updateIntegrationMeta('asana', {
         asana_workspace_gid: ws?.gid || wsGid, asana_workspace_name: ws?.name || '',
+        asana_roles: cleanRoles,
         asana_team: picked,
       });
+      // Role targets changed → every cached day is stale, drop them all.
+      clearCache('asana:hours:');
       await refreshInteg();
       setPicking(false);
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e.message || e)); }
@@ -238,6 +295,7 @@ export function AsanaHours({ date }) {
   const handleDisconnect = async () => {
     if (!confirm('ยกเลิกการเชื่อม Asana? (token จะถูกลบ)')) return;
     await disconnect('asana');
+    clearCache('asana:hours:');
     setInteg(null); setPicking(false); setPeople(null); setWorkspaces([]); setMembers(null);
   };
 
@@ -248,11 +306,12 @@ export function AsanaHours({ date }) {
   const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
   const linkBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--ink-3)', padding: 0 };
 
-  // Team-wide totals for the overview strip.
+  // Team-wide totals for the overview strip. "full" counts each person against
+  // their own role target, not a flat 8.
   const sum = (people || []).reduce(
     (a, p) => ({
       done: a.done + p.done, proc: a.proc + p.proc, wait: a.wait + p.wait,
-      full: a.full + (p.total >= TARGET ? 1 : 0),
+      full: a.full + (p.total >= p.target ? 1 : 0),
     }),
     { done: 0, proc: 0, wait: 0, full: 0 },
   );
@@ -300,6 +359,29 @@ export function AsanaHours({ date }) {
               <select value={wsGid} onChange={e => setWsGid(e.target.value)} style={inputStyle}>
                 {workspaces.map(w => <option key={w.gid} value={w.gid}>{w.name}</option>)}
               </select>
+
+              {/* Roles + their daily hour targets */}
+              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>บทบาท & เป้า ชม./วัน</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {roleDraft.map(r => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input value={r.name} onChange={e => patchRole(r.id, { name: e.target.value })}
+                      placeholder="ชื่อบทบาท" style={{ ...inputStyle, flex: 1 }} />
+                    <input type="number" step="0.5" min="0" value={r.target}
+                      onChange={e => patchRole(r.id, { target: e.target.value })}
+                      style={{ ...inputStyle, width: 52, textAlign: 'right' }} />
+                    <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>ชม.</span>
+                    {roleDraft.length > 1 && (
+                      <button onClick={() => removeRole(r.id)} title="ลบบทบาท"
+                        style={{ ...linkBtn, fontSize: 13, color: 'var(--ink-4)' }}>✕</button>
+                    )}
+                  </div>
+                ))}
+                <button onClick={addRole} className="btn btn--ghost" style={{ fontSize: 12, alignSelf: 'flex-start' }}>
+                  + เพิ่มบทบาท
+                </button>
+              </div>
+
               <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
                 คนในทีม{selected.size ? ` · เลือก ${selected.size}` : ''}
               </div>
@@ -313,16 +395,28 @@ export function AsanaHours({ date }) {
                     <input value={memberFilter} onChange={e => setMemberFilter(e.target.value)}
                       placeholder="ค้นหาชื่อ..." style={inputStyle} />
                   )}
-                  <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {members
                       .filter(m => !memberFilter || m.name.toLowerCase().includes(memberFilter.toLowerCase()))
-                      .map(m => (
-                        <label key={m.gid}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontSize: 13, color: 'var(--ink)', background: selected.has(m.gid) ? 'var(--surface-2)' : 'transparent' }}>
-                          <input type="checkbox" checked={selected.has(m.gid)} onChange={() => toggleMember(m.gid)} />
-                          {m.name}
-                        </label>
-                      ))}
+                      .map(m => {
+                        const on = selected.has(m.gid);
+                        return (
+                          <div key={m.gid}
+                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', borderRadius: 'var(--r-sm)', background: on ? 'var(--surface-2)' : 'transparent' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer', fontSize: 13, color: 'var(--ink)' }}>
+                              <input type="checkbox" checked={on} onChange={() => toggleMember(m.gid)} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                            </label>
+                            {on && (
+                              <select value={memberRole.get(m.gid) || roleDraft[0]?.id}
+                                onChange={e => setRole(m.gid, e.target.value)}
+                                style={{ ...inputStyle, width: 'auto', flexShrink: 0, padding: '4px 6px', fontSize: 11 }}>
+                                {roleDraft.map(r => <option key={r.id} value={r.id}>{r.name || 'ไม่มีชื่อ'}</option>)}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 </>
               )}
@@ -350,7 +444,7 @@ export function AsanaHours({ date }) {
             <>
               {/* Overview strip */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                <OverviewTile value={`${sum.full}/${people.length}`} label={`คนครบ ${fmtHr(TARGET)}`} />
+                <OverviewTile value={`${sum.full}/${people.length}`} label="คนครบเป้า" />
                 <OverviewTile value={fmtHr(sum.done)} label="✅ Finished" />
                 <OverviewTile value={fmtHr(sum.proc)} label="😄 On Process" />
                 <OverviewTile value={fmtHr(sum.wait)} label="❌ Waiting" />
@@ -358,7 +452,7 @@ export function AsanaHours({ date }) {
 
               {/* Per person */}
               {people.map(p => {
-                const low = p.total < TARGET;
+                const low = p.total < p.target;
                 const open = expanded === p.gid;
                 return (
                   <div key={p.gid}
@@ -366,13 +460,15 @@ export function AsanaHours({ date }) {
                     <button onClick={() => setExpanded(open ? null : p.gid)}
                       style={{ display: 'block', width: '100%', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                        <span style={{ minWidth: 0, fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {p.name}{p.roleName ? <span style={{ color: 'var(--ink-3)', fontSize: 11 }}> · {p.roleName}</span> : null}
+                        </span>
                         <span style={{ flexShrink: 0, fontFamily: 'var(--f-mono)', fontSize: 12, color: low ? 'var(--amber-deep)' : 'var(--profit)' }}>
-                          {fmtHr(p.total)} / {fmtHr(TARGET)}{low ? ` · ขาด ${fmtHr(TARGET - p.total)}` : ' ✓'}
+                          {fmtHr(p.total)} / {fmtHr(p.target)}{low ? ` · ขาด ${fmtHr(p.target - p.total)}` : ' ✓'}
                         </span>
                       </div>
                       <div style={{ height: 4, background: low ? 'var(--surface-2)' : 'var(--bg-2)', borderRadius: 2, margin: '6px 0', overflow: 'hidden' }}>
-                        <div style={{ width: `${Math.min(100, (p.total / TARGET) * 100)}%`, height: '100%', background: low ? 'var(--warning)' : 'var(--profit)' }} />
+                        <div style={{ width: `${p.target ? Math.min(100, (p.total / p.target) * 100) : 100}%`, height: '100%', background: low ? 'var(--warning)' : 'var(--profit)' }} />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {STATUSES.map(s => (

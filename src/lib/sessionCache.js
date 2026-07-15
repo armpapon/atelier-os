@@ -15,6 +15,14 @@ export function getCache(key) { return store.get(key) || null; }
 export function setCache(key, data) { store.set(key, { data, ts: Date.now() }); }
 export function cacheAge(key) { const e = store.get(key); return e ? Date.now() - e.ts : Infinity; }
 
+// Drop cached entries (all, or every key starting with `prefix`). Used when a
+// setting change invalidates results across dates, e.g. editing Asana role
+// targets must recompute every day's summary, not just the one on screen.
+export function clearCache(prefix) {
+  if (!prefix) { store.clear(); return; }
+  for (const k of [...store.keys()]) if (k.startsWith(prefix)) store.delete(k);
+}
+
 // "14:32" clock for the last successful sync.
 export function fmtSyncClock(ts) {
   if (!ts) return '';
