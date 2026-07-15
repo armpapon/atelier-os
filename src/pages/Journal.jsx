@@ -375,7 +375,8 @@ function parseFrom(from = '') {
 // query, which returns nothing when the user has inbox tabs turned off).
 const AUTOMATED_DOMAINS = ['google.com', 'facebookmail.com', 'facebook.com', 'meta.com', 'metamail.com', 'shutterstock.com', 'asana.com', 'soundcloud.com', 'ramayanawaterpark.com'];
 // Marketing senders that may mail from a third-party domain — match on display name.
-const AUTOMATED_NAME_RE = /ramayana|รามายณะ|shutterstock|soundcloud|asana/i;
+// Word boundaries so real people don't get caught (e.g. "Wasana" contains "asana").
+const AUTOMATED_NAME_RE = /\b(ramayana|shutterstock|soundcloud|asana)\b|รามายณะ/i;
 function isAutomatedSender(email = '', name = '') {
   const e = email.toLowerCase();
   const local = e.split('@')[0] || '';
@@ -429,14 +430,17 @@ function GmailInbox() {
   const [items, setItems] = useState(() => getCache(GMAIL_CACHE)?.data ?? null); // null=not loaded, []=none
   const [lastSync, setLastSync] = useState(() => getCache(GMAIL_CACHE)?.ts ?? null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(null); // {done, total} while scanning
 
   const load = useCallback(async () => {
     setBusy(true);
     try {
       // Walk the whole inbox (no time limit) so every un-replied thread shows,
       // however old. Cap the scan so a huge inbox can't run away.
-      const SCAN_CAP = 150;   // most inbox threads to inspect
-      const BATCH = 12;       // concurrent thread fetches per wave
+      const SCAN_CAP = 500;   // most inbox threads to inspect — a busy inbox
+                              // buries months-old un-replied threads past 150
+      const BATCH = 15;       // concurrent thread fetches per wave (threads.get
+                              // = 10 quota units × 15 = 150/s, under the 250 cap)
 
       // Threads she manually marked as handled (e.g. resolved by phone).
       // Keyed by thread id → ts of the last message at dismissal time.
@@ -458,7 +462,9 @@ function GmailInbox() {
       } while (pageToken && ids.length < SCAN_CAP);
 
       const details = [];
-      for (let i = 0; i < Math.min(ids.length, SCAN_CAP); i += BATCH) {
+      const total = Math.min(ids.length, SCAN_CAP);
+      setProgress({ done: 0, total });
+      for (let i = 0; i < total; i += BATCH) {
         const wave = await Promise.all(ids.slice(i, i + BATCH).map(id => {
           const p = new URLSearchParams({ format: 'metadata' });
           p.append('metadataHeaders', 'From');
@@ -469,6 +475,7 @@ function GmailInbox() {
           }).catch(() => null);
         }));
         details.push(...wave);
+        setProgress({ done: Math.min(i + BATCH, total), total });
       }
 
       const waiting = [];
@@ -507,7 +514,7 @@ function GmailInbox() {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) setStatus('disconnected');
       else alert('ดึงเมลไม่สำเร็จ: ' + msg);
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setProgress(null); }
   }, []);
 
   useEffect(() => {
@@ -543,7 +550,9 @@ function GmailInbox() {
         <div className="card__title">เมลค้างตอบ{items && items.length ? ` (${items.length})` : ''}</div>
         {status === 'connected' && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            {busy && progress
+              ? <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>สแกน {progress.done}/{progress.total}…</span>
+              : lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
             <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
           </span>
@@ -561,7 +570,9 @@ function GmailInbox() {
             </button>
           </div>
         ) : busy && items === null ? (
-          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>กำลังดึง...</div>
+          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>
+            {progress ? `กำลังสแกน ${progress.done}/${progress.total}…` : 'กำลังดึง...'}
+          </div>
         ) : (items && items.length === 0) ? (
           <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>ไม่มีเมลลูกค้าค้างตอบ 🎉</div>
         ) : items ? (
