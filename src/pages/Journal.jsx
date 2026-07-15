@@ -964,12 +964,13 @@ export function Journal() {
   const today = todayStr();
   const isToday = date === today;
 
-  // Merge today into recentDates if not already
-  const allDates = recentDates.includes(today) ? recentDates : [today, ...recentDates];
 
   // Split off "leave" entries — shown as FYI, not part of the day's checklist.
   const leaveEntries = entries.filter(e => isLeaveEntry(e.text));
-  const dayEntries   = entries.filter(e => !isLeaveEntry(e.text));
+  const dayEntries   = entries
+    .filter(e => !isLeaveEntry(e.text))
+    // Sort by start time (earliest first); entries with no time sink to the bottom.
+    .sort((a, b) => (a.event_time || '99:99:99').localeCompare(b.event_time || '99:99:99'));
   // "นัดที่จะถึง" = future days only — today's meetings already show in the day list.
   const futureEvents = upcoming.filter(ev => ev.entry_date > today);
 
@@ -1005,20 +1006,18 @@ export function Journal() {
         {/* Daily time countdown — feel the value of each day */}
         {isToday && <DayCountdown />}
 
-        {/* Date navigator */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 22, overflowX: 'auto', paddingBottom: 4 }}>
-          {allDates.slice(0, 14).map(d => (
-            <button key={d} onClick={() => setDate(d)}
-              style={{
-                flexShrink: 0, padding: '6px 12px', borderRadius: 'var(--r-md)',
-                background: d === date ? 'var(--amber)' : 'var(--surface)',
-                color: d === date ? '#1a1410' : 'var(--ink-2)',
-                border: `1px solid ${d === date ? 'var(--amber)' : 'var(--line)'}`,
-                fontFamily: 'var(--f-mono)', fontSize: 11, whiteSpace: 'nowrap',
-              }}>
-              {d === today ? 'วันนี้' : formatDateShort(d)}
-            </button>
-          ))}
+        {/* Date navigator — วันนี้ + เลือกวันเอง */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 22, alignItems: 'center' }}>
+          <button onClick={() => setDate(today)}
+            style={{
+              flexShrink: 0, padding: '6px 12px', borderRadius: 'var(--r-md)',
+              background: date === today ? 'var(--amber)' : 'var(--surface)',
+              color: date === today ? '#1a1410' : 'var(--ink-2)',
+              border: `1px solid ${date === today ? 'var(--amber)' : 'var(--line)'}`,
+              fontFamily: 'var(--f-mono)', fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer',
+            }}>
+            วันนี้
+          </button>
           {/* Jump to date */}
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             style={{
