@@ -14,6 +14,7 @@ export const GOOGLE_SCOPES = {
   calendar: 'https://www.googleapis.com/auth/calendar.readonly',
   gmail: 'https://www.googleapis.com/auth/gmail.readonly',
   sheets: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+  slides: 'https://www.googleapis.com/auth/presentations.readonly',
 };
 export const ALL_GOOGLE_SCOPES = Object.values(GOOGLE_SCOPES);
 
