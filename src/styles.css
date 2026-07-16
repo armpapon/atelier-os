@@ -426,8 +426,11 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 
 /* ====== Daily Journal (bullet) ====== */
 .bujo-grid {
-  display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start;
 }
+/* Cards below the top row span the full width so long titles (waiting email,
+   Asana hours) can't squeeze the checklist column. */
+.bujo-stack { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; }
 .bujo-page {
   background: var(--paper); color: var(--paper-ink);
   border-radius: var(--r-lg); padding: 36px 42px;

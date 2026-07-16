@@ -1128,7 +1128,7 @@ export function Journal() {
             )}
           </div>
 
-          {/* Right: side panels */}
+          {/* Right column of the top row: calendar only, keeping the row 50/50 */}
           <div className="bujo-side">
             {/* Mini calendar */}
             <MiniCalendar
@@ -1139,7 +1139,12 @@ export function Journal() {
               onPrev={() => setCalMonth(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
               onNext={() => setCalMonth(c => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
             />
+          </div>
+        </div>
 
+        {/* Full-width stack — everything from "นัดที่จะถึง" down spans 100% so a
+            long email/Asana title no longer squeezes the checklist column. */}
+        <div className="bujo-stack">
             {/* Upcoming events */}
             <div className="card">
               <div className="card__head">
@@ -1279,7 +1284,6 @@ export function Journal() {
                 </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
 
