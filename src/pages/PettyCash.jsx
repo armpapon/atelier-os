@@ -17,6 +17,7 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 import { parseSheetId } from '../lib/sheetTimeline.js';
 import { parsePettyCash, deriveFlags } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
+import { parseFormResponses, reconcile } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const GRID_FIELDS =
@@ -63,6 +64,7 @@ export function PettyCash() {
   const [slidesByCode, setSlidesByCode] = useState({});
   const [comparing, setComparing] = useState(null);
   const [marks, setMarks] = useState({});
+  const [mode, setMode] = useState('people'); // 'people' | 'recon'
 
   const connected = !!(integ && (integ.scope || '').includes('spreadsheets'));
   const hasSlides = !!(integ && (integ.scope || '').includes('presentations'));
@@ -163,13 +165,17 @@ export function PettyCash() {
       const presIds = [...new Set(person.rows.map(r => presIdOf(r.evidenceUrl)).filter(Boolean))];
       if (!presIds.length) throw new Error('คนนี้ไม่มีลิงก์สไลด์ในชีท');
       const itemsByKey = new Map();
+      const allItems = [];
       for (const pid of presIds) {
         const pres = await callProvider('google', { url: `${SLIDES_API}/${pid}?fields=${encodeURIComponent(SLIDES_FIELDS)}` });
         if (pres?.error) throw new Error(pres.error.message || JSON.stringify(pres.error));
-        for (const it of parseDeck(flattenSlides(pres))) itemsByKey.set(`${pid}:${it.objectId}`, it);
+        for (const it of parseDeck(flattenSlides(pres), pid)) {
+          itemsByKey.set(`${pid}:${it.objectId}`, it);
+          allItems.push(it);
+        }
       }
       const res = {};
-      for (const r of person.rows) if (r.isExpense) res[r.rowNo] = compareRow(r, itemsByKey);
+      for (const r of person.rows) if (r.isExpense) res[r.rowNo] = compareRow(r, itemsByKey, allItems);
       setSlidesByCode(s => ({ ...s, [person.code]: res }));
       setCache(cacheKey, res);
     } catch (e) { alert('อ่านสไลด์ไม่สำเร็จ: ' + (e.message || e)); }
@@ -207,9 +213,19 @@ export function PettyCash() {
       ) : busy && !data ? (
         <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีท…</div>
       ) : data ? (
-        <Board data={data} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
-          slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck}
-          hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
+        <>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            <button style={chip(mode === 'people')} onClick={() => setMode('people')}>👤 รายคน</button>
+            <button style={chip(mode === 'recon')} onClick={() => setMode('recon')}>⇄ ต้นทาง ↔ ปลายทาง</button>
+          </div>
+          {mode === 'people' ? (
+            <Board data={data} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
+              slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck}
+              hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
+          ) : (
+            <ReconView integ={integ} refreshInteg={refreshInteg} data={data} />
+          )}
+        </>
       ) : null}
     </div>
   );
@@ -390,7 +406,14 @@ function ClaimRow({ r, flagsSet, partners, cmp, mark, setMark, isSeal }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500 }}>{baht2(r.amountOut)}</div>
-        {r.evidenceUrl
+        {cmp?.fixedUrl ? (
+          <span style={{ display: 'flex', gap: 5 }}>
+            <a href={cmp.fixedUrl} target="_blank" rel="noreferrer" title={cmp.fixedTitle}
+              style={{ fontSize: 11.5, color: '#3c5c3b', textDecoration: 'none', border: '1px solid var(--profit, #5b8a5a)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--profit-soft, #dbe7d3)', whiteSpace: 'nowrap' }}>สไลด์ที่ใช่ ↗</a>
+            {r.evidenceUrl && <a href={r.evidenceUrl} target="_blank" rel="noreferrer"
+              style={{ fontSize: 11.5, color: 'var(--ink-3)', textDecoration: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ลิงก์เดิม ↗</a>}
+          </span>
+        ) : r.evidenceUrl
           ? <a href={r.evidenceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--accent-strong)', textDecoration: 'none', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ดูสไลด์ ↗</a>
           : r.slip ? <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>สลิป: {r.slip.slice(0, 16)}</span>
             : <span style={{ fontSize: 11, color: 'var(--danger)' }}>ไม่มีลิงก์</span>}
@@ -409,11 +432,164 @@ function compareView(cmp) {
   if (!cmp) return null;
   switch (cmp.status) {
     case 'match': return { tone: 'ok', text: '✓ ยอดตรงสไลด์' };
+    case 'wrong_link': return { tone: 'bad', text: '🔗 ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว' };
+    case 'content_match': return { tone: 'ok', text: '✓ เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)' };
     case 'amount_mismatch': return { tone: 'bad', text: `⚠ สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}` };
     case 'no_amount': return { tone: 'warn', text: 'อ่านยอดในสไลด์ไม่ได้' };
-    case 'not_in_deck': return { tone: 'warn', text: '⛔ ไม่พบสไลด์นี้ในเด็ค' };
-    default: return null; // no_slide → nothing extra
+    case 'not_found': return { tone: 'warn', text: '⛔ หาสไลด์ของรายการนี้ไม่เจอ' };
+    default: return null;
   }
+}
+
+// ── Recon: form source ↔ curated sheet ───────────────────────────────────────
+// Employees claim via a Google Form (timestamped, tamper-resistant); a middle
+// person re-keys into the sheet execs see. This view shows where they diverge.
+function ReconView({ integ, refreshInteg, data }) {
+  const [urlInput, setUrlInput] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const formSheetId = integ?.meta?.pettycash_form_sheet_id || '';
+
+  const load = useCallback(async (fid) => {
+    if (!fid || !data) return;
+    setBusy(true);
+    try {
+      const props = await callProvider('google', { url: `${SHEETS_API}/${fid}?fields=sheets.properties(title)` });
+      if (props?.error) throw new Error(props.error.message || JSON.stringify(props.error));
+      const tabs = (props.sheets || []).map(s => s.properties?.title || '');
+      const tab = tabs.find(t => /form responses/i.test(t) && !/old/i.test(t)) || tabs[0];
+      if (!tab) throw new Error('ไม่พบแท็บ Form Responses ในชีทนี้');
+      const grid = await callProvider('google', {
+        url: `${SHEETS_API}/${fid}?includeGridData=true&ranges=${encodeURIComponent(`'${tab.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
+      });
+      if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
+      const forms = parseFormResponses((grid.sheets || [])[0]);
+      if (!forms.length) throw new Error(`อ่านแท็บ "${tab}" ได้ แต่ไม่พบรายการเบิก — เช็คว่าเป็นชีทที่ Google Form เขียนลง`);
+      setResult(reconcile(forms, data.rows, { year: data.year }));
+    } catch (e) { alert('เทียบต้นทางไม่สำเร็จ: ' + (e.message || e)); }
+    finally { setBusy(false); }
+  }, [data]);
+
+  useEffect(() => { if (formSheetId && data) load(formSheetId); }, [formSheetId, data, load]);
+
+  const saveFormSheet = async () => {
+    const id = parseSheetId(urlInput);
+    if (!id) { alert('ลิงก์ไม่ถูกต้อง — วางลิงก์ชีท (Responses) ทั้งลิงก์'); return; }
+    setBusy(true);
+    try {
+      await updateIntegrationMeta('google', { ...(integ?.meta || {}), pettycash_form_sheet_id: id, pettycash_form_sheet_url: urlInput.trim() });
+      await refreshInteg(); setEditing(false); setUrlInput('');
+    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  if (!formSheetId || editing) {
+    return (
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 560 }}>
+        <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.6 }}>
+          วางลิงก์ชีท <b style={{ color: 'var(--ink-2)' }}>"SEAL Petty Cash (Responses)"</b> — ชีทที่ Google Form
+          ของพนักงานเขียนลงอัตโนมัติ (ต้นทาง) · Loop จะเทียบกับชีทหลักให้เห็นว่ารายการไหนหาย/โผล่/ถูกแก้
+        </div>
+        <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          onKeyDown={e => e.key === 'Enter' && saveFormSheet()}
+          style={{ width: '100%', padding: '9px 10px', fontSize: 12, color: 'var(--ink)', fontFamily: 'var(--f-mono)', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn--ghost" onClick={saveFormSheet} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : '✓ ใช้ชีทนี้'}</button>
+          {editing && <button className="btn btn--ghost" onClick={() => setEditing(false)}>ยกเลิก</button>}
+        </div>
+      </div>
+    );
+  }
+  if (busy && !result) return <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีทต้นทาง…</div>;
+  if (!result) return null;
+
+  const R = result;
+  const missSum = R.formMissing.reduce((s, f) => s + f.amount, 0);
+  const orphanSum = R.destNoSource.reduce((s, d) => s + d.amountOut, 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <Tile v={`${R.matchedForms}/${R.forms.length}`} l="ใบฟอร์มจับคู่ได้" />
+        <Tile v={R.destNoSource.length} l="🔴 ในชีทแต่ไร้ต้นทาง" warn={R.destNoSource.length > 0} />
+        <Tile v={R.formMissing.length} l="🟠 เบิกแล้วแต่ไม่ถึงชีท" warn={R.formMissing.length > 0} />
+        <Tile v={R.formDup.length} l="👯 ส่งฟอร์มซ้ำ" warn={R.formDup.length > 0} />
+      </div>
+      <div style={{ ...mono10, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>ปี {data.year} · จับคู่ 4 ชั้น (สไลด์ → ยอด → แตกใบ → ควบใบ) · ใบฟอร์ม ≤21 วันที่ยังไม่ถึงชีทนับเป็น "รอลงชีท" ({R.formPending.length} ใบ)</span>
+        <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.pettycash_form_sheet_url || ''); }}
+          style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
+      </div>
+
+      {R.destNoSource.length > 0 && (
+        <ReconSection tone="bad" title={`🔴 อยู่ในชีทหลัก แต่ไม่มีใบเบิกจากฟอร์ม (${R.destNoSource.length} แถว · ${baht(orphanSum)})`}
+          sub="ใครกรอกเข้าไป? — พนักงานคนนั้นไม่ได้ส่งฟอร์ม หรือส่งนอกระบบ">
+          {R.destNoSource.map(d => (
+            <ReconRow key={d.rowNo} left={`แถวชีท ${d.rowNo} · ${TH_MONTHS[d.monthIdx] ?? ''} · ${d.label}`}
+              main={d.work} amt={d.amountOut} url={d.evidenceUrl} />
+          ))}
+        </ReconSection>
+      )}
+
+      {R.formDup.length > 0 && (
+        <ReconSection tone="bad" title={`👯 ส่งฟอร์มซ้ำ — คนเดียวกัน ยอดเท่ากัน ห่างกัน ≤3 วัน (${R.formDup.length} คู่)`}
+          sub="เช็คว่าตั้งใจเบิก 2 งานจริง หรือใบเดียวถูกส่ง/ถูกเบิกซ้ำ">
+          {R.formDup.map(([a, b], i) => (
+            <ReconRow key={i} left={`${a.who.split('|')[1] || a.code} · ${fmtD(a.ts)} และ ${fmtD(b.ts)}`}
+              main={a.detail || b.detail} amt={a.amount} url={a.slideUrl || b.slideUrl} />
+          ))}
+        </ReconSection>
+      )}
+
+      {R.formMissing.length > 0 && (
+        <ReconSection tone="warn" title={`🟠 พนักงานเบิกผ่านฟอร์มแล้ว แต่ไม่พบในชีทหลัก (${R.formMissing.length} ใบ · ${baht(missSum)})`}
+          sub="ตกหล่นระหว่างทาง? ถูกจ่ายไหม? — ไล่จากเก่าสุดก่อน">
+          {R.formMissing.map(f => (
+            <ReconRow key={f.formRow} left={`ฟอร์ม ${fmtD(f.ts)} · ${f.who.split('|')[1] || f.code}${f.paid ? ' · ทำจ่ายแล้ว ✓' : ''}`}
+              main={f.detail} amt={f.amount} url={f.slideUrl} />
+          ))}
+        </ReconSection>
+      )}
+
+      {R.destNoSource.length === 0 && R.formMissing.length === 0 && R.formDup.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', padding: '24px', color: 'var(--ink-2)', fontSize: 13 }}>
+          ✓ ต้นทางกับปลายทางตรงกันหมดในปี {data.year}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}`; }
+
+function ReconSection({ tone, title, sub, children }) {
+  const bd = tone === 'bad' ? 'var(--danger)' : 'var(--warning)';
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: `3px solid ${bd}`, borderRadius: '0 var(--r-md) var(--r-md) 0', overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', background: 'var(--background-soft)' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 500 }}>{title}</div>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{sub}</div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ReconRow({ left, main, amt, url }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '9px 14px', borderTop: '1px solid var(--line)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ ...mono10, marginBottom: 2 }}>{left}</div>
+        <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(main || '—').replace(/\s+/g, ' ')}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500 }}>{baht2(amt)}</div>
+        {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>ดูสไลด์ ↗</a>}
+      </div>
+    </div>
+  );
 }
 
 // ── Setup states ─────────────────────────────────────────────────────────────

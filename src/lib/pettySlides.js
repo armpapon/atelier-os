@@ -68,7 +68,8 @@ function itemTitle(text) {
 }
 
 // Walk slides in order; a divider's date carries down onto the items under it.
-export function parseDeck(slides) {
+// presId is stamped on every item so deep links can be rebuilt later.
+export function parseDeck(slides, presId = null) {
   const items = [];
   let curDate = null;
   for (const s of slides) {
@@ -76,6 +77,7 @@ export function parseDeck(slides) {
     if (!isItem(s.text)) continue;
     items.push({
       objectId: s.objectId,
+      presId,
       date: curDate,
       title: itemTitle(s.text),
       amount: parseSlideAmount(s.text),
@@ -84,22 +86,71 @@ export function parseDeck(slides) {
   return items;
 }
 
-// Compare one sheet claim row to its linked slide. `itemsByKey` is keyed by the
-// same "presId:objectId" shape as row.slideKey, so ids can't collide across the
-// several decks one person might link to.
-//   'match'          — amounts agree (within ฿1)
-//   'amount_mismatch'— slide amount differs from the sheet's เงินออก
+// ── Content matching — find the right slide when the link doesn't ───────────
+// Some Evid links point at the deck (or the wrong slide) — sloppy or worse.
+// But the slide's own title mirrors the sheet's Work text ("เพื่อนสนิทติดสวย -
+// NIVEA Soft Skin Wonderland … 306 THB"), so we can locate the true slide by
+// text + amount and hand back a corrected deep link.
+const STOP = new Set(['โปรที่ชอบ', 'ที่ชอบ', 'จัดโปร', 'ค่าเดินทาง', 'ค่าสินค้า', 'ค่าอาหาร',
+  'บาท', 'thb', 'ค่า', 'grab', 'car', 'total', 'แพนด้าบ้าโปร', 'รายการที่']);
+function tokens(s = '') {
+  const words = String(s).toLowerCase().match(/[a-z]{3,}|[฀-๿]{3,}|\d{2,}/g) || [];
+  return new Set(words.filter(w => !STOP.has(w)));
+}
+
+// Best content match for a sheet row across all parsed deck items.
+// Requires either the amount to agree or ≥2 distinctive shared tokens, so a
+// generic travel claim can't latch onto a random slide.
+export function findSlideByContent(row, items) {
+  const want = tokens(`${row.work || ''} ${row.project || ''}`);
+  let best = null, bestScore = 0;
+  for (const item of items) {
+    const overlap = [...tokens(item.title)].filter(t => want.has(t)).length;
+    const amtOk = item.amount != null && Math.abs(item.amount - row.amountOut) <= 1;
+    if (!amtOk && overlap < 2) continue;
+    const score = overlap + (amtOk ? 3 : 0);
+    if (score > bestScore) { best = item; bestScore = score; }
+  }
+  return best;
+}
+
+export const slideDeepLink = item =>
+  `https://docs.google.com/presentation/d/${item.presId}/edit#slide=id.${item.objectId}`;
+
+// Compare one sheet claim row to its evidence deck(s). `itemsByKey` is keyed by
+// "presId:objectId" (same shape as row.slideKey) so ids can't collide across
+// decks; `allItems` = the same items as a list, for content matching.
+//   'match'          — linked slide's amount agrees (within ฿1)
+//   'wrong_link'     — linked slide disagrees, but another slide matches the
+//                      row's text+amount → fixedUrl points there
+//   'content_match'  — no usable link (deck-level/missing) but content found
+//                      the slide → fixedUrl
+//   'amount_mismatch'— linked slide differs and nothing better exists
 //   'no_amount'      — found the slide but couldn't read an amount off it
-//   'not_in_deck'    — the linked slide id isn't an item slide in the deck
-//   'no_slide'       — the row has no per-slide link to compare (deck-level link)
-export function compareRow(row, itemsByKey) {
-  if (!row.slideKey) return { status: 'no_slide' };
-  const item = itemsByKey.get(row.slideKey);
-  if (!item) return { status: 'not_in_deck' };
-  if (item.amount == null) return { status: 'no_amount', slideDate: item.date };
-  const diff = item.amount - row.amountOut;
-  return {
-    status: Math.abs(diff) <= 1 ? 'match' : 'amount_mismatch',
-    slideAmount: item.amount, sheetAmount: row.amountOut, diff, slideDate: item.date,
-  };
+//   'not_found'      — no link and content matching found nothing
+export function compareRow(row, itemsByKey, allItems = []) {
+  const linked = row.slideKey ? itemsByKey.get(row.slideKey) : null;
+
+  if (linked && linked.amount != null && Math.abs(linked.amount - row.amountOut) <= 1) {
+    return { status: 'match', slideAmount: linked.amount, slideDate: linked.date };
+  }
+
+  const found = findSlideByContent(row, allItems);
+  const foundAmtOk = found && found.amount != null && Math.abs(found.amount - row.amountOut) <= 1;
+
+  if (foundAmtOk && (!linked || found !== linked)) {
+    return {
+      status: linked || row.slideKey ? 'wrong_link' : 'content_match',
+      slideAmount: found.amount, slideDate: found.date,
+      fixedUrl: slideDeepLink(found), fixedTitle: found.title,
+    };
+  }
+  if (linked) {
+    if (linked.amount == null) return { status: 'no_amount', slideDate: linked.date };
+    return {
+      status: 'amount_mismatch', slideAmount: linked.amount,
+      sheetAmount: row.amountOut, diff: linked.amount - row.amountOut, slideDate: linked.date,
+    };
+  }
+  return { status: 'not_found' };
 }
