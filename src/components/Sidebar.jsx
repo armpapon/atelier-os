@@ -17,6 +17,9 @@ export const NAV_GROUPS = [
     { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null },
     { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
   ]},
+  { group: 'งาน', children: [
+    { id: 'petty-cash', label: 'Petty Cash', icon: 'work', badge: null },
+  ]},
   { group: 'ชีวิต', children: [
     { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },
     { id: 'life-calendar', label: 'Life Calendar', icon: 'hourglass', badge: null },
