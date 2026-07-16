@@ -47,6 +47,11 @@ function indexFlags(flags) {
   for (const f of flags.reconcile) add(f.row.rowNo, 'reconcile');
   for (const r of flags.outlier) add(r.rowNo, 'outlier');
   for (const r of flags.noEvidence) add(r.rowNo, 'noEvidence');
+  // A row in both a slide-dup and a work-dup group with the same partner would
+  // list that partner twice ("↔ กับแถว 60, 60") — keep one per rowNo.
+  for (const [k, arr] of partners) {
+    partners.set(k, [...new Map(arr.map(x => [x.rowNo, x])).values()]);
+  }
   return { byRow, partners };
 }
 
@@ -162,7 +167,11 @@ export function PettyCash() {
     }
     setComparing(person.code);
     try {
-      const presIds = [...new Set(person.rows.map(r => presIdOf(r.evidenceUrl)).filter(Boolean))];
+      // Always compare the person's WHOLE year, not the month-filtered card rows
+      // — the result is cached per year, and a partial run would leave other
+      // months silently uncompared after the filter changes.
+      const rows = (data?.rows || []).filter(r => r.isExpense && r.isEmployee && r.code === person.code);
+      const presIds = [...new Set(rows.map(r => presIdOf(r.evidenceUrl)).filter(Boolean))];
       if (!presIds.length) throw new Error('คนนี้ไม่มีลิงก์สไลด์ในชีท');
       const itemsByKey = new Map();
       const allItems = [];
@@ -175,7 +184,7 @@ export function PettyCash() {
         }
       }
       const res = {};
-      for (const r of person.rows) if (r.isExpense) res[r.rowNo] = compareRow(r, itemsByKey, allItems);
+      for (const r of rows) res[r.rowNo] = compareRow(r, itemsByKey, allItems);
       setSlidesByCode(s => ({ ...s, [person.code]: res }));
       setCache(cacheKey, res);
     } catch (e) { alert('อ่านสไลด์ไม่สำเร็จ: ' + (e.message || e)); }
@@ -363,7 +372,13 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
       {hasSlides && !isSeal && (
         <div style={{ padding: '10px 14px', background: 'var(--background-soft)', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>
-            {slides ? `เทียบสไลด์แล้ว — ${Object.values(slides).filter(s => s.status === 'amount_mismatch').length} ยอดไม่ตรง · ${Object.values(slides).filter(s => s.status === 'not_in_deck').length} ไม่พบในเด็ค` : 'ให้ Loop อ่านเด็คของคนนี้แล้วเทียบยอดในสไลด์กับชีท'}
+            {slides
+              ? (() => {
+                const v = Object.values(slides);
+                const n = st => v.filter(s => s.status === st).length;
+                return `เทียบสไลด์แล้ว — ${n('amount_mismatch')} ยอดไม่ตรง · ${n('wrong_link')} ลิงก์ผิดจุด · ${n('not_found')} หาไม่เจอ`;
+              })()
+              : 'ให้ Loop อ่านเด็คของคนนี้แล้วเทียบยอดในสไลด์กับชีท'}
           </span>
           <button className="btn btn--ghost" disabled={comparing} onClick={() => compareDeck(p)} style={{ flexShrink: 0 }}>
             {comparing ? 'กำลังอ่านสไลด์…' : (slides ? '↻ เทียบใหม่' : '🔍 เทียบกับสไลด์')}
@@ -451,8 +466,16 @@ function ReconView({ integ, refreshInteg, data }) {
   const [result, setResult] = useState(null);
   const formSheetId = integ?.meta?.pettycash_form_sheet_id || '';
 
-  const load = useCallback(async (fid) => {
+  const load = useCallback(async (fid, force = false) => {
     if (!fid || !data) return;
+    // Toggling the view unmounts this component — reuse recently-parsed form
+    // rows so a mode flip doesn't refetch the whole responses grid.
+    const cacheKey = `pcform:${fid}`;
+    if (!force && cacheAge(cacheKey) <= STALE_MS) {
+      const cached = getCache(cacheKey).data.map(f => ({ ...f, ts: new Date(f.ts) }));
+      setResult(reconcile(cached, data.rows, { year: data.year }));
+      return;
+    }
     setBusy(true);
     try {
       const props = await callProvider('google', { url: `${SHEETS_API}/${fid}?fields=sheets.properties(title)` });
@@ -466,6 +489,7 @@ function ReconView({ integ, refreshInteg, data }) {
       if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
       const forms = parseFormResponses((grid.sheets || [])[0]);
       if (!forms.length) throw new Error(`อ่านแท็บ "${tab}" ได้ แต่ไม่พบรายการเบิก — เช็คว่าเป็นชีทที่ Google Form เขียนลง`);
+      setCache(cacheKey, forms);
       setResult(reconcile(forms, data.rows, { year: data.year }));
     } catch (e) { alert('เทียบต้นทางไม่สำเร็จ: ' + (e.message || e)); }
     finally { setBusy(false); }
@@ -519,8 +543,12 @@ function ReconView({ integ, refreshInteg, data }) {
       </div>
       <div style={{ ...mono10, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>ปี {data.year} · จับคู่ 4 ชั้น (สไลด์ → ยอด → แตกใบ → ควบใบ) · ใบฟอร์ม ≤21 วันที่ยังไม่ถึงชีทนับเป็น "รอลงชีท" ({R.formPending.length} ใบ)</span>
-        <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.pettycash_form_sheet_url || ''); }}
-          style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
+        <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
+          <button onClick={() => load(formSheetId, true)} disabled={busy} title="อ่านชีทต้นทางใหม่"
+            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+          <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.pettycash_form_sheet_url || ''); }}
+            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
+        </span>
       </div>
 
       {R.destNoSource.length > 0 && (
@@ -562,7 +590,9 @@ function ReconView({ integ, refreshInteg, data }) {
   );
 }
 
-function fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}`; }
+// Form timestamps are sheet-local values stored as-if-UTC — display with the
+// UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
+function fmtD(d) { return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; }
 
 function ReconSection({ tone, title, sub, children }) {
   const bd = tone === 'bad' ? 'var(--danger)' : 'var(--warning)';

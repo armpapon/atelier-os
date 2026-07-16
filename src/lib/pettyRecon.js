@@ -82,7 +82,10 @@ function* combos(arr, n) {
 //   merge  — one sheet line = 2-3 form claims summed (same person)
 // Returns per-side match maps + the leftovers Pat actually reviews.
 export function reconcile(formRows, destRows, { year } = {}) {
-  const forms = formRows.filter(f => !year || f.ts.getFullYear() === year);
+  // ts was built from the sheet-local serial as if UTC — read it back with the
+  // UTC getters, or a form sent after 17:00 (UTC+7) lands on the next day, and
+  // a New Year's Eve claim falls into the wrong year entirely.
+  const forms = formRows.filter(f => !year || f.ts.getUTCFullYear() === year);
   const dests = destRows.filter(d => d.isEmployee && d.isExpense);
 
   const destBySlide = new Map();
