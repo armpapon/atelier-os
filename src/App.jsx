@@ -17,6 +17,7 @@ import { Family } from './pages/Family.jsx';
 import { SecondBrain } from './pages/SecondBrain.jsx';
 import { LifeCalendar } from './pages/LifeCalendar.jsx';
 import { PettyCash } from './pages/PettyCash.jsx';
+import { Team } from './pages/Team.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { useMediaQuery, MOBILE_QUERY } from './lib/useMediaQuery.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
@@ -106,6 +107,7 @@ export default function App() {
       case 'family-finance':   return <FamilyFinance />;
       case 'family':           return <Family />;
       case 'petty-cash':       return <PettyCash />;
+      case 'team':             return <Team />;
       case 'goals':     return <ComingSoon eyebrow="เป้าหมาย & OKR" title="Goals" emoji="◎" description="ตั้งเป้าหมายระยะยาว แบ่งเป็น quarter และ checklist รายสัปดาห์" />;
       case 'brain':     return <SecondBrain />;
       case 'life-calendar': return <LifeCalendar />;

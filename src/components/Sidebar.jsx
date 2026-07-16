@@ -19,6 +19,7 @@ export const NAV_GROUPS = [
   ]},
   { group: 'งาน', children: [
     { id: 'petty-cash', label: 'Petty Cash', icon: 'work', badge: null },
+    { id: 'team',       label: 'ทะเบียนพนักงาน', icon: 'family', badge: null },
   ]},
   { group: 'ชีวิต', children: [
     { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },

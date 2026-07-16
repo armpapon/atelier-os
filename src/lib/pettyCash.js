@@ -65,6 +65,20 @@ export function parseName(raw = '') {
   };
 }
 
+// The team roster lives in the sheet's "Dropdown List" tab, column A, as
+// "SIE0047 | ปัณฑารีย์ ไชยเพ็ชร (ปันปัน)". Read-only for now — position and the
+// Asana display-name mapping aren't in the sheet yet and get added later.
+export function parseRoster(sheet) {
+  const rowData = sheet?.data?.[0]?.rowData || [];
+  const byCode = new Map();
+  for (const rd of rowData) {
+    const who = parseName(text(rd?.values?.[0]));
+    if (!who.isEmployee || byCode.has(who.code)) continue;
+    byCode.set(who.code, { code: who.code, fullName: who.fullName, nick: who.nick, label: who.label });
+  }
+  return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }));
+}
+
 const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 // "01-มกราคม" → 0. Prefer the leading number; fall back to the Thai name.
