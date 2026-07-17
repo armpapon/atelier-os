@@ -523,37 +523,8 @@ function EventDetail({ event, members, onChange, onClose }) {
               padding: '10px 12px', fontFamily: 'var(--f-body)', fontSize: 14, lineHeight: 1.6, color: 'var(--ink)', outline: 'none', resize: 'vertical' }} />
         </label>
 
-        {/* Photos */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={labelStyle}>รูปภาพ {photos.length > 0 && `(${photos.length})`}</span>
-            <button onClick={() => fileRef.current?.click()} disabled={uploading}
-              style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', cursor: 'pointer',
-                border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 10px' }}>
-              {uploading ? 'กำลังอัปโหลด...' : '📸 เพิ่มรูป'}
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
-              onChange={e => addPhotos(e.target.files)} />
-          </div>
-          {photos.length === 0 ? (
-            <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '24px 0', fontSize: 13, fontStyle: 'italic', fontFamily: 'var(--f-display)' }}>
-              ยังไม่มีรูป — เพิ่มภาพความทรงจำของวันนี้
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
-              {photos.map((url, i) => (
-                <div key={url} style={{ position: 'relative', aspectRatio: '1' }}>
-                  <img src={url} alt="" loading="lazy" onClick={() => setLightbox(i)}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', cursor: 'pointer' }} />
-                  <button onClick={() => removePhoto(url)}
-                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Videos (links) */}
+        {/* Videos (links) — kept above Photos so the add-video field stays reachable
+            on mobile; a tall photo grid would otherwise push it off screen. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={labelStyle}>วิดีโอ {videos.length > 0 && `(${videos.length})`}</span>
           {videos.map(url => {
@@ -587,6 +558,36 @@ function EventDetail({ event, members, onChange, onClose }) {
               placeholder="วางลิงก์ YouTube / Google Drive" style={{ flex: 1 }} />
             <button onClick={addVideo} className="btn btn--ghost btn--sm" style={{ flexShrink: 0 }}>+ เพิ่ม</button>
           </div>
+        </div>
+
+        {/* Photos */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={labelStyle}>รูปภาพ {photos.length > 0 && `(${photos.length})`}</span>
+            <button onClick={() => fileRef.current?.click()} disabled={uploading}
+              style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', cursor: 'pointer',
+                border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 10px' }}>
+              {uploading ? 'กำลังอัปโหลด...' : '📸 เพิ่มรูป'}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+              onChange={e => addPhotos(e.target.files)} />
+          </div>
+          {photos.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '24px 0', fontSize: 13, fontStyle: 'italic', fontFamily: 'var(--f-display)' }}>
+              ยังไม่มีรูป — เพิ่มภาพความทรงจำของวันนี้
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+              {photos.map((url, i) => (
+                <div key={url} style={{ position: 'relative', aspectRatio: '1' }}>
+                  <img src={url} alt="" loading="lazy" onClick={() => setLightbox(i)}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', cursor: 'pointer' }} />
+                  <button onClick={() => removePhoto(url)}
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
