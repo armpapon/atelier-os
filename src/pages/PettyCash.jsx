@@ -15,9 +15,9 @@ import {
 } from '../lib/integrations.js';
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { parseSheetId } from '../lib/sheetTimeline.js';
-import { parsePettyCash, deriveFlags } from '../lib/pettyCash.js';
+import { parsePettyCash, deriveFlags, parseName } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
-import { parseFormResponses, reconcile } from '../lib/pettyRecon.js';
+import { parseFormResponses, reconcile, reconByPerson, destMatchInfo } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const GRID_FIELDS =
@@ -33,15 +33,24 @@ const baht = n => '฿' + Math.round(n).toLocaleString('en-US');
 const baht2 = n => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
 
-const FLAG_LABEL = { slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน' };
+const FLAG_LABEL = {
+  slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
+  noSource: 'ไร้ใบเบิก', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
+};
+const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup') ? 'bad' : 'warn';
+// Form timestamps are sheet-local values stored as-if-UTC — display with the
+// UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
+const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
 const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
 const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
 
 // rowNo → Set(flagType), plus rowNo → partner rows for the grouped dup flags.
-function indexFlags(flags) {
+// `recon` (optional) folds the form-source result in as one more observation.
+function indexFlags(flags, recon = null) {
   const byRow = new Map();
   const partners = new Map();
   const add = (rowNo, t) => { if (!byRow.has(rowNo)) byRow.set(rowNo, new Set()); byRow.get(rowNo).add(t); };
+  if (recon) for (const d of recon.destNoSource) add(d.rowNo, 'noSource');
   for (const g of flags.slideDup) g.rows.forEach(r => { add(r.rowNo, 'slideDup'); partners.set(r.rowNo, g.rows.filter(x => x.rowNo !== r.rowNo)); });
   for (const g of flags.workDup) g.rows.forEach(r => { add(r.rowNo, 'workDup'); partners.set(r.rowNo, [...(partners.get(r.rowNo) || []), ...g.rows.filter(x => x.rowNo !== r.rowNo)]); });
   for (const f of flags.reconcile) add(f.row.rowNo, 'reconcile');
@@ -69,11 +78,13 @@ export function PettyCash() {
   const [slidesByCode, setSlidesByCode] = useState({});
   const [comparing, setComparing] = useState(null);
   const [marks, setMarks] = useState({});
-  const [mode, setMode] = useState('people'); // 'people' | 'recon'
+  const [formUrlInput, setFormUrlInput] = useState('');
+  const [recon, setRecon] = useState(null); // reconcile() result for data.year
 
   const connected = !!(integ && (integ.scope || '').includes('spreadsheets'));
   const hasSlides = !!(integ && (integ.scope || '').includes('presentations'));
   const sheetId = integ?.meta?.pettycash_sheet_id || '';
+  const formSheetId = integ?.meta?.pettycash_form_sheet_id || '';
 
   const refreshInteg = useCallback(
     () => getIntegration('google').then(i => { setInteg(i ?? null); return i; }).catch(() => { setInteg(null); return null; }),
@@ -129,6 +140,37 @@ export function PettyCash() {
     return () => { cancelled = true; window.removeEventListener('loop:oauth-connected', run); };
   }, [refreshInteg, load]);
 
+  // Read the form-responses sheet (source of truth for what employees claimed)
+  // and reconcile it against the loaded year — runs by itself whenever both
+  // sheets are known; no button, no separate view.
+  const loadRecon = useCallback(async (fid, destData, force = false) => {
+    if (!fid || !destData) { setRecon(null); return; }
+    const cacheKey = `pcform:${fid}`;
+    try {
+      let forms;
+      if (!force && cacheAge(cacheKey) <= STALE_MS) {
+        forms = getCache(cacheKey).data.map(f => ({ ...f, ts: new Date(f.ts) }));
+      } else {
+        const props = await callProvider('google', { url: `${SHEETS_API}/${fid}?fields=sheets.properties(title)` });
+        if (props?.error) throw new Error(props.error.message || JSON.stringify(props.error));
+        const tabs = (props.sheets || []).map(s => s.properties?.title || '');
+        const tab = tabs.find(t => /form responses/i.test(t) && !/old/i.test(t)) || tabs[0];
+        if (!tab) throw new Error('ไม่พบแท็บ Form Responses');
+        const grid = await callProvider('google', {
+          url: `${SHEETS_API}/${fid}?includeGridData=true&ranges=${encodeURIComponent(`'${tab.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
+        });
+        if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
+        forms = parseFormResponses((grid.sheets || [])[0]);
+        if (forms.length) setCache(cacheKey, forms);
+      }
+      setRecon(forms.length ? reconcile(forms, destData.rows, { year: destData.year }) : null);
+    } catch {
+      setRecon(null); // recon is an enhancement — the sheet view must not break with it
+    }
+  }, []);
+
+  useEffect(() => { loadRecon(formSheetId, data); }, [formSheetId, data, loadRecon]);
+
   const pickYear = (y) => {
     if (y === year && data) return;
     setMonth(null); setOpenCode(null);
@@ -142,10 +184,17 @@ export function PettyCash() {
   const saveSheet = async () => {
     const id = parseSheetId(urlInput);
     if (!id) { alert('ลิงก์ไม่ถูกต้อง — วางลิงก์ Google Sheet ทั้งลิงก์ หรือ id ของชีท'); return; }
+    const formId = formUrlInput.trim() ? parseSheetId(formUrlInput) : null;
+    if (formUrlInput.trim() && !formId) { alert('ลิงก์ชีทฟอร์ม (Responses) ไม่ถูกต้อง — เว้นว่างได้ถ้ายังไม่ใช้'); return; }
     setBusy(true);
     try {
-      await updateIntegrationMeta('google', { ...(integ?.meta || {}), pettycash_sheet_id: id, pettycash_sheet_url: urlInput.trim() });
-      await refreshInteg(); setEditing(false); setUrlInput('');
+      await updateIntegrationMeta('google', {
+        ...(integ?.meta || {}),
+        pettycash_sheet_id: id, pettycash_sheet_url: urlInput.trim(),
+        pettycash_form_sheet_id: formId || undefined,
+        pettycash_form_sheet_url: formId ? formUrlInput.trim() : undefined,
+      });
+      await refreshInteg(); setEditing(false); setUrlInput(''); setFormUrlInput('');
       load(id, new Date().getFullYear());
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e.message || e)); }
     finally { setBusy(false); }
@@ -204,7 +253,11 @@ export function PettyCash() {
       {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
       <button onClick={() => load(sheetId, year)} disabled={busy} title="รีเฟรช"
         style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
-      <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.pettycash_sheet_url || ''); }} title="เปลี่ยนชีท"
+      <button onClick={() => {
+        setEditing(true);
+        setUrlInput(integ?.meta?.pettycash_sheet_url || '');
+        setFormUrlInput(integ?.meta?.pettycash_form_sheet_url || '');
+      }} title="ตั้งค่าชีท"
         style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
     </div>
   );
@@ -217,44 +270,55 @@ export function PettyCash() {
       {integ === undefined ? null : !connected ? (
         <ConnectPanel />
       ) : !sheetId || editing ? (
-        <SheetPanel urlInput={urlInput} setUrlInput={setUrlInput} onSave={saveSheet} busy={busy}
-          canCancel={editing} onCancel={() => setEditing(false)} />
+        <SheetPanel urlInput={urlInput} setUrlInput={setUrlInput}
+          formUrlInput={formUrlInput} setFormUrlInput={setFormUrlInput}
+          onSave={saveSheet} busy={busy} canCancel={editing} onCancel={() => setEditing(false)} />
       ) : busy && !data ? (
         <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีท…</div>
       ) : data ? (
-        <>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-            <button style={chip(mode === 'people')} onClick={() => setMode('people')}>👤 รายคน</button>
-            <button style={chip(mode === 'recon')} onClick={() => setMode('recon')}>⇄ ต้นทาง ↔ ปลายทาง</button>
-          </div>
-          {mode === 'people' ? (
-            <Board data={data} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
-              slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck}
-              hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
-          ) : (
-            <ReconView integ={integ} refreshInteg={refreshInteg} data={data} />
-          )}
-        </>
+        <Board data={data} recon={recon} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
+          slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck}
+          hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
       ) : null}
     </div>
   );
 }
 
 // ── Board: month filter, tiles, person cards ─────────────────────────────────
-function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, comparing, compareDeck, hasSlides, marks, setMark, onConnectSlides }) {
+function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCode, comparing, compareDeck, hasSlides, marks, setMark, onConnectSlides }) {
   const { year, rows, flags } = data;
-  const { byRow, partners } = indexFlags(flags);
+  const { byRow, partners } = indexFlags(flags, recon);
+  const perRecon = recon ? reconByPerson(recon) : new Map();
+  const matchInfo = recon ? destMatchInfo(recon) : new Map();
   const inMonth = r => month == null || r.monthIdx === month;
+  const tsInMonth = f => month == null || f.ts.getUTCMonth() === month;
 
   // Aggregate people from expense rows (month-filtered for the view).
   const map = new Map();
+  const mk = (key, label, isEmployee) => {
+    let g = map.get(key);
+    if (!g) map.set(key, g = { code: key, label, isEmployee, out: 0, count: 0, rows: [], flagCounts: {}, formMissing: [], formPending: [], formDups: [] });
+    return g;
+  };
   for (const r of rows) {
     if (!r.isExpense || !inMonth(r)) continue;
-    const key = r.isEmployee ? r.code : '__SEAL__';
-    let g = map.get(key);
-    if (!g) map.set(key, g = { code: key, label: r.isEmployee ? r.label : 'SEAL / ออฟฟิศ', isEmployee: r.isEmployee, out: 0, count: 0, rows: [], months: new Set(), flagCounts: {} });
-    g.out += r.amountOut; g.count += 1; g.rows.push(r); if (r.monthIdx != null) g.months.add(r.monthIdx);
+    const g = r.isEmployee ? mk(r.code, r.label, true) : mk('__SEAL__', 'SEAL / ออฟฟิศ', false);
+    g.out += r.amountOut; g.count += 1; g.rows.push(r);
     for (const t of (byRow.get(r.rowNo) || [])) g.flagCounts[t] = (g.flagCounts[t] || 0) + 1;
+  }
+  // Fold in the form-side observations — including people who claimed via the
+  // form but have NO sheet rows at all (they must still surface).
+  for (const [code, pr] of perRecon) {
+    const missing = pr.missing.filter(tsInMonth);
+    const pending = pr.pending.filter(tsInMonth);
+    const dups = pr.dups.filter(([a]) => tsInMonth(a));
+    if (!missing.length && !pending.length && !dups.length) continue;
+    const label = map.get(code)?.label
+      || parseName((missing[0] || pending[0] || dups[0]?.[0])?.who || code).label;
+    const g = mk(code, label, true);
+    g.formMissing = missing; g.formPending = pending; g.formDups = dups;
+    if (missing.length) g.flagCounts.formMissing = missing.length;
+    if (dups.length) g.flagCounts.formDup = dups.length;
   }
   const people = [...map.values()];
   for (const p of people) p.flagTotal = Object.values(p.flagCounts).reduce((s, n) => s + n, 0);
@@ -305,7 +369,7 @@ function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, com
               <PersonCard key={p.code} p={p} open={openCode === p.code}
                 onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
                 slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
-                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} />
+                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} />
             ))}
           </div>
         </>
@@ -318,7 +382,7 @@ function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, com
               <PersonCard key={p.code} p={p} open={openCode === p.code}
                 onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
                 slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
-                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} />
+                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} />
             ))}
           </div>
         </>
@@ -330,21 +394,21 @@ function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, com
             <PersonCard p={seal} open={openCode === seal.code}
               onToggle={() => setOpenCode(openCode === seal.code ? null : seal.code)}
               slides={slidesByCode[seal.code]} comparing={comparing === seal.code} compareDeck={compareDeck}
-              hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} isSeal />
+              hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} isSeal />
           </div>
         </>
       )}
 
       <div style={{ fontSize: 12, color: 'var(--ink-3)', borderTop: '1px dashed var(--line-2)', paddingTop: 12, lineHeight: 1.7 }}>
         <b style={{ color: 'var(--ink-2)', fontWeight: 500 }}>Loop แค่ตรวจ ไม่จ่าย</b> · กดการ์ดคนเพื่อดูทุกการเบิก + หลักฐาน ·
-        {flags.deckLevelCount > 0 && <> {flags.deckLevelCount} แถวใช้ลิงก์ระดับเด็ค (เทียบสไลด์อัตโนมัติไม่ได้) ·</>}
+        {recon?.coverage && <> เทียบกับใบเบิกฟอร์มอัตโนมัติ (ฟอร์มเริ่มใช้ {TH_MONTHS[recon.coverage.m]} {recon.coverage.y} — ก่อนหน้านั้นไม่ตัดสิน "ไร้ใบเบิก") ·</>}
         {' '}ปุ่ม ✓/✗ เก็บในเครื่องนี้ (ย้ายขึ้นฐานข้อมูลภายหลังได้)
       </div>
     </div>
   );
 }
 
-function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, isSeal }) {
+function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, isSeal }) {
   const avatar = (p.label || '?').trim()[0] || '?';
   const border = p.flagTotal > 0 ? 'var(--danger)' : (isSeal ? 'var(--line)' : 'var(--profit)');
   const reviewed = p.rows.filter(r => marks[r.rowNo]).length;
@@ -372,7 +436,7 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
           {p.flagTotal === 0
             ? <span style={statStyle('ok')}>{isSeal ? 'ค่าใช้จ่ายส่วนกลาง — ไม่ตรวจรายคน' : '✓ เรียบร้อย'}</span>
             : Object.entries(p.flagCounts).map(([t, n]) => (
-              <span key={t} style={statStyle(t === 'noEvidence' || t === 'outlier' || t === 'reconcile' ? 'warn' : 'bad')}>{FLAG_LABEL[t]} {n}</span>
+              <span key={t} style={statStyle(FLAG_TONE(t))}>{FLAG_LABEL[t]} {n}</span>
             ))}
         </div>
         <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--ink-3)', display: 'flex', justifyContent: 'space-between' }}>
@@ -383,13 +447,13 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
 
       {open && (
         <PersonDetail p={p} slides={slides} comparing={comparing} compareDeck={compareDeck}
-          hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} isSeal={isSeal} />
+          hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} isSeal={isSeal} />
       )}
     </div>
   );
 }
 
-function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, isSeal }) {
+function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, isSeal }) {
   // Group rows by month; respect the month filter.
   const byMonth = {};
   for (const r of p.rows) { const k = r.monthIdx ?? -1; (byMonth[k] || (byMonth[k] = [])).push(r); }
@@ -421,25 +485,69 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
           </div>
           {byMonth[mk].map(r => (
             <ClaimRow key={r.rowNo} r={r} flagsSet={byRow.get(r.rowNo)} partners={partners.get(r.rowNo)}
-              cmp={slides?.[r.rowNo]} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
+              cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
           ))}
         </div>
       ))}
+
+      {/* Form-side observations — these have no sheet row to sit on */}
+      {(p.formMissing?.length > 0 || p.formPending?.length > 0 || p.formDups?.length > 0) && (
+        <div>
+          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, color: '#8a3a2c', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            🧾 ใบเบิกจากฟอร์มที่ยังไม่อยู่ในชีท
+          </div>
+          {p.formDups?.map(([a, b], i) => (
+            <FormRow key={`d${i}`} tone="bad" tag="ส่งฟอร์มซ้ำ"
+              left={`${fmtD(a.ts)} และ ${fmtD(b.ts)}`} main={a.detail || b.detail} amt={a.amount} url={a.slideUrl || b.slideUrl} />
+          ))}
+          {p.formMissing?.map(f => (
+            <FormRow key={f.formRow} tone="bad" tag="ไม่ถึงชีท"
+              left={`ส่งฟอร์ม ${fmtD(f.ts)}${f.paid ? ' · ทำจ่ายแล้ว ✓' : ''}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
+          ))}
+          {p.formPending?.map(f => (
+            <FormRow key={f.formRow} tone="dim" tag="รอลงชีท"
+              left={`ส่งฟอร์ม ${fmtD(f.ts)}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function ClaimRow({ r, flagsSet, partners, cmp, mark, setMark, isSeal }) {
+function FormRow({ tone, tag, left, main, amt, url }) {
+  const dim = tone === 'dim';
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '9px 14px', borderTop: '1px solid var(--line)', opacity: dim ? 0.65 : 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ ...mono10, marginBottom: 2 }}>{left}</div>
+        <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(main || '—').replace(/\s+/g, ' ')}</div>
+        <div style={{ marginTop: 4 }}>
+          <span style={statStyle(dim ? 'warn' : 'bad')}>{tag}</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500 }}>{baht2(amt)}</div>
+        {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>ดูสไลด์ ↗</a>}
+      </div>
+    </div>
+  );
+}
+
+function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal }) {
   const cmpView = compareView(cmp);
   const bg = cmp?.status === 'amount_mismatch' ? '#fdf3f0' : (mark === 'no' ? '#fdf3f0' : 'transparent');
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 14px', borderTop: '1px solid var(--line)', background: bg }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ ...mono10, marginBottom: 2 }}>แถว {r.rowNo}{r.project ? ` · ${r.project}` : ''}{cmp?.slideDate ? ` · สไลด์ลงวันที่ ${cmp.slideDate.d}/${cmp.slideDate.m + 1}` : ''}</div>
+        <div style={{ ...mono10, marginBottom: 2 }}>
+          แถว {r.rowNo}{r.project ? ` · ${r.project}` : ''}
+          {cmp?.slideDate ? ` · สไลด์ลงวันที่ ${cmp.slideDate.d}/${cmp.slideDate.m + 1}` : ''}
+          {formMatch?.ts && <span style={{ color: '#3c5c3b' }}> · ✓ ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
+        </div>
         <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
           {[...(flagsSet || [])].map(t => (
-            <span key={t} style={statStyle(t === 'slideDup' || t === 'workDup' ? 'bad' : 'warn')}>{FLAG_LABEL[t]}</span>
+            <span key={t} style={statStyle(FLAG_TONE(t))}>{FLAG_LABEL[t]}</span>
           ))}
           {partners && partners.length > 0 && (flagsSet?.has('slideDup') || flagsSet?.has('workDup')) && (
             <span style={{ ...mono10, alignSelf: 'center' }}>↔ กับแถว {partners.map(x => x.rowNo).join(', ')}</span>
@@ -484,172 +592,6 @@ function compareView(cmp) {
   }
 }
 
-// ── Recon: form source ↔ curated sheet ───────────────────────────────────────
-// Employees claim via a Google Form (timestamped, tamper-resistant); a middle
-// person re-keys into the sheet execs see. This view shows where they diverge.
-function ReconView({ integ, refreshInteg, data }) {
-  const [urlInput, setUrlInput] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const formSheetId = integ?.meta?.pettycash_form_sheet_id || '';
-
-  const load = useCallback(async (fid, force = false) => {
-    if (!fid || !data) return;
-    // Toggling the view unmounts this component — reuse recently-parsed form
-    // rows so a mode flip doesn't refetch the whole responses grid.
-    const cacheKey = `pcform:${fid}`;
-    if (!force && cacheAge(cacheKey) <= STALE_MS) {
-      const cached = getCache(cacheKey).data.map(f => ({ ...f, ts: new Date(f.ts) }));
-      setResult(reconcile(cached, data.rows, { year: data.year }));
-      return;
-    }
-    setBusy(true);
-    try {
-      const props = await callProvider('google', { url: `${SHEETS_API}/${fid}?fields=sheets.properties(title)` });
-      if (props?.error) throw new Error(props.error.message || JSON.stringify(props.error));
-      const tabs = (props.sheets || []).map(s => s.properties?.title || '');
-      const tab = tabs.find(t => /form responses/i.test(t) && !/old/i.test(t)) || tabs[0];
-      if (!tab) throw new Error('ไม่พบแท็บ Form Responses ในชีทนี้');
-      const grid = await callProvider('google', {
-        url: `${SHEETS_API}/${fid}?includeGridData=true&ranges=${encodeURIComponent(`'${tab.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
-      });
-      if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
-      const forms = parseFormResponses((grid.sheets || [])[0]);
-      if (!forms.length) throw new Error(`อ่านแท็บ "${tab}" ได้ แต่ไม่พบรายการเบิก — เช็คว่าเป็นชีทที่ Google Form เขียนลง`);
-      setCache(cacheKey, forms);
-      setResult(reconcile(forms, data.rows, { year: data.year }));
-    } catch (e) { alert('เทียบต้นทางไม่สำเร็จ: ' + (e.message || e)); }
-    finally { setBusy(false); }
-  }, [data]);
-
-  useEffect(() => { if (formSheetId && data) load(formSheetId); }, [formSheetId, data, load]);
-
-  const saveFormSheet = async () => {
-    const id = parseSheetId(urlInput);
-    if (!id) { alert('ลิงก์ไม่ถูกต้อง — วางลิงก์ชีท (Responses) ทั้งลิงก์'); return; }
-    setBusy(true);
-    try {
-      await updateIntegrationMeta('google', { ...(integ?.meta || {}), pettycash_form_sheet_id: id, pettycash_form_sheet_url: urlInput.trim() });
-      await refreshInteg(); setEditing(false); setUrlInput('');
-    } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e.message || e)); }
-    finally { setBusy(false); }
-  };
-
-  if (!formSheetId || editing) {
-    return (
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 560 }}>
-        <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.6 }}>
-          วางลิงก์ชีท <b style={{ color: 'var(--ink-2)' }}>"SEAL Petty Cash (Responses)"</b> — ชีทที่ Google Form
-          ของพนักงานเขียนลงอัตโนมัติ (ต้นทาง) · Loop จะเทียบกับชีทหลักให้เห็นว่ารายการไหนหาย/โผล่/ถูกแก้
-        </div>
-        <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
-          placeholder="https://docs.google.com/spreadsheets/d/..."
-          onKeyDown={e => e.key === 'Enter' && saveFormSheet()}
-          style={{ width: '100%', padding: '9px 10px', fontSize: 12, color: 'var(--ink)', fontFamily: 'var(--f-mono)', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' }} />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn--ghost" onClick={saveFormSheet} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : '✓ ใช้ชีทนี้'}</button>
-          {editing && <button className="btn btn--ghost" onClick={() => setEditing(false)}>ยกเลิก</button>}
-        </div>
-      </div>
-    );
-  }
-  if (busy && !result) return <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีทต้นทาง…</div>;
-  if (!result) return null;
-
-  const R = result;
-  const missSum = R.formMissing.reduce((s, f) => s + f.amount, 0);
-  const orphanSum = R.destNoSource.reduce((s, d) => s + d.amountOut, 0);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-        <Tile v={`${R.matchedForms}/${R.forms.length}`} l="ใบฟอร์มจับคู่ได้" />
-        <Tile v={R.destNoSource.length} l="🔴 ในชีทแต่ไร้ต้นทาง" warn={R.destNoSource.length > 0} />
-        <Tile v={R.formMissing.length} l="🟠 เบิกแล้วแต่ไม่ถึงชีท" warn={R.formMissing.length > 0} />
-        <Tile v={R.formDup.length} l="👯 ส่งฟอร์มซ้ำ" warn={R.formDup.length > 0} />
-      </div>
-      <div style={{ ...mono10, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 11px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>ปี {data.year} · จับคู่ 4 ชั้น (สไลด์ → ยอด → แตกใบ → ควบใบ) · ใบฟอร์ม ≤21 วันที่ยังไม่ถึงชีทนับเป็น "รอลงชีท" ({R.formPending.length} ใบ)</span>
-        <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-          <button onClick={() => load(formSheetId, true)} disabled={busy} title="อ่านชีทต้นทางใหม่"
-            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
-          <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.pettycash_form_sheet_url || ''); }}
-            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
-        </span>
-      </div>
-
-      {R.destNoSource.length > 0 && (
-        <ReconSection tone="bad" title={`🔴 อยู่ในชีทหลัก แต่ไม่มีใบเบิกจากฟอร์ม (${R.destNoSource.length} แถว · ${baht(orphanSum)})`}
-          sub="ใครกรอกเข้าไป? — พนักงานคนนั้นไม่ได้ส่งฟอร์ม หรือส่งนอกระบบ">
-          {R.destNoSource.map(d => (
-            <ReconRow key={d.rowNo} left={`แถวชีท ${d.rowNo} · ${TH_MONTHS[d.monthIdx] ?? ''} · ${d.label}`}
-              main={d.work} amt={d.amountOut} url={d.evidenceUrl} />
-          ))}
-        </ReconSection>
-      )}
-
-      {R.formDup.length > 0 && (
-        <ReconSection tone="bad" title={`👯 ส่งฟอร์มซ้ำ — คนเดียวกัน ยอดเท่ากัน ห่างกัน ≤3 วัน (${R.formDup.length} คู่)`}
-          sub="เช็คว่าตั้งใจเบิก 2 งานจริง หรือใบเดียวถูกส่ง/ถูกเบิกซ้ำ">
-          {R.formDup.map(([a, b], i) => (
-            <ReconRow key={i} left={`${a.who.split('|')[1] || a.code} · ${fmtD(a.ts)} และ ${fmtD(b.ts)}`}
-              main={a.detail || b.detail} amt={a.amount} url={a.slideUrl || b.slideUrl} />
-          ))}
-        </ReconSection>
-      )}
-
-      {R.formMissing.length > 0 && (
-        <ReconSection tone="warn" title={`🟠 พนักงานเบิกผ่านฟอร์มแล้ว แต่ไม่พบในชีทหลัก (${R.formMissing.length} ใบ · ${baht(missSum)})`}
-          sub="ตกหล่นระหว่างทาง? ถูกจ่ายไหม? — ไล่จากเก่าสุดก่อน">
-          {R.formMissing.map(f => (
-            <ReconRow key={f.formRow} left={`ฟอร์ม ${fmtD(f.ts)} · ${f.who.split('|')[1] || f.code}${f.paid ? ' · ทำจ่ายแล้ว ✓' : ''}`}
-              main={f.detail} amt={f.amount} url={f.slideUrl} />
-          ))}
-        </ReconSection>
-      )}
-
-      {R.destNoSource.length === 0 && R.formMissing.length === 0 && R.formDup.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', padding: '24px', color: 'var(--ink-2)', fontSize: 13 }}>
-          ✓ ต้นทางกับปลายทางตรงกันหมดในปี {data.year}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Form timestamps are sheet-local values stored as-if-UTC — display with the
-// UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
-function fmtD(d) { return `${d.getUTCDate()}/${d.getUTCMonth() + 1}`; }
-
-function ReconSection({ tone, title, sub, children }) {
-  const bd = tone === 'bad' ? 'var(--danger)' : 'var(--warning)';
-  return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: `3px solid ${bd}`, borderRadius: '0 var(--r-md) var(--r-md) 0', overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--line)', background: 'var(--background-soft)' }}>
-        <div style={{ fontSize: 13.5, fontWeight: 500 }}>{title}</div>
-        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{sub}</div>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function ReconRow({ left, main, amt, url }) {
-  return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '9px 14px', borderTop: '1px solid var(--line)' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ ...mono10, marginBottom: 2 }}>{left}</div>
-        <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(main || '—').replace(/\s+/g, ' ')}</div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500 }}>{baht2(amt)}</div>
-        {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>ดูสไลด์ ↗</a>}
-      </div>
-    </div>
-  );
-}
-
 // ── Setup states ─────────────────────────────────────────────────────────────
 function ConnectPanel() {
   return (
@@ -662,18 +604,24 @@ function ConnectPanel() {
   );
 }
 
-function SheetPanel({ urlInput, setUrlInput, onSave, busy, canCancel, onCancel }) {
+function SheetPanel({ urlInput, setUrlInput, formUrlInput, setFormUrlInput, onSave, busy, canCancel, onCancel }) {
+  const inputStyle = { width: '100%', padding: '9px 10px', fontSize: 12, color: 'var(--ink)', fontFamily: 'var(--f-mono)', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' };
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 560 }}>
-      <div style={{ fontSize: 13, color: 'var(--ink-3)', lineHeight: 1.6 }}>
-        วางลิงก์ Google Sheet "Petty Cash" ของทีม — ต้องมีแท็บรายปี เช่น 2026
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
+      <div>
+        <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>1 · ชีทหลัก "Petty Cash" (ต้องมีแท็บรายปี เช่น 2026)</div>
+        <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
+          placeholder="https://docs.google.com/spreadsheets/d/..." style={inputStyle} />
       </div>
-      <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
-        placeholder="https://docs.google.com/spreadsheets/d/..."
-        onKeyDown={e => e.key === 'Enter' && onSave()}
-        style={{ width: '100%', padding: '9px 10px', fontSize: 12, color: 'var(--ink)', fontFamily: 'var(--f-mono)', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' }} />
+      <div>
+        <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>
+          2 · ชีทฟอร์ม "(Responses)" ที่พนักงานกดเบิก <span style={{ color: 'var(--ink-4)' }}>(ไม่ใส่ก็ได้ — ใส่แล้ว Loop เทียบใบเบิกให้อัตโนมัติ)</span>
+        </div>
+        <input value={formUrlInput} onChange={e => setFormUrlInput(e.target.value)}
+          placeholder="https://docs.google.com/spreadsheets/d/..." style={inputStyle} />
+      </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn--ghost" onClick={onSave} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : '✓ ใช้ชีทนี้'}</button>
+        <button className="btn btn--ghost" onClick={onSave} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : '✓ บันทึก'}</button>
         {canCancel && <button className="btn btn--ghost" onClick={onCancel}>ยกเลิก</button>}
       </div>
     </div>

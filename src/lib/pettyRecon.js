@@ -151,7 +151,16 @@ export function reconcile(formRows, destRows, { year } = {}) {
     if (fmatch.has(f.formRow)) continue;
     (f.ts.getTime() >= cutoff ? formPending : formMissing).push(f);
   }
-  const destNoSource = dests.filter(d => !dmatch.has(d.rowNo));
+
+  // The form only exists since Aug 2025 — a sheet month older than the first
+  // form submission can't have a form behind it, so "no source" is only a
+  // meaningful observation inside the form's coverage window.
+  const covTs = formRows.length ? Math.min(...formRows.map(f => f.ts.getTime())) : null;
+  const coverage = covTs == null ? null
+    : { y: new Date(covTs).getUTCFullYear(), m: new Date(covTs).getUTCMonth() };
+  const inCoverage = d => coverage != null && year != null && d.monthIdx != null
+    && (year > coverage.y || (year === coverage.y && d.monthIdx >= coverage.m));
+  const destNoSource = dests.filter(d => !dmatch.has(d.rowNo) && inCoverage(d));
 
   // Duplicate submissions inside the form itself (same person+amount, ≤3 days
   // apart) — e.g. the same ฿2,031 claim sent twice on one day under two pages.
@@ -170,9 +179,34 @@ export function reconcile(formRows, destRows, { year } = {}) {
   }
 
   return {
-    forms, dests, fmatch, dmatch,
+    forms, dests, fmatch, dmatch, coverage,
     matchedForms: forms.filter(f => fmatch.has(f.formRow)).length,
     matchedDests: dests.filter(d => dmatch.has(d.rowNo)).length,
     formMissing, formPending, destNoSource, formDup,
   };
+}
+
+// ── Person-centric projections — the UI leads with people, not lists ────────
+// Split a reconcile() result per employee code so each person's card can carry
+// its own recon observations.
+export function reconByPerson(R) {
+  const per = new Map();
+  const g = code => per.get(code) || per.set(code, { noSource: [], missing: [], pending: [], dups: [] }).get(code);
+  for (const d of R.destNoSource) g(d.code).noSource.push(d);
+  for (const f of R.formMissing) g(f.code).missing.push(f);
+  for (const f of R.formPending) g(f.code).pending.push(f);
+  for (const pair of R.formDup) g(pair[0].code).dups.push(pair);
+  return per;
+}
+
+// Sheet rowNo → { how, ts } of the form submission that backs it, so a claim
+// row can show "มีใบเบิกจากฟอร์ม 5/3" inline.
+export function destMatchInfo(R) {
+  const byForm = new Map(R.forms.map(f => [f.formRow, f]));
+  const m = new Map();
+  for (const [rowNo, v] of R.dmatch) {
+    const f = byForm.get(v.formRows[0]);
+    m.set(rowNo, { how: v.how, ts: f?.ts || null });
+  }
+  return m;
 }
