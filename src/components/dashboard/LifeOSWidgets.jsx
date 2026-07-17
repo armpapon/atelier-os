@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
+import { canSeePage } from '../Sidebar.jsx';
 
 const CATEGORY_META = {
   finance:  { color: 'var(--success)',  icon: '💰', label: 'การเงิน'  },
@@ -611,7 +612,7 @@ function MilestoneForm({ onSubmit, onCancel }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  6. LIFE PULSE
 // ════════════════════════════════════════════════════════════════════════════
-export function LifePulse({ finance, modules, onNav }) {
+export function LifePulse({ finance, modules, onNav, user }) {
   const tiles = [
     {
       key: 'finance', icon: '💰', label: 'การเงิน', accent: 'var(--success)',
@@ -650,7 +651,7 @@ export function LifePulse({ finance, modules, onNav }) {
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        {tiles.map(t => (
+        {tiles.filter(t => canSeePage(user, t.goto)).map(t => (
           <button key={t.key} onClick={() => onNav?.(t.goto)} className="focus-ring"
             style={{
               background: 'var(--surface)', border: '1px solid var(--border)',

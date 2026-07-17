@@ -17,7 +17,7 @@ export const NAV_GROUPS = [
     { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null },
     { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
   ]},
-  { group: 'งาน', children: [
+  { group: 'Seal Interactive', children: [
     { id: 'petty-cash', label: 'Petty Cash', icon: 'work', badge: null },
     { id: 'team',       label: 'ทะเบียนพนักงาน', icon: 'family', badge: null },
   ]},
@@ -29,11 +29,43 @@ export const NAV_GROUPS = [
   ]},
 ];
 
+// Which account sees which page. Pages left out here are visible to both.
+// This is menu tidying, not a security boundary — every table is already
+// isolated by RLS on user_id. Add or drop an email to change access.
+const ARM = 'armpapon@gmail.com';
+const PAT = 'parnrada@sealinteractive.com';
+
+const PAGE_ACCESS = {
+  'petty-cash':       [PAT],
+  'team':             [PAT],
+  'trading':          [ARM],
+  'learning':         [ARM],
+  'personal-finance': [ARM],
+  'family-finance':   [ARM],
+};
+
+const KNOWN_ACCOUNTS = [ARM, PAT];
+
+/** Preview mode and any other account fall through to seeing everything. */
+export function canSeePage(user, id) {
+  const email = user?.email?.toLowerCase() || '';
+  if (!KNOWN_ACCOUNTS.includes(email)) return true;
+  const allowed = PAGE_ACCESS[id];
+  return !allowed || allowed.includes(email);
+}
+
+/** NAV_GROUPS with hidden pages — and any group left empty — stripped out. */
+export function visibleNavGroups(user) {
+  return NAV_GROUPS
+    .map(g => ({ ...g, children: g.children.filter(c => canSeePage(user, c.id)) }))
+    .filter(g => g.children.length > 0);
+}
+
 export function Sidebar({ active, onChange, user, collapsed = false, onToggleCollapse }) {
   const [showVersion, setShowVersion] = useState(false);
   const currentVersion = CHANGELOG[0]?.version || 'v0.5';
 
-  const items = NAV_GROUPS;
+  const items = visibleNavGroups(user);
 
   const displayName    = user?.user_metadata?.name || user?.email?.split('@')[0] || 'อาทิตย์';
   const displayInitial = (displayName[0] || 'A').toUpperCase();

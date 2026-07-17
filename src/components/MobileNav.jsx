@@ -3,15 +3,17 @@ import { Icon } from './Icon.jsx';
 import { Badge } from './ui/index.js';
 import { signOut } from '../lib/useAuth.js';
 import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
-import { NAV_GROUPS } from './Sidebar.jsx';
+import { visibleNavGroups, canSeePage } from './Sidebar.jsx';
 import { LoopMark } from './LoopMark.jsx';
 
-// โมดูลหลักบนแถบล่าง — ที่เหลือเข้าถึงผ่าน "เพิ่มเติม"
-const BAR_ITEMS = [
-  { id: 'dashboard',        label: 'หน้าหลัก', icon: 'home' },
-  { id: 'journal',          label: 'Journal',  icon: 'journal' },
-  { id: 'personal-finance', label: 'การเงิน',  icon: 'money' },
-  { id: 'family',           label: 'ครอบครัว', icon: 'family' },
+// ผู้สมัครสำหรับแถบล่าง — กรองด้วยสิทธิ์แล้วเอา 4 อันแรก ที่เหลือผ่าน "เพิ่มเติม"
+// เรียงให้แต่ละคนได้ 4 ช่องพอดี: Arm ไม่เห็น Petty Cash, แพทไม่เห็นการเงิน
+const BAR_CANDIDATES = [
+  { id: 'dashboard',        label: 'หน้าหลัก',   icon: 'home' },
+  { id: 'journal',          label: 'Journal',    icon: 'journal' },
+  { id: 'personal-finance', label: 'การเงิน',    icon: 'money' },
+  { id: 'petty-cash',       label: 'Petty Cash', icon: 'work' },
+  { id: 'family',           label: 'ครอบครัว',   icon: 'family' },
 ];
 
 /**
@@ -28,7 +30,8 @@ export function MobileNav({ active, onChange, user }) {
   const displayInitial = (displayName[0] || 'A').toUpperCase();
   const subText        = user ? user.email : 'preview · ไม่ได้ login';
 
-  const barIds = BAR_ITEMS.map(i => i.id);
+  const barItems = BAR_CANDIDATES.filter(i => canSeePage(user, i.id)).slice(0, 4);
+  const barIds = barItems.map(i => i.id);
   const moreActive = !barIds.includes(active); // หน้า active อยู่ใน "เพิ่มเติม"
 
   const go = (id) => { onChange(id); setSheetOpen(false); };
@@ -49,7 +52,7 @@ export function MobileNav({ active, onChange, user }) {
         display: 'flex',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}>
-        {BAR_ITEMS.map(item => (
+        {barItems.map(item => (
           <BarButton
             key={item.id}
             icon={<Icon name={item.icon} size={20} />}
@@ -116,7 +119,7 @@ export function MobileNav({ active, onChange, user }) {
             </div>
 
             {/* nav groups — ทุกโมดูล */}
-            {NAV_GROUPS.map((group, gi) => (
+            {visibleNavGroups(user).map((group, gi) => (
               <div key={gi} style={{ marginBottom: 6 }}>
                 <div style={{
                   fontFamily: 'var(--f-mono)', fontSize: 10,

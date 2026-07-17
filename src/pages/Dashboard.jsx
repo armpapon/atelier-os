@@ -154,7 +154,7 @@ export function Dashboard({ onNav, user }) {
       />
 
       {/* Life Pulse — module headline numbers */}
-      <LifePulse finance={financePulse} modules={modulePulse} onNav={onNav} />
+      <LifePulse finance={financePulse} modules={modulePulse} onNav={onNav} user={user} />
 
       {/* ── Direction & review zone (strategic, full editors) ── */}
       <div style={{

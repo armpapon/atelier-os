@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sidebar } from './components/Sidebar.jsx';
+import { Sidebar, canSeePage } from './components/Sidebar.jsx';
 import { MobileNav } from './components/MobileNav.jsx';
 import { Icon } from './components/Icon.jsx';
 import { TweaksPanel } from './components/TweaksPanel.jsx';
@@ -64,6 +64,11 @@ export default function App() {
   }, []);
 
   useEffect(() => { localStorage.setItem('atelier:active', active); }, [active]);
+  // 'atelier:active' outlives a sign-in, so it can point at a page this account
+  // no longer has in its menu. Send those back to the dashboard.
+  useEffect(() => {
+    if (user && !canSeePage(user, active)) setActive('dashboard');
+  }, [user, active]);
   useEffect(() => {
     localStorage.setItem('atelier:accent', accent);
     document.documentElement.style.setProperty('--amber', accent);
