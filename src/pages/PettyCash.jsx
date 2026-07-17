@@ -37,6 +37,18 @@ const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
   noSource: 'ไร้ใบเบิก', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
 };
+// Every observation explains itself on hover — Pat shares this screen with
+// people who don't know the audit rules, and a bare chip invites guessing.
+const FLAG_HELP = {
+  slideDup: 'สไลด์หลักฐานใบเดียวกันถูกใช้กับหลายแถว — อาจเป็นการเบิกซ้ำโดยใช้หลักฐานเดิม หรือแค่แปะลิงก์ผิด กดดูสไลด์เทียบได้',
+  workDup: 'รายการและยอดเงินเหมือนกันเป๊ะ โผล่มากกว่า 1 แถว — เช็คว่าเป็นงานคนละครั้งจริง หรือเบิกซ้ำ',
+  reconcile: 'ยอดคงเหลือในชีทแถวนี้ ไม่ตรงกับยอดที่คำนวณจากเงินเข้า-ออกก่อนหน้า — อาจมีการแก้ตัวเลข หรือลืมบันทึกบางรายการ',
+  outlier: 'ยอดสูงผิดปกติเมื่อเทียบกับค่าเฉลี่ยการเบิกของทั้งทีม (เกินค่าเฉลี่ย + 2 เท่าของส่วนเบี่ยงเบน) — ไม่ได้แปลว่าผิด แค่ควรดูหลักฐานให้ละเอียด',
+  noEvidence: 'แถวนี้ไม่มีลิงก์สไลด์และไม่มีสลิปแนบ — เบิกเงินโดยไม่มีหลักฐานประกอบ',
+  noSource: 'รายการนี้อยู่ในชีทหลัก แต่หาใบเบิกจากฟอร์มของพนักงานไม่เจอ — แปลว่าถูกพิมพ์เข้าชีทตรง ๆ ไม่ผ่านฟอร์ม ควรถามพนักงานว่าเบิกจริงไหม (จุดที่ควรดูก่อนเพื่อน)',
+  formMissing: 'พนักงานกดเบิกผ่านฟอร์มแล้ว แต่รายการไม่ถูกนำไปลงในชีทหลัก — ตกหล่นระหว่างทาง หรือถูกตัดออก',
+  formDup: 'คนเดียวกันส่งฟอร์มยอดเท่ากัน ห่างกันไม่เกิน 3 วัน — เช็คว่าเป็น 2 งานจริง หรือกดส่งซ้ำ',
+};
 const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup') ? 'bad' : 'warn';
 // Form timestamps are sheet-local values stored as-if-UTC — display with the
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
@@ -434,10 +446,12 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {p.flagTotal === 0
-            ? <span style={statStyle('ok')}>{isSeal ? 'ค่าใช้จ่ายส่วนกลาง — ไม่ตรวจรายคน' : '✓ เรียบร้อย'}</span>
-            : Object.entries(p.flagCounts).map(([t, n]) => (
-              <span key={t} style={statStyle(FLAG_TONE(t))}>{FLAG_LABEL[t]} {n}</span>
-            ))}
+            ? <FlagChip tone="ok"
+              label={isSeal ? 'ค่าใช้จ่ายส่วนกลาง — ไม่ตรวจรายคน' : '✓ เรียบร้อย'}
+              help={isSeal
+                ? 'ค่าใช้จ่ายของบริษัทเอง ไม่ได้เบิกในนามพนักงาน — Loop จึงไม่ตรวจจุดสังเกตรายคนให้ แต่กดเข้าไปดูรายการได้'
+                : 'สแกนทุกรายการของคนนี้แล้ว ไม่เข้าเงื่อนไขจุดสังเกตข้อไหนเลย — ไม่ได้แปลว่าการันตีว่าถูกต้อง แค่ไม่มีอะไรผิดสังเกตเท่าที่ระบบตรวจได้ ยังเปิดดูหลักฐานเองได้'} />
+            : Object.entries(p.flagCounts).map(([t, n]) => <FlagChip key={t} type={t} count={n} />)}
         </div>
         <div style={{ marginTop: 10, fontSize: 11.5, color: 'var(--ink-3)', display: 'flex', justifyContent: 'space-between' }}>
           <span>{top ? `เบิกเยอะสุด: ${TH_MONTHS[top[0]]} (${baht(top[1])})` : ''}{reviewed > 0 ? ` · รีวิว ${reviewed}/${p.count}` : ''}</span>
@@ -497,15 +511,15 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
             🧾 ใบเบิกจากฟอร์มที่ยังไม่อยู่ในชีท
           </div>
           {p.formDups?.map(([a, b], i) => (
-            <FormRow key={`d${i}`} tone="bad" tag="ส่งฟอร์มซ้ำ"
+            <FormRow key={`d${i}`} tone="bad" tag="ส่งฟอร์มซ้ำ" help={FLAG_HELP.formDup}
               left={`${fmtD(a.ts)} และ ${fmtD(b.ts)}`} main={a.detail || b.detail} amt={a.amount} url={a.slideUrl || b.slideUrl} />
           ))}
           {p.formMissing?.map(f => (
-            <FormRow key={f.formRow} tone="bad" tag="ไม่ถึงชีท"
+            <FormRow key={f.formRow} tone="bad" tag="ไม่ถึงชีท" help={FLAG_HELP.formMissing}
               left={`ส่งฟอร์ม ${fmtD(f.ts)}${f.paid ? ' · ทำจ่ายแล้ว ✓' : ''}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
           ))}
           {p.formPending?.map(f => (
-            <FormRow key={f.formRow} tone="dim" tag="รอลงชีท"
+            <FormRow key={f.formRow} tone="dim" tag="รอลงชีท" help="พนักงานเพิ่งส่งฟอร์มไม่เกิน 21 วัน และยังไม่ถูกนำไปลงชีทหลัก — ปกติของรอบทำจ่าย ยังไม่นับว่าตกหล่น"
               left={`ส่งฟอร์ม ${fmtD(f.ts)}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
           ))}
         </div>
@@ -514,7 +528,7 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
   );
 }
 
-function FormRow({ tone, tag, left, main, amt, url }) {
+function FormRow({ tone, tag, help, left, main, amt, url }) {
   const dim = tone === 'dim';
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '9px 14px', borderTop: '1px solid var(--line)', opacity: dim ? 0.65 : 1 }}>
@@ -522,7 +536,7 @@ function FormRow({ tone, tag, left, main, amt, url }) {
         <div style={{ ...mono10, marginBottom: 2 }}>{left}</div>
         <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(main || '—').replace(/\s+/g, ' ')}</div>
         <div style={{ marginTop: 4 }}>
-          <span style={statStyle(dim ? 'warn' : 'bad')}>{tag}</span>
+          <FlagChip tone={dim ? 'warn' : 'bad'} label={tag} help={help} />
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
@@ -546,13 +560,11 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
-          {[...(flagsSet || [])].map(t => (
-            <span key={t} style={statStyle(FLAG_TONE(t))}>{FLAG_LABEL[t]}</span>
-          ))}
+          {[...(flagsSet || [])].map(t => <FlagChip key={t} type={t} />)}
           {partners && partners.length > 0 && (flagsSet?.has('slideDup') || flagsSet?.has('workDup')) && (
             <span style={{ ...mono10, alignSelf: 'center' }}>↔ กับแถว {partners.map(x => x.rowNo).join(', ')}</span>
           )}
-          {cmpView && <span style={statStyle(cmpView.tone)}>{cmpView.text}</span>}
+          {cmpView && <FlagChip tone={cmpView.tone} label={cmpView.text} help={cmpView.help} />}
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
@@ -582,12 +594,12 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
 function compareView(cmp) {
   if (!cmp) return null;
   switch (cmp.status) {
-    case 'match': return { tone: 'ok', text: '✓ ยอดตรงสไลด์' };
-    case 'wrong_link': return { tone: 'bad', text: '🔗 ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว' };
-    case 'content_match': return { tone: 'ok', text: '✓ เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)' };
-    case 'amount_mismatch': return { tone: 'bad', text: `⚠ สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}` };
-    case 'no_amount': return { tone: 'warn', text: 'อ่านยอดในสไลด์ไม่ได้' };
-    case 'not_found': return { tone: 'warn', text: '⛔ หาสไลด์ของรายการนี้ไม่เจอ' };
+    case 'match': return { tone: 'ok', text: '✓ ยอดตรงสไลด์', help: 'ยอดที่เขียนในสไลด์หลักฐาน ตรงกับยอดที่เบิกในชีท (ต่างกันไม่เกิน 1 บาท)' };
+    case 'wrong_link': return { tone: 'bad', text: '🔗 ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว', help: 'ลิงก์ที่กรอกในชีทเปิดไปเจอสไลด์ที่ไม่ใช่ของรายการนี้ — Loop ไล่หาในเด็คแล้วเจอสไลด์ที่ชื่องานและยอดตรงกัน กดปุ่ม "สไลด์ที่ใช่" เพื่อไปดูใบจริง' };
+    case 'content_match': return { tone: 'ok', text: '✓ เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)', help: 'ลิงก์ในชีทชี้แค่ไฟล์เด็คทั้งใบ ไม่ได้เจาะจงสไลด์ — Loop หาสไลด์ที่ตรงจากชื่องาน+ยอดให้แล้ว กด "สไลด์ที่ใช่" ได้เลย' };
+    case 'amount_mismatch': return { tone: 'bad', text: `⚠ สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}`, help: 'ยอดที่เขียนในสไลด์หลักฐาน ไม่ตรงกับยอดที่เบิกจริงในชีท — เปิดสไลด์เทียบว่าฝั่งไหนถูก' };
+    case 'no_amount': return { tone: 'warn', text: 'อ่านยอดในสไลด์ไม่ได้', help: 'เจอสไลด์ของรายการนี้แล้ว แต่ Loop อ่านตัวเลขยอดในสไลด์ไม่ออก (อาจเป็นรูปภาพหรือเขียนคนละรูปแบบ) — ต้องเปิดดูเอง' };
+    case 'not_found': return { tone: 'warn', text: '⛔ หาสไลด์ของรายการนี้ไม่เจอ', help: 'ไล่ทั้งเด็คของคนนี้แล้วไม่เจอสไลด์ที่ตรงกับรายการนี้ — อาจยังไม่ได้ทำสไลด์ หรือเขียนชื่องาน/ยอดต่างจากในชีทมาก' };
     default: return null;
   }
 }
@@ -625,6 +637,54 @@ function SheetPanel({ urlInput, setUrlInput, formUrlInput, setFormUrlInput, onSa
         {canCancel && <button className="btn btn--ghost" onClick={onCancel}>ยกเลิก</button>}
       </div>
     </div>
+  );
+}
+
+// A "?" that explains the chip it sits in. Fixed-positioned so it escapes the
+// card's overflow:hidden, clamped to the viewport, and tap-toggleable (the
+// chips live inside the card's toggle button, so clicks must not bubble).
+function HelpTip({ text }) {
+  const [pos, setPos] = useState(null);
+  const place = (el) => {
+    const r = el.getBoundingClientRect();
+    setPos({ top: r.top, left: Math.min(Math.max(r.left + r.width / 2, 150), window.innerWidth - 150) });
+  };
+  return (
+    <>
+      <span
+        role="button" tabIndex={0} aria-label="คำอธิบาย"
+        onMouseEnter={e => place(e.currentTarget)}
+        onMouseLeave={() => setPos(null)}
+        onClick={e => { e.stopPropagation(); e.preventDefault(); pos ? setPos(null) : place(e.currentTarget); }}
+        style={{
+          marginLeft: 5, width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
+          border: '1px solid currentColor', opacity: 0.5, cursor: 'help',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 8, lineHeight: 1, fontFamily: 'var(--f-mono)',
+        }}>?</span>
+      {pos && (
+        <div style={{
+          position: 'fixed', top: pos.top - 10, left: pos.left,
+          transform: 'translate(-50%, -100%)', zIndex: 1000, pointerEvents: 'none',
+          width: 'max-content', maxWidth: 290, padding: '9px 11px',
+          background: 'var(--surface)', color: 'var(--ink)',
+          border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
+          boxShadow: '0 6px 22px rgba(0,0,0,0.13)',
+          fontSize: 12, lineHeight: 1.65, fontWeight: 400, textAlign: 'left', whiteSpace: 'normal',
+        }}>{text}</div>
+      )}
+    </>
+  );
+}
+
+function FlagChip({ type, count, tone, label, help }) {
+  const t = label ?? FLAG_LABEL[type];
+  const h = help ?? FLAG_HELP[type];
+  return (
+    <span style={{ ...statStyle(tone ?? FLAG_TONE(type)), display: 'inline-flex', alignItems: 'center' }}>
+      {t}{count != null ? ` ${count}` : ''}
+      {h && <HelpTip text={h} />}
+    </span>
   );
 }
 
