@@ -258,7 +258,12 @@ function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, com
   }
   const people = [...map.values()];
   for (const p of people) p.flagTotal = Object.values(p.flagCounts).reduce((s, n) => s + n, 0);
-  const employees = people.filter(p => p.isEmployee).sort((a, b) => b.out - a.out);
+  const employees = people.filter(p => p.isEmployee);
+  // Two groups: people with observations first (most observations → top),
+  // then the all-clear group, quieter, sorted by spend.
+  const flagged = employees.filter(p => p.flagTotal > 0)
+    .sort((a, b) => b.flagTotal - a.flagTotal || b.out - a.out);
+  const clean = employees.filter(p => p.flagTotal === 0).sort((a, b) => b.out - a.out);
   const seal = people.find(p => !p.isEmployee);
 
   const shownRows = rows.filter(r => r.isExpense && inMonth(r));
@@ -280,7 +285,7 @@ function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, com
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         <Tile v={baht(totalOut)} l={`เบิกออก · ${month == null ? year : TH_MONTHS[month]}`} />
         <Tile v={shownRows.length} l={`รายการ · ${employees.length} คน`} />
-        <Tile v={flaggedCount} l="🚩 รายการติดธง" warn={flaggedCount > 0} />
+        <Tile v={flaggedCount} l="🔎 รายการมีจุดสังเกต" warn={flaggedCount > 0} />
         <Tile v={Object.keys(marks).length} l="✓ รีวิวแล้ว (รายการ)" />
       </div>
 
@@ -291,21 +296,44 @@ function Board({ data, month, setMonth, openCode, setOpenCode, slidesByCode, com
         </div>
       )}
 
-      {/* People */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-        {employees.map(p => (
-          <PersonCard key={p.code} p={p} open={openCode === p.code}
-            onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
-            slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
-            hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} />
-        ))}
-        {seal && (
-          <PersonCard p={seal} open={openCode === seal.code}
-            onToggle={() => setOpenCode(openCode === seal.code ? null : seal.code)}
-            slides={slidesByCode[seal.code]} comparing={comparing === seal.code} compareDeck={compareDeck}
-            hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} isSeal />
-        )}
-      </div>
+      {/* People — grouped: observations first, all-clear below, office last */}
+      {flagged.length > 0 && (
+        <>
+          <SectionHead icon="🔎" text={`มีจุดสังเกต · ${flagged.length} คน`} tone="warn" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+            {flagged.map(p => (
+              <PersonCard key={p.code} p={p} open={openCode === p.code}
+                onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
+                slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
+                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} />
+            ))}
+          </div>
+        </>
+      )}
+      {clean.length > 0 && (
+        <>
+          <SectionHead icon="✓" text={`เรียบร้อย ไม่มีจุดสังเกต · ${clean.length} คน`} tone="ok" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+            {clean.map(p => (
+              <PersonCard key={p.code} p={p} open={openCode === p.code}
+                onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
+                slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
+                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} />
+            ))}
+          </div>
+        </>
+      )}
+      {seal && (
+        <>
+          <SectionHead icon="🏢" text="บริษัท / ออฟฟิศ" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+            <PersonCard p={seal} open={openCode === seal.code}
+              onToggle={() => setOpenCode(openCode === seal.code ? null : seal.code)}
+              slides={slidesByCode[seal.code]} comparing={comparing === seal.code} compareDeck={compareDeck}
+              hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} isSeal />
+          </div>
+        </>
+      )}
 
       <div style={{ fontSize: 12, color: 'var(--ink-3)', borderTop: '1px dashed var(--line-2)', paddingTop: 12, lineHeight: 1.7 }}>
         <b style={{ color: 'var(--ink-2)', fontWeight: 500 }}>Loop แค่ตรวจ ไม่จ่าย</b> · กดการ์ดคนเพื่อดูทุกการเบิก + หลักฐาน ·
@@ -342,7 +370,7 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {p.flagTotal === 0
-            ? <span style={statStyle('ok')}>{isSeal ? 'ไม่ตรวจธงรายคน' : '✓ ไม่มีธง'}</span>
+            ? <span style={statStyle('ok')}>{isSeal ? 'ค่าใช้จ่ายส่วนกลาง — ไม่ตรวจรายคน' : '✓ เรียบร้อย'}</span>
             : Object.entries(p.flagCounts).map(([t, n]) => (
               <span key={t} style={statStyle(t === 'noEvidence' || t === 'outlier' || t === 'reconcile' ? 'warn' : 'bad')}>{FLAG_LABEL[t]} {n}</span>
             ))}
@@ -648,6 +676,16 @@ function SheetPanel({ urlInput, setUrlInput, onSave, busy, canCancel, onCancel }
         <button className="btn btn--ghost" onClick={onSave} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : '✓ ใช้ชีทนี้'}</button>
         {canCancel && <button className="btn btn--ghost" onClick={onCancel}>ยกเลิก</button>}
       </div>
+    </div>
+  );
+}
+
+function SectionHead({ icon, text, tone }) {
+  const color = tone === 'warn' ? 'var(--accent-strong)' : tone === 'ok' ? '#3c5c3b' : 'var(--ink-3)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+      <span style={{ ...lbl, color }}>{icon} {text}</span>
+      <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
     </div>
   );
 }
