@@ -33,6 +33,17 @@ const baht = n => '฿' + Math.round(n).toLocaleString('en-US');
 const baht2 = n => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
 
+// Year tabs aren't always named exactly "2026" — real sheets use "SEAL 2026",
+// "🛒 2026", or the Thai Buddhist year "2569". Pull a Gregorian year out of any
+// of those; return null for non-year tabs (Dropdown List, BANK INFO, …).
+function tabYear(title = '') {
+  const m = String(title).match(/(20\d{2}|25\d{2})/);
+  if (!m) return null;
+  let y = Number(m[1]);
+  if (y >= 2500) y -= 543; // พ.ศ. → ค.ศ.
+  return y >= 2000 && y <= 2100 ? y : null;
+}
+
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
   noSource: 'ไร้ใบเบิก', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
@@ -109,14 +120,19 @@ export function PettyCash() {
     try {
       const props = await callProvider('google', { url: `${SHEETS_API}/${id}?fields=sheets.properties(title,sheetId)` });
       if (props?.error) throw new Error(props.error.message || JSON.stringify(props.error));
-      const tabs = (props.sheets || []).map(s => s.properties?.title || '')
-        .filter(t => /^\s*20\d{2}\s*$/.test(t)).map(t => Number(t.trim())).sort((a, b) => b - a);
-      if (!tabs.length) throw new Error('ไม่พบแท็บรายปี (เช่น "2026") ในชีทนี้');
+      const titles = (props.sheets || []).map(s => s.properties?.title || '').filter(Boolean);
+      // year → the real tab title, so we fetch by the actual name (which may be
+      // "SEAL 2026" or "2569"), not by the bare year.
+      const yearMap = new Map();
+      for (const t of titles) { const y = tabYear(t); if (y != null && !yearMap.has(y)) yearMap.set(y, t); }
+      const tabs = [...yearMap.keys()].sort((a, b) => b - a);
+      if (!tabs.length) throw new Error(`ไม่พบแท็บรายปี (เช่น "2026" หรือ "2569") — แท็บที่เจอในชีท: ${titles.join(', ') || '(ไม่มี)'}`);
       setYearTabs(tabs);
       const y = tabs.includes(wantYear) ? wantYear : tabs[0];
       setYear(y);
+      const tabTitle = yearMap.get(y);
       const grid = await callProvider('google', {
-        url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${y}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
+        url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${tabTitle.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
       });
       if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
       const parsed = parsePettyCash((grid.sheets || [])[0]);
