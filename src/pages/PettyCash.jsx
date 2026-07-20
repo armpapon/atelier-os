@@ -15,7 +15,7 @@ import {
 } from '../lib/integrations.js';
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { parseSheetId } from '../lib/sheetTimeline.js';
-import { parsePettyCash, deriveFlags, parseName } from '../lib/pettyCash.js';
+import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
 import { parseFormResponses, reconcile, reconByPerson, destMatchInfo } from '../lib/pettyRecon.js';
 
@@ -32,17 +32,6 @@ const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.�
 const baht = n => '฿' + Math.round(n).toLocaleString('en-US');
 const baht2 = n => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
-
-// Year tabs aren't always named exactly "2026" — real sheets use "SEAL 2026",
-// "🛒 2026", or the Thai Buddhist year "2569". Pull a Gregorian year out of any
-// of those; return null for non-year tabs (Dropdown List, BANK INFO, …).
-function tabYear(title = '') {
-  const m = String(title).match(/(20\d{2}|25\d{2})/);
-  if (!m) return null;
-  let y = Number(m[1]);
-  if (y >= 2500) y -= 543; // พ.ศ. → ค.ศ.
-  return y >= 2000 && y <= 2100 ? y : null;
-}
 
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',

@@ -79,6 +79,17 @@ export function parseRoster(sheet) {
   return [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }));
 }
 
+// Year tabs aren't always named exactly "2026" — real sheets use "SEAL 2026",
+// "🛒 2026", or the Thai Buddhist year "2569". Pull a Gregorian year out of any
+// of those; return null for non-year tabs (Dropdown List, BANK INFO, …).
+export function tabYear(title = '') {
+  const m = String(title).match(/(20\d{2}|25\d{2})/);
+  if (!m) return null;
+  let y = Number(m[1]);
+  if (y >= 2500) y -= 543; // พ.ศ. → ค.ศ.
+  return y >= 2000 && y <= 2100 ? y : null;
+}
+
 const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
 // "01-มกราคม" → 0. Prefer the leading number; fall back to the Thai name.

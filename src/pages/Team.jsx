@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { getIntegration, callProvider } from '../lib/integrations.js';
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
-import { parseRoster, parsePettyCash } from '../lib/pettyCash.js';
+import { parseRoster, parsePettyCash, tabYear } from '../lib/pettyCash.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const FIELDS = 'sheets(properties(title),data(rowData(values(formattedValue,effectiveValue))))';
@@ -30,17 +30,26 @@ export function Team() {
     if (!id) return;
     setBusy(true);
     try {
-      const year = new Date().getFullYear();
+      // Resolve the real tab names first — "Dropdown List" and the latest year
+      // tab, which may be "SEAL 2026" or the พ.ศ. "2569" (never a bare "2026").
+      const props = await callProvider('google', { url: `${SHEETS_API}/${id}?fields=sheets.properties(title)` });
+      if (props?.error) throw new Error(props.error.message || JSON.stringify(props.error));
+      const titles = (props.sheets || []).map(s => s.properties?.title || '').filter(Boolean);
+      const dropdownTitle = titles.find(t => /dropdown/i.test(t));
+      let year = null, yearTitle = null;
+      for (const t of titles) { const y = tabYear(t); if (y != null && (year == null || y > year)) { year = y; yearTitle = t; } }
+      const ranges = [dropdownTitle, yearTitle].filter(Boolean);
+      if (!ranges.length) throw new Error(`ไม่พบแท็บ "Dropdown List" หรือแท็บรายปี — แท็บที่เจอในชีท: ${titles.join(', ') || '(ไม่มี)'}`);
+
       const res = await callProvider('google', {
         url: `${SHEETS_API}/${id}?includeGridData=true`
-          + `&ranges=${encodeURIComponent("'Dropdown List'")}`
-          + `&ranges=${encodeURIComponent(`'${year}'`)}`
+          + ranges.map(t => `&ranges=${encodeURIComponent(`'${t.replace(/'/g, "''")}'`)}`).join('')
           + `&fields=${encodeURIComponent(FIELDS)}`,
       });
       if (res?.error) throw new Error(res.error.message || JSON.stringify(res.error));
       const sheets = res.sheets || [];
       const dropdown = sheets.find(s => /dropdown/i.test(s.properties?.title || ''));
-      const yearSheet = sheets.find(s => String(s.properties?.title || '').trim() === String(year));
+      const yearSheet = yearTitle ? sheets.find(s => (s.properties?.title || '') === yearTitle) : null;
 
       // Master roster, then augment with anyone who appears only in claims.
       const master = parseRoster(dropdown);
@@ -119,7 +128,7 @@ export function Team() {
 
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>
-              <span>รหัส</span><span>ชื่อ</span><span style={{ textAlign: 'right' }}>เบิกปี {data.year}</span>
+              <span>รหัส</span><span>ชื่อ</span><span style={{ textAlign: 'right' }}>เบิกปี {data.year ?? '—'}</span>
             </div>
             {data.roster.map(e => (
               <div key={e.code} style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--line)' }}>
