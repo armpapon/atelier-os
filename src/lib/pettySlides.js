@@ -128,26 +128,53 @@ function lineAmounts(text = '') {
   return out;
 }
 
-// One sheet row that bundles several receipts (e.g. "…อาหาร 950 THB / …เดินทาง
-// 153 THB", amount 1,103) has no single slide matching its total. Match each
-// sub-amount to its own slide within the row's linked deck; succeed only when
-// they pair up 1:1 and sum back to the row total.
+const itemDay = i => (i.date ? `${i.date.y}-${i.date.m}-${i.date.d}` : null);
+const rowPresId = row => row.slideKey ? row.slideKey.split(':')[0]
+  : (String(row.evidenceUrl || '').match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
+function overlapsRow(row, group) {
+  const want = tokens(`${row.work || ''} ${row.project || ''}`);
+  return group.some(i => [...tokens(i.title)].filter(t => want.has(t)).length >= 2);
+}
+
+// One sheet row that bundles several receipts (e.g. "…อาหาร 950 / …เดินทาง 153",
+// amount 1,103) has no single slide matching its total. Two ways to pair it up,
+// robust to employees who don't write a TOTAL and split lines differently than
+// the deck does:
+//   1) slides under the SAME "PETTY CASH <date>" divider sum to the row total —
+//      the linked slide (or a title-token overlap) picks which divider;
+//   2) failing that, match each "N บาท" figure in the row to a distinct slide.
 function matchMultiItem(row, allItems) {
-  const amts = lineAmounts(row.work);
-  if (amts.length < 2) return null;
-  const presId = row.slideKey ? row.slideKey.split(':')[0]
-    : (String(row.evidenceUrl || '').match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
+  const presId = rowPresId(row);
   const pool = allItems.filter(i => i.amount != null && (!presId || i.presId === presId));
-  const used = new Set(), parts = [];
-  for (const a of amts) {
-    const it = pool.find(i => !used.has(i.objectId) && Math.abs(i.amount - a) <= 1);
-    if (it) { used.add(it.objectId); parts.push(it); }
+  if (pool.length < 2) return null;
+  const linkedObj = row.slideKey ? row.slideKey.split(':')[1] : null;
+
+  // 1) date-divider group whose slides sum to the row total.
+  const groups = new Map();
+  for (const i of pool) { const k = itemDay(i) || 'nd'; (groups.get(k) || groups.set(k, []).get(k)).push(i); }
+  let pick = null;
+  for (const g of groups.values()) {
+    if (g.length < 2 || Math.abs(g.reduce((s, i) => s + i.amount, 0) - row.amountOut) > 1) continue;
+    if (linkedObj && g.some(i => i.objectId === linkedObj)) { pick = g; break; }
+    if (!pick && overlapsRow(row, g)) pick = g;
   }
-  if (parts.length !== amts.length) return null;
-  if (Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) > 1) return null;
+
+  // 2) sum the row's own "N บาท" figures against distinct slides.
+  if (!pick) {
+    const amts = lineAmounts(row.work);
+    if (amts.length >= 2) {
+      const used = new Set(), parts = [];
+      for (const a of amts) {
+        const it = pool.find(i => !used.has(i.objectId) && Math.abs(i.amount - a) <= 1);
+        if (it) { used.add(it.objectId); parts.push(it); }
+      }
+      if (parts.length === amts.length && Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) <= 1) pick = parts;
+    }
+  }
+  if (!pick) return null;
   return {
-    status: 'match_multi', count: parts.length, slideDate: parts[0].date,
-    parts: parts.map(i => ({ url: slideDeepLink(i), amount: i.amount, title: i.title })),
+    status: 'match_multi', count: pick.length, slideDate: pick[0].date,
+    parts: pick.map(i => ({ url: slideDeepLink(i), amount: i.amount, title: i.title })),
   };
 }
 
