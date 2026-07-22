@@ -117,6 +117,40 @@ export function findSlideByContent(row, items) {
 export const slideDeepLink = item =>
   `https://docs.google.com/presentation/d/${item.presId}/edit#slide=id.${item.objectId}`;
 
+// Every "N บาท / N THB" figure in a row's text, minus TOTAL/รวม lines (those
+// restate the sum) — the per-receipt amounts of a line that bundles several.
+function lineAmounts(text = '') {
+  const out = [];
+  for (const line of String(text).split('\n')) {
+    if (/total|รวม/i.test(line)) continue;
+    for (const m of line.matchAll(/([\d,]+(?:\.\d+)?)\s*(?:บาท|thb)/ig)) out.push(Number(m[1].replace(/,/g, '')));
+  }
+  return out;
+}
+
+// One sheet row that bundles several receipts (e.g. "…อาหาร 950 THB / …เดินทาง
+// 153 THB", amount 1,103) has no single slide matching its total. Match each
+// sub-amount to its own slide within the row's linked deck; succeed only when
+// they pair up 1:1 and sum back to the row total.
+function matchMultiItem(row, allItems) {
+  const amts = lineAmounts(row.work);
+  if (amts.length < 2) return null;
+  const presId = row.slideKey ? row.slideKey.split(':')[0]
+    : (String(row.evidenceUrl || '').match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
+  const pool = allItems.filter(i => i.amount != null && (!presId || i.presId === presId));
+  const used = new Set(), parts = [];
+  for (const a of amts) {
+    const it = pool.find(i => !used.has(i.objectId) && Math.abs(i.amount - a) <= 1);
+    if (it) { used.add(it.objectId); parts.push(it); }
+  }
+  if (parts.length !== amts.length) return null;
+  if (Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) > 1) return null;
+  return {
+    status: 'match_multi', count: parts.length, slideDate: parts[0].date,
+    parts: parts.map(i => ({ url: slideDeepLink(i), amount: i.amount, title: i.title })),
+  };
+}
+
 // Compare one sheet claim row to its evidence deck(s). `itemsByKey` is keyed by
 // "presId:objectId" (same shape as row.slideKey) so ids can't collide across
 // decks; `allItems` = the same items as a list, for content matching.
@@ -134,6 +168,10 @@ export function compareRow(row, itemsByKey, allItems = []) {
   if (linked && linked.amount != null && Math.abs(linked.amount - row.amountOut) <= 1) {
     return { status: 'match', slideAmount: linked.amount, slideDate: linked.date };
   }
+
+  // A single line that bundles several receipts → match each to its own slide.
+  const multi = matchMultiItem(row, allItems);
+  if (multi) return multi;
 
   const found = findSlideByContent(row, allItems);
   const foundAmtOk = found && found.amount != null && Math.abs(found.amount - row.amountOut) <= 1;

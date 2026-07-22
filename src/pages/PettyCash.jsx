@@ -632,7 +632,14 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500 }}>{baht2(r.amountOut)}</div>
-        {cmp?.fixedUrl ? (
+        {cmp?.parts ? (
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+            {cmp.parts.map((p, i) => (
+              <a key={i} href={p.url} target="_blank" rel="noreferrer" title={p.title}
+                style={{ fontSize: 11.5, color: '#3c5c3b', textDecoration: 'none', border: '1px solid var(--profit, #5b8a5a)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--profit-soft, #dbe7d3)', whiteSpace: 'nowrap' }}>สไลด์ {baht(p.amount)} ↗</a>
+            ))}
+          </span>
+        ) : cmp?.fixedUrl ? (
           <span style={{ display: 'flex', gap: 5 }}>
             <a href={cmp.fixedUrl} target="_blank" rel="noreferrer" title={cmp.fixedTitle}
               style={{ fontSize: 11.5, color: '#3c5c3b', textDecoration: 'none', border: '1px solid var(--profit, #5b8a5a)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--profit-soft, #dbe7d3)', whiteSpace: 'nowrap' }}>สไลด์ที่ใช่ ↗</a>
@@ -658,6 +665,7 @@ function compareView(cmp) {
   if (!cmp) return null;
   switch (cmp.status) {
     case 'match': return { tone: 'ok', text: '✓ ยอดตรงสไลด์', help: 'ยอดที่เขียนในสไลด์หลักฐาน ตรงกับยอดที่เบิกในชีท (ต่างกันไม่เกิน 1 บาท)' };
+    case 'match_multi': return { tone: 'ok', text: `✓ ยอดตรงสไลด์ (รวม ${cmp.count} ใบ)`, help: 'แถวนี้รวมหลายรายการไว้ในบรรทัดเดียว — Loop จับคู่ยอดย่อยแต่ละอันกับสไลด์คนละใบในเด็คแล้ว ผลรวมตรงกับยอดที่เบิก · กดดูสไลด์แต่ละใบได้ทางขวา' };
     case 'wrong_link': return { tone: 'bad', text: '🔗 ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว', help: 'ลิงก์ที่กรอกในชีทเปิดไปเจอสไลด์ที่ไม่ใช่ของรายการนี้ — Loop ไล่หาในเด็คแล้วเจอสไลด์ที่ชื่องานและยอดตรงกัน กดปุ่ม "สไลด์ที่ใช่" เพื่อไปดูใบจริง' };
     case 'content_match': return { tone: 'ok', text: '✓ เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)', help: 'ลิงก์ในชีทชี้แค่ไฟล์เด็คทั้งใบ ไม่ได้เจาะจงสไลด์ — Loop หาสไลด์ที่ตรงจากชื่องาน+ยอดให้แล้ว กด "สไลด์ที่ใช่" ได้เลย' };
     case 'amount_mismatch': return { tone: 'bad', text: `⚠ สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}`, help: 'ยอดที่เขียนในสไลด์หลักฐาน ไม่ตรงกับยอดที่เบิกจริงในชีท — เปิดสไลด์เทียบว่าฝั่งไหนถูก' };
