@@ -85,10 +85,15 @@ function* combos(arr, n) {
 //   merge  — one sheet line = 2-3 form claims summed (same person)
 // Returns per-side match maps + the leftovers Pat actually reviews.
 export function reconcile(formRows, destRows, { year } = {}) {
-  // ts was built from the sheet-local serial as if UTC — read it back with the
-  // UTC getters, or a form sent after 17:00 (UTC+7) lands on the next day, and
-  // a New Year's Eve claim falls into the wrong year entirely.
-  const forms = formRows.filter(f => !year || f.ts.getUTCFullYear() === year);
+  // ts is read with UTC getters — a form sent after 17:00 (UTC+7) would else
+  // land on the next day, a New Year's Eve claim in the wrong year.
+  // The form→sheet copy crosses the year boundary: a claim submitted late in
+  // year Y-1 is often paid and recorded in the year-Y tab. So the MATCHING pool
+  // includes the tail of the previous year (Oct–Dec); "missing/pending" lists,
+  // though, stay scoped to forms of this year.
+  const inYear = f => f.ts.getUTCFullYear() === year;
+  const eligible = f => inYear(f) || (f.ts.getUTCFullYear() === year - 1 && f.ts.getUTCMonth() >= 9);
+  const forms = formRows.filter(f => !year || eligible(f));
   const dests = destRows.filter(d => d.isEmployee && d.isExpense);
 
   const destBySlide = new Map();
@@ -151,7 +156,7 @@ export function reconcile(formRows, destRows, { year } = {}) {
   const cutoff = Date.now() - 21 * 86400000;
   const formMissing = [], formPending = [];
   for (const f of forms) {
-    if (fmatch.has(f.formRow)) continue;
+    if (fmatch.has(f.formRow) || (year && !inYear(f))) continue; // prev-year tail isn't this year's queue
     (f.ts.getTime() >= cutoff ? formPending : formMissing).push(f);
   }
 
