@@ -35,7 +35,7 @@ const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1]
 
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
-  noSource: 'ไม่ผ่านฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
+  noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
 };
 // Every observation explains itself on hover — Pat shares this screen with
 // people who don't know the audit rules, and a bare chip invites guessing.
@@ -321,6 +321,9 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
     if (!r.isExpense || !inMonth(r)) continue;
     const g = r.isEmployee ? mk(r.code, r.label, true) : mk('__SEAL__', 'SEAL / ออฟฟิศ', false);
     g.out += r.amountOut; g.count += 1; g.rows.push(r);
+    // A row Pat marked "✓ ตรง" is resolved — its observations no longer count
+    // toward the person's flags, so clearing them all moves them to "เรียบร้อย".
+    if (marks[r.rowNo] === 'ok') continue;
     for (const t of (byRow.get(r.rowNo) || [])) g.flagCounts[t] = (g.flagCounts[t] || 0) + 1;
   }
   // Fold in the form-side observations — including people who claimed via the
@@ -349,7 +352,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
 
   const shownRows = rows.filter(r => r.isExpense && inMonth(r));
   const totalOut = shownRows.reduce((s, r) => s + r.amountOut, 0);
-  const flaggedCount = shownRows.filter(r => byRow.has(r.rowNo)).length;
+  const flaggedCount = shownRows.filter(r => byRow.get(r.rowNo)?.size && marks[r.rowNo] !== 'ok').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -418,7 +421,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
 
       <div style={{ fontSize: 12, color: 'var(--ink-3)', borderTop: '1px dashed var(--line-2)', paddingTop: 12, lineHeight: 1.7 }}>
         <b style={{ color: 'var(--ink-2)', fontWeight: 500 }}>Loop แค่ตรวจ ไม่จ่าย</b> · กดการ์ดคนเพื่อดูทุกการเบิก + หลักฐาน ·
-        {recon?.coverage && <> เทียบกับใบเบิกฟอร์มอัตโนมัติ (ฟอร์มเริ่มใช้ {TH_MONTHS[recon.coverage.m]} {recon.coverage.y} — ก่อนหน้านั้นไม่ตัดสิน "ไม่ผ่านฟอร์ม") ·</>}
+        {recon?.coverage && <> เทียบกับใบเบิกฟอร์มอัตโนมัติ (ฟอร์มเริ่มใช้ {TH_MONTHS[recon.coverage.m]} {recon.coverage.y} — ก่อนหน้านั้นไม่ตัดสิน "ไม่ได้กรอกฟอร์ม") ·</>}
         {' '}ปุ่ม ✓/✗ เก็บในเครื่องนี้ (ย้ายขึ้นฐานข้อมูลภายหลังได้)
       </div>
     </div>
@@ -564,7 +567,10 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
           {formMatch?.ts && <span style={{ color: '#3c5c3b' }}> · ✓ ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>
+          {mark === 'ok' && (flagsSet?.size || cmpView) && (
+            <span style={{ ...mono10, alignSelf: 'center', color: '#3c5c3b' }}>ตรวจแล้ว ✓</span>
+          )}
           {[...(flagsSet || [])].map(t => <FlagChip key={t} type={t} />)}
           {partners && partners.length > 0 && (flagsSet?.has('slideDup') || flagsSet?.has('workDup')) && (
             <span style={{ ...mono10, alignSelf: 'center' }}>↔ กับแถว {partners.map(x => x.rowNo).join(', ')}</span>
