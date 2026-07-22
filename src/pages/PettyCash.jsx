@@ -35,7 +35,7 @@ const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1]
 
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
-  noSource: 'ไร้ใบเบิก', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
+  noSource: 'ไม่ผ่านฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
 };
 // Every observation explains itself on hover — Pat shares this screen with
 // people who don't know the audit rules, and a bare chip invites guessing.
@@ -418,7 +418,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
 
       <div style={{ fontSize: 12, color: 'var(--ink-3)', borderTop: '1px dashed var(--line-2)', paddingTop: 12, lineHeight: 1.7 }}>
         <b style={{ color: 'var(--ink-2)', fontWeight: 500 }}>Loop แค่ตรวจ ไม่จ่าย</b> · กดการ์ดคนเพื่อดูทุกการเบิก + หลักฐาน ·
-        {recon?.coverage && <> เทียบกับใบเบิกฟอร์มอัตโนมัติ (ฟอร์มเริ่มใช้ {TH_MONTHS[recon.coverage.m]} {recon.coverage.y} — ก่อนหน้านั้นไม่ตัดสิน "ไร้ใบเบิก") ·</>}
+        {recon?.coverage && <> เทียบกับใบเบิกฟอร์มอัตโนมัติ (ฟอร์มเริ่มใช้ {TH_MONTHS[recon.coverage.m]} {recon.coverage.y} — ก่อนหน้านั้นไม่ตัดสิน "ไม่ผ่านฟอร์ม") ·</>}
         {' '}ปุ่ม ✓/✗ เก็บในเครื่องนี้ (ย้ายขึ้นฐานข้อมูลภายหลังได้)
       </div>
     </div>
