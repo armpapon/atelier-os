@@ -17,7 +17,7 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 import { parseSheetId } from '../lib/sheetTimeline.js';
 import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
-import { parseFormResponses, reconcile, reconByPerson, destMatchInfo } from '../lib/pettyRecon.js';
+import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const GRID_FIELDS =
@@ -309,6 +309,13 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
   const matchInfo = recon ? destMatchInfo(recon) : new Map();
   const inMonth = r => month == null || r.monthIdx === month;
   const tsInMonth = f => month == null || f.ts.getUTCMonth() === month;
+  const pay = recon ? (() => {
+    const q = payQueue(recon);
+    if (month == null) return q;
+    const groups = q.groups.map(g => ({ ...g, claims: g.claims.filter(tsInMonth) }))
+      .filter(g => g.claims.length).map(g => ({ ...g, total: g.claims.reduce((s, c) => s + c.amount, 0) }));
+    return { groups, count: groups.reduce((s, g) => s + g.claims.length, 0), total: groups.reduce((s, g) => s + g.total, 0) };
+  })() : null;
 
   // Aggregate people from expense rows (month-filtered for the view).
   const map = new Map();
@@ -364,6 +371,9 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
           <button key={i} onClick={() => setMonth(i)} style={chip(month === i)}>{m}</button>
         ))}
       </div>
+
+      {/* Payout queue — who is still owed money (form col N not ticked) */}
+      {pay && pay.count > 0 && <PayQueue pay={pay} />}
 
       {/* Tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
@@ -536,6 +546,45 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
   );
 }
 
+function PayQueue({ pay }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ border: '1px solid var(--warning)', borderLeft: '3px solid var(--warning)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--warning-soft)', overflow: 'hidden' }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent-strong)' }}>🕐 รอทำจ่าย</span>
+        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: 'var(--accent-strong)' }}>{pay.count} ใบ · {baht(pay.total)}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--ink-3)', flex: 1 }}>— ยังไม่ติ๊ก "ทำจ่ายแล้ว" ในฟอร์ม · ไปทำจ่ายใน Make</span>
+        <span style={{ color: 'var(--accent-strong)', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div style={{ borderTop: '1px solid var(--warning)', background: 'var(--surface)' }}>
+          {pay.groups.map(g => (
+            <div key={g.code}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', background: 'var(--background-soft)', ...mono10, letterSpacing: '0.1em' }}>
+                <span>{parseName(g.who).label} · {g.claims.length} ใบ</span>
+                <span>{baht(g.total)}</span>
+              </div>
+              {g.claims.map(c => (
+                <div key={c.formRow} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '8px 14px', borderTop: '1px solid var(--line)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...mono10, marginBottom: 2 }}>ส่งฟอร์ม {fmtD(c.ts)}</div>
+                    <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(c.detail || '—').replace(/\s+/g, ' ')}</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500 }}>{baht2(c.amount)}</div>
+                    {c.slideUrl && <a href={c.slideUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>ดูสไลด์ ↗</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FormRow({ tone, tag, help, left, main, amt, url }) {
   const dim = tone === 'dim';
   return (
@@ -565,6 +614,9 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
           แถว {r.rowNo}{r.project ? ` · ${r.project}` : ''}
           {cmp?.slideDate ? ` · สไลด์ลงวันที่ ${cmp.slideDate.d}/${cmp.slideDate.m + 1}` : ''}
           {formMatch?.ts && <span style={{ color: '#3c5c3b' }}> · ✓ ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
+          {formMatch && (formMatch.paid
+            ? <span style={{ color: '#3c5c3b' }}> · จ่ายแล้ว ✓</span>
+            : <span style={{ color: 'var(--accent-strong)' }}> · รอทำจ่าย</span>)}
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>

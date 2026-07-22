@@ -40,8 +40,11 @@ export function parseFormResponses(sheet) {
     const at = i => (i === null ? {} : (v[i] || {}));
     const tsN = at(c.ts).effectiveValue?.numberValue;
     if (typeof tsN !== 'number') continue;
-    const action = text(at(c.action));
-    if (action && !action.includes('เบิก')) continue; // e.g. แก้ไขข้อมูล entries
+    // A submission is a claim when it carries a code + a positive amount —
+    // don't gate on the "action" dropdown. Some rows pick "เพิ่มข้อมูลธนาคาร"
+    // (add bank info) yet also submit a claim ("บันทึกข้อมูล และกรอกเบิกเงินต่อ"),
+    // and those were being dropped, wrongly flagging the sheet row as
+    // "no form behind it".
     const who = text(at(c.who));
     const code = (who.match(/^(SIE\w*\d+)/i) || [])[1] || null;
     if (!code) continue;
@@ -199,14 +202,31 @@ export function reconByPerson(R) {
   return per;
 }
 
-// Sheet rowNo → { how, ts } of the form submission that backs it, so a claim
-// row can show "มีใบเบิกจากฟอร์ม 5/3" inline.
+// Sheet rowNo → { how, ts, paid } of the form submission that backs it, so a
+// claim row can show "ใบเบิกฟอร์ม 5/3" and whether it's been paid. paid is true
+// only if every backing form submission is ticked ทำจ่ายแล้ว.
 export function destMatchInfo(R) {
   const byForm = new Map(R.forms.map(f => [f.formRow, f]));
   const m = new Map();
   for (const [rowNo, v] of R.dmatch) {
-    const f = byForm.get(v.formRows[0]);
-    m.set(rowNo, { how: v.how, ts: f?.ts || null });
+    const fs = v.formRows.map(fr => byForm.get(fr)).filter(Boolean);
+    m.set(rowNo, { how: v.how, ts: fs[0]?.ts || null, paid: fs.length > 0 && fs.every(f => f.paid) });
   }
   return m;
+}
+
+// The payout queue: every form claim still unticked in the "ทำจ่ายแล้ว" column
+// (col N), grouped by person, newest first — who is still owed money. Independent
+// of whether the claim reached the curated sheet.
+export function payQueue(R) {
+  const per = new Map();
+  for (const f of R.forms) {
+    if (f.paid) continue;
+    const g = per.get(f.code) || per.set(f.code, { code: f.code, who: f.who, claims: [], total: 0 }).get(f.code);
+    g.claims.push(f); g.total += f.amount;
+  }
+  const groups = [...per.values()].map(g => ({
+    ...g, claims: g.claims.sort((a, b) => b.ts - a.ts),
+  })).sort((a, b) => b.total - a.total);
+  return { groups, count: groups.reduce((s, g) => s + g.claims.length, 0), total: groups.reduce((s, g) => s + g.total, 0) };
 }

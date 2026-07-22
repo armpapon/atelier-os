@@ -181,7 +181,74 @@ export function parsePettyCash(sheet) {
       isExpense: typeof amountOut === 'number' && amountOut > 0,
     });
   }
+  splitMergedBlocks(rows);
   return { year, title, rows, ok: true };
+}
+
+// A claim's own baht amount, read from its description text: the "TOTAL : N"
+// line if present, else the sum of every "(… N บาท)" figure (and bare "= N"
+// tails), skipping "โอนล่วงหน้า" advance-transfer notes. Returns null if it
+// finds no number at all.
+export function amountFromText(str = '') {
+  const t = String(str);
+  const totals = t.match(/total\s*:?\s*([\d,]+(?:\.\d+)?)/ig);
+  if (totals) return Number(totals[totals.length - 1].replace(/[^\d.]/g, ''));
+  let sum = 0, found = false;
+  for (const line of t.split('\n')) {
+    if (line.includes('ล่วงหน้า')) continue;
+    if (/บาท|thb/i.test(line)) {
+      for (const m of line.matchAll(/([\d,]+(?:\.\d+)?)\s*(?:บาท|thb)/ig)) { sum += Number(m[1].replace(/,/g, '')); found = true; }
+    } else {
+      const eq = line.trim().match(/=\s*([\d,]+(?:\.\d+)?)\s*$/);
+      if (eq) { sum += Number(eq[1].replace(/,/g, '')); found = true; }
+    }
+  }
+  return found ? Math.round(sum * 100) / 100 : null;
+}
+
+// Employees sometimes merge several claims into one amount cell: the anchor row
+// carries the combined total, the rows below it have a blank amount but their
+// own evidence slide + description. The Sheets API returns the amount only on
+// the anchor, so those sub-claims would be dropped. Recover them: each block =
+// an expense row + the evidence-bearing rows directly under it. Split only when
+// the per-row amounts (from amountFromText) reconcile to the anchor total — the
+// anchor keeps the exact remainder so the running balance is never disturbed;
+// otherwise keep one row and hang the extra receipts off it.
+function splitMergedBlocks(rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const anchor = rows[i];
+    if (!anchor.isExpense) continue;
+    const sibs = [];
+    for (let j = i + 1; j < rows.length; j++) {
+      const s = rows[j];
+      if (s.amountOut !== null || s.amountIn !== null || s.balance !== null || !s.evidenceUrl) break;
+      sibs.push(s);
+    }
+    if (!sibs.length) continue;
+
+    const total = anchor.amountOut;
+    const parts = [anchor, ...sibs].map(r => amountFromText(r.work));
+    const sum = parts.reduce((a, b) => a + (b || 0), 0);
+    if (parts.every(p => p != null) && Math.abs(sum - total) <= 1) {
+      // Give siblings their parsed amounts; the anchor takes the exact rest.
+      let assigned = 0;
+      for (let k = 0; k < sibs.length; k++) {
+        sibs[k].amountOut = parts[k + 1];
+        sibs[k].isExpense = parts[k + 1] > 0;
+        sibs[k].fromMerge = true;
+        assigned += parts[k + 1];
+      }
+      anchor.amountOut = Math.round((total - assigned) * 100) / 100;
+      anchor.isExpense = anchor.amountOut > 0;
+      anchor.fromMerge = true;
+    } else {
+      // Can't verify the split — keep the combined total, but surface the other
+      // receipts so none is lost.
+      anchor.extraEvidence = sibs.filter(s => s.evidenceUrl)
+        .map(s => ({ url: s.evidenceUrl, work: s.work }));
+    }
+    i += sibs.length; // don't re-scan the rows we just consumed
+  }
 }
 
 // ── Audit flags — every flag is "ask Pat to open the receipt", not a verdict ──
