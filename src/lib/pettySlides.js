@@ -128,6 +128,20 @@ function lineAmounts(text = '') {
   return out;
 }
 
+// A bundled row split into its own line-items: each line's text + its amount.
+// Employees list one งาน per line ("… ถ่ายคอนเทนต์งานกาชาด … ค่าสินค้า (110 THB)"),
+// so we can match each line to the slide that shares BOTH the amount and the
+// งาน name — not just any slide that helps the total add up.
+function lineItems(text = '') {
+  const out = [];
+  for (const line of String(text).split('\n')) {
+    if (/total|รวม/i.test(line)) continue;
+    const m = line.match(/([\d,]+(?:\.\d+)?)\s*(?:บาท|thb)/i);
+    if (m) out.push({ text: line, amount: Number(m[1].replace(/,/g, '')) });
+  }
+  return out;
+}
+
 const itemDay = i => (i.date ? `${i.date.y}-${i.date.m}-${i.date.d}` : null);
 const rowPresId = row => row.slideKey ? row.slideKey.split(':')[0]
   : (String(row.evidenceUrl || '').match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
@@ -148,18 +162,41 @@ function matchMultiItem(row, allItems) {
   const pool = allItems.filter(i => i.amount != null && (!presId || i.presId === presId));
   if (pool.length < 2) return null;
   const linkedObj = row.slideKey ? row.slideKey.split(':')[1] : null;
-
-  // 1) date-divider group whose slides sum to the row total.
-  const groups = new Map();
-  for (const i of pool) { const k = itemDay(i) || 'nd'; (groups.get(k) || groups.set(k, []).get(k)).push(i); }
   let pick = null;
-  for (const g of groups.values()) {
-    if (g.length < 2 || Math.abs(g.reduce((s, i) => s + i.amount, 0) - row.amountOut) > 1) continue;
-    if (linkedObj && g.some(i => i.objectId === linkedObj)) { pick = g; break; }
-    if (!pick && overlapsRow(row, g)) pick = g;
+
+  // 0) Per-item match (preferred): for each line-item, take the slide that has
+  //    its amount AND the most title overlap with that line — so each shown
+  //    slide is genuinely that item's slide, even when several slides share an
+  //    amount. Every line must find its own slide, and the picks must sum back
+  //    to the row (a baht of slack per line for rounding).
+  const items = lineItems(row.work);
+  if (items.length >= 2) {
+    const used = new Set(), parts = [];
+    let ok = true;
+    for (const it of items) {
+      const cands = pool.filter(s => !used.has(s.objectId) && Math.abs(s.amount - it.amount) <= 1);
+      if (!cands.length) { ok = false; break; }
+      const want = tokens(it.text);
+      cands.sort((a, b) =>
+        [...tokens(b.title)].filter(t => want.has(t)).length -
+        [...tokens(a.title)].filter(t => want.has(t)).length);
+      used.add(cands[0].objectId); parts.push(cands[0]);
+    }
+    if (ok && Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) <= Math.max(2, items.length)) pick = parts;
   }
 
-  // 2) sum the row's own "N บาท" figures against distinct slides.
+  // 1) date-divider group whose slides sum to the row total.
+  if (!pick) {
+    const groups = new Map();
+    for (const i of pool) { const k = itemDay(i) || 'nd'; (groups.get(k) || groups.set(k, []).get(k)).push(i); }
+    for (const g of groups.values()) {
+      if (g.length < 2 || Math.abs(g.reduce((s, i) => s + i.amount, 0) - row.amountOut) > 1) continue;
+      if (linkedObj && g.some(i => i.objectId === linkedObj)) { pick = g; break; }
+      if (!pick && overlapsRow(row, g)) pick = g;
+    }
+  }
+
+  // 2) last resort: pair the row's bare "N บาท" figures to distinct slides.
   if (!pick) {
     const amts = lineAmounts(row.work);
     if (amts.length >= 2) {
