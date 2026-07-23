@@ -214,6 +214,13 @@ export function amountFromText(str = '') {
 // the per-row amounts (from amountFromText) reconcile to the anchor total — the
 // anchor keeps the exact remainder so the running balance is never disturbed;
 // otherwise keep one row and hang the extra receipts off it.
+//
+// Money math is untouched: amountOut still comes from column H (the anchor absorbs
+// any block discrepancy into its remainder). Each split row ALSO gets an optional
+// display-only `writtenAmount` = the amount the employee actually wrote for that
+// row (its amountFromText) — so a warped anchor can SHOW 615 (its own figure) while
+// person/month totals and the balance keep using the exact amountOut. `writtenAmount`
+// is absent on non-split rows.
 function splitMergedBlocks(rows) {
   for (let i = 0; i < rows.length; i++) {
     const anchor = rows[i];
@@ -236,17 +243,21 @@ function splitMergedBlocks(rows) {
     const tol = Math.max(5, Math.min(total * 0.02, 40));
     if (parts.every(p => p != null) && Math.abs(sum - total) <= tol) {
       // Give siblings their parsed amounts; the anchor takes the exact rest so
-      // the running balance is preserved.
+      // the running balance is preserved. `writtenAmount` records each row's own
+      // figure (display-only) — the anchor's amountOut may differ from what the
+      // employee wrote because it absorbed the block's discrepancy.
       let assigned = 0;
       for (let k = 0; k < sibs.length; k++) {
         sibs[k].amountOut = parts[k + 1];
         sibs[k].isExpense = parts[k + 1] > 0;
         sibs[k].fromMerge = true;
+        sibs[k].writtenAmount = parts[k + 1];
         assigned += parts[k + 1];
       }
       anchor.amountOut = Math.round((total - assigned) * 100) / 100;
       anchor.isExpense = anchor.amountOut > 0;
       anchor.fromMerge = true;
+      anchor.writtenAmount = parts[0];
       // Money has to add up. If the sub-rows' own totals don't sum to the total
       // the employee recorded, that's a miscalculation worth flagging — not
       // something to smooth over silently.

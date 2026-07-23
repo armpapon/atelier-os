@@ -62,9 +62,9 @@ const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em'
 // Slide-compare results persist in localStorage so they survive a reload (the
 // session cache is in-memory only) — Pat runs them once per person and expects
 // them to still be there next time, not vanish on a deploy/refresh.
-const slidesKey = (id, y, code) => `pc:slides2:${id}:${y}:${code}`;
+const slidesKey = (id, y, code) => `pc:slides3:${id}:${y}:${code}`;
 function readSavedSlides(id, y) {
-  const out = {}, prefix = `pc:slides2:${id}:${y}:`;
+  const out = {}, prefix = `pc:slides3:${id}:${y}:`;
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k && k.startsWith(prefix)) {
@@ -659,7 +659,13 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500 }}>{baht2(r.amountOut)}</div>
+        {/* Show what the employee wrote (writtenAmount) for a block-split row; a
+            warped anchor differs from amountOut, so surface the H-side figure below
+            so the person total still visibly reconciles. Money math elsewhere uses amountOut. */}
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500 }}>{baht2(r.writtenAmount ?? r.amountOut)}</div>
+        {r.writtenAmount != null && r.writtenAmount !== r.amountOut && (
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>ตามชีท {baht2(r.amountOut)} (แบกส่วนต่างของบล็อก)</div>
+        )}
         {cmp?.parts ? (
           <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
             {cmp.parts.map((p, i) => (

@@ -69,16 +69,21 @@ function itemTitle(text) {
 
 // Walk slides in order; a divider's date carries down onto the items under it.
 // presId is stamped on every item so deep links can be rebuilt later.
+// We also remember the objectId of the divider each item sits under (dividerId):
+// some employees (FERN) link their Evid at the "PETTY CASH <date>" DIVIDER of the
+// batch, not at an item slide, so the anchor matcher needs a way back to the items.
 export function parseDeck(slides, presId = null) {
   const items = [];
   let curDate = null;
+  let curDividerId = null;
   for (const s of slides) {
-    if (isDivider(s.text)) { curDate = parseSlideDate(s.text); continue; }
+    if (isDivider(s.text)) { curDate = parseSlideDate(s.text); curDividerId = s.objectId; continue; }
     if (!isItem(s.text)) continue;
     items.push({
       objectId: s.objectId,
       presId,
       date: curDate,
+      dividerId: curDividerId,
       // "รายการที่ N" number. N restarts per batch (NOT unique deck-wide), but a
       // consecutive run of N — or a repeated same N (one claim over 2 slides) —
       // defines a block, which is what the anchor-window matcher walks.
@@ -146,6 +151,9 @@ function lineItems(text = '') {
   const out = [];
   for (const line of String(text).split('\n')) {
     if (/total|รวม/i.test(line)) continue;
+    // "โอนล่วงหน้า N THB" is an advance-transfer note, not a claim line — mirror
+    // amountFromText's rule so this phantom figure doesn't blow up every sum gate.
+    if (line.includes('ล่วงหน้า')) continue;
     const m = line.match(/([\d,]+(?:\.\d+)?)\s*(?:บาท|thb)/i);
     if (m) out.push({ text: line, amount: Number(m[1].replace(/,/g, '')) });
   }
@@ -168,10 +176,20 @@ function overlapsRow(row, group) {
 // deck-wide amount search grabs another month's receipt (whose total still adds up,
 // so the card falsely shows "✓ ยอดตรง"). We pair the row four ways, most-trustworthy
 // first — this is a fraud audit, so an honest miss beats a confident wrong link:
-//   A) ANCHOR WINDOW (only when the link points at a real slide): walk the block
-//      forward from the anchor and pair each sheet line to a slide INSIDE that
-//      block — never deck-wide. The employee's own link is ground truth for which
-//      block, so a same-amount slide from another month can't be reached.
+//   A) ANCHOR WINDOW (only when the row carries a slide link): resolve the block
+//      from the link three ways, first hit wins, then pair each sheet line to a
+//      slide INSIDE that block — never deck-wide. Employees link inconsistently:
+//        • item anchor  — link points at an item slide → window = forward N-run walk
+//        • divider anchor — link points at the batch's "PETTY CASH <date>" DIVIDER
+//          (FERN) → find the first item under that divider, window = forward N-run walk
+//        • prefix-family — link points at a slide that no longer exists (stale: the
+//          batch's first slide was deleted/recreated) → window = ALL items whose
+//          Google id shares the dead link's "gXXXX" prefix (same batch generation),
+//          deck order, NO walk (family membership is already exact).
+//      Single-line rows are allowed through pass A only: pick the one window slide
+//      whose amount is within ฿1 of the line (best title overlap breaks ties).
+//      The employee's own link is ground truth for which block, so a same-amount
+//      slide from another month can't be reached.
 //   0) deck-wide per-item (no usable anchor): for each line, the unused slide that
 //      shares its amount AND the most title overlap. HARDENED to fail rather than
 //      accept a zero-title-overlap (amount-only) best — that's the wrong-month trap.
@@ -185,48 +203,85 @@ function matchMultiItem(row, allItems) {
   if (pool.length < 2) return null;
   const linkedObj = row.slideKey ? row.slideKey.split(':')[1] : null;
   const lines = lineItems(row.work);
+  // The row's OWN written total (surviving lines only). A block-split anchor row
+  // carries a warped amountOut (it absorbs the block's discrepancy), and some rows
+  // carry extra evidence, so every sum gate accepts a reconcile to EITHER amountOut
+  // OR lineSum — same slack.
+  const lineSum = lines.reduce((s, l) => s + l.amount, 0);
+  const gateOk = (sum, n) => {
+    const slack = Math.max(2, n);
+    return Math.abs(sum - row.amountOut) <= slack || Math.abs(sum - lineSum) <= slack;
+  };
   let pick = null;
 
   // A) Anchor window — stay inside the block the employee's own link points at.
-  if (linkedObj && lines.length >= 2) {
+  //    Resolve the window from the link three ways, first hit wins (see header).
+  if (linkedObj && lines.length >= 1) {
     // Deck-ordered items for this deck, INCLUDING amount-null slides: a slide whose
     // amount misparsed must not punch a hole in the block walk.
     const ordered = allItems.filter(i => !presId || i.presId === presId);
-    const anchor = ordered.findIndex(i => i.objectId === linkedObj);
-    if (anchor >= 0) {
-      // Collect the block: a forward run of N (same N = a 2-slide claim, or N+1),
-      // stopping when the run breaks; capped a little past the line count for
-      // spanned slides so a title-only fallback still has room to land.
-      const win = [ordered[anchor]];
-      for (let k = anchor + 1; k < ordered.length && win.length < lines.length + 3; k++) {
+    const gPrefix = id => String(id).split('_')[0];
+    // Forward run of N from a start index (same N = a 2-slide claim, or N+1),
+    // stopping when the run breaks; capped a little past the line count for spanned
+    // slides so a title-only fallback still has room to land.
+    const walk = (start) => {
+      const win = [ordered[start]];
+      for (let k = start + 1; k < ordered.length && win.length < lines.length + 3; k++) {
         const cur = win[win.length - 1], nx = ordered[k];
         if (cur.no == null || nx.no == null) break;
         if (nx.no === cur.no || nx.no === cur.no + 1) win.push(nx); else break;
       }
-      // Assign each line, in order, to a distinct window slide: amount ±1 first,
-      // then title overlap, then window order. ONE line may pair by title/order
-      // alone (its slide's amount misparsed); a second unmatched line fails the pass.
-      const used = new Set(), chosen = [];
-      let ok = true, fell = 0;
-      for (const ln of lines) {
-        const avail = win.filter(s => !used.has(s.objectId));
-        if (!avail.length) { ok = false; break; }
-        const want = tokens(ln.text);
+      return win;
+    };
+    let win = null;
+    const ai = ordered.findIndex(i => i.objectId === linkedObj);
+    if (ai >= 0) win = walk(ai);                                   // item anchor
+    else {
+      const di = ordered.findIndex(i => i.dividerId === linkedObj); // divider anchor
+      if (di >= 0) win = walk(di);
+      else {                                                        // prefix-family
+        const fam = ordered.filter(i => gPrefix(i.objectId) === gPrefix(linkedObj));
+        if (fam.length) win = fam; // family membership is exact — take it whole, no walk
+      }
+    }
+    if (win) {
+      if (lines.length === 1) {
+        // Single-line: pick the one window slide within ฿1 of the line (best title
+        // overlap breaks ties). No amount fallback here — if nothing matches, fall
+        // through to the existing single-row logic in compareRow.
+        const ln = lines[0], want = tokens(ln.text);
         const ov = s => [...tokens(s.title)].filter(t => want.has(t)).length;
-        const amtc = avail.filter(s => s.amount != null && Math.abs(s.amount - ln.amount) <= 1);
-        let s, amt;
+        const amtc = win.filter(s => s.amount != null && Math.abs(s.amount - ln.amount) <= 1);
         if (amtc.length) {
           amtc.sort((a, b) => ov(b) - ov(a) || win.indexOf(a) - win.indexOf(b));
-          s = amtc[0]; amt = s.amount;
-        } else {
-          if (fell++) { ok = false; break; }
-          const rest = [...avail].sort((a, b) => ov(b) - ov(a) || win.indexOf(a) - win.indexOf(b));
-          s = rest[0];
-          amt = s.amount != null ? s.amount : ln.amount; // slide amount unreadable → trust the line
+          pick = [{ ...amtc[0], amount: amtc[0].amount }];
         }
-        used.add(s.objectId); chosen.push({ ...s, amount: amt });
+      } else {
+        // Assign each line, in order, to a distinct window slide: amount ±1 first,
+        // then title overlap, then window order. ONE line may pair by title/order
+        // alone (its slide's amount misparsed); a second unmatched line fails the pass.
+        const used = new Set(), chosen = [];
+        let ok = true, fell = 0;
+        for (const ln of lines) {
+          const avail = win.filter(s => !used.has(s.objectId));
+          if (!avail.length) { ok = false; break; }
+          const want = tokens(ln.text);
+          const ov = s => [...tokens(s.title)].filter(t => want.has(t)).length;
+          const amtc = avail.filter(s => s.amount != null && Math.abs(s.amount - ln.amount) <= 1);
+          let s, amt;
+          if (amtc.length) {
+            amtc.sort((a, b) => ov(b) - ov(a) || win.indexOf(a) - win.indexOf(b));
+            s = amtc[0]; amt = s.amount;
+          } else {
+            if (fell++) { ok = false; break; }
+            const rest = [...avail].sort((a, b) => ov(b) - ov(a) || win.indexOf(a) - win.indexOf(b));
+            s = rest[0];
+            amt = s.amount != null ? s.amount : ln.amount; // slide amount unreadable → trust the line
+          }
+          used.add(s.objectId); chosen.push({ ...s, amount: amt });
+        }
+        if (ok && gateOk(chosen.reduce((sum, c) => sum + c.amount, 0), lines.length)) pick = chosen;
       }
-      if (ok && Math.abs(chosen.reduce((sum, c) => sum + c.amount, 0) - row.amountOut) <= Math.max(2, lines.length)) pick = chosen;
     }
   }
 
@@ -247,7 +302,7 @@ function matchMultiItem(row, allItems) {
       if (![...tokens(cands[0].title)].some(t => want.has(t))) { ok = false; break; }
       used.add(cands[0].objectId); parts.push(cands[0]);
     }
-    if (ok && Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) <= Math.max(2, lines.length)) pick = parts;
+    if (ok && gateOk(parts.reduce((s, i) => s + i.amount, 0), lines.length)) pick = parts;
   }
 
   // 1) date-divider group whose slides sum to the row total.
