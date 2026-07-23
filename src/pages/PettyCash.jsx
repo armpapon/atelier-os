@@ -56,6 +56,21 @@ const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
 const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
 const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
 
+// Slide-compare results persist in localStorage so they survive a reload (the
+// session cache is in-memory only) — Pat runs them once per person and expects
+// them to still be there next time, not vanish on a deploy/refresh.
+const slidesKey = (id, y, code) => `pc:slides:${id}:${y}:${code}`;
+function readSavedSlides(id, y) {
+  const out = {}, prefix = `pc:slides:${id}:${y}:`;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) {
+      try { out[k.slice(prefix.length)] = JSON.parse(localStorage.getItem(k)); } catch { /* ignore */ }
+    }
+  }
+  return out;
+}
+
 // rowNo → Set(flagType), plus rowNo → partner rows for the grouped dup flags.
 // `recon` (optional) folds the form-source result in as one more observation.
 function indexFlags(flags, recon = null) {
@@ -127,7 +142,7 @@ export function PettyCash() {
       const parsed = parsePettyCash((grid.sheets || [])[0]);
       const result = { year: y, rows: parsed.rows, flags: deriveFlags(parsed.rows) };
       setData(result); setCache(`pc:${id}:${y}`, result); setLastSync(Date.now());
-      setOpenCode(null); setSlidesByCode({});
+      setOpenCode(null); setSlidesByCode(readSavedSlides(id, y));
       setMarks(JSON.parse(localStorage.getItem(`pc:review:${id}:${y}`) || '{}'));
     } catch (e) {
       const msg = String(e.message || e);
@@ -148,6 +163,7 @@ export function PettyCash() {
         if (cacheAge(key) <= STALE_MS) {
           const c = getCache(key);
           setData(c.data); setYear(c.data.year); setLastSync(c.ts);
+          setSlidesByCode(readSavedSlides(id, c.data.year));
           setMarks(JSON.parse(localStorage.getItem(`pc:review:${id}:${c.data.year}`) || '{}'));
         } else { load(id, y); }
       }
@@ -194,6 +210,7 @@ export function PettyCash() {
     const key = `pc:${sheetId}:${y}`;
     if (cacheAge(key) <= STALE_MS) {
       const c = getCache(key); setYear(y); setData(c.data); setLastSync(c.ts);
+      setSlidesByCode(readSavedSlides(sheetId, y));
       setMarks(JSON.parse(localStorage.getItem(`pc:review:${sheetId}:${y}`) || '{}'));
     } else { setYear(y); load(sheetId, y); }
   };
@@ -253,6 +270,7 @@ export function PettyCash() {
       for (const r of rows) res[r.rowNo] = compareRow(r, itemsByKey, allItems);
       setSlidesByCode(s => ({ ...s, [person.code]: res }));
       setCache(cacheKey, res);
+      try { localStorage.setItem(slidesKey(sheetId, year, person.code), JSON.stringify(res)); } catch { /* quota */ }
     } catch (e) { alert('อ่านสไลด์ไม่สำเร็จ: ' + (e.message || e)); }
     finally { setComparing(null); }
   };
