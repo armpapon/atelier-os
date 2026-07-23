@@ -284,20 +284,18 @@ export function deriveFlags(rows) {
     .map(g => ({ work: g[0].work, amount: g[0].amountOut, rows: g }))
     .sort((a, b) => b.amount - a.amount);
 
-  // 2) Reused evidence: the same slide pinned on two+ rows *for the same amount*.
-  //    Many employees paste the deck's first-slide link on every row, so one
-  //    slideKey ends up on rows of wildly different totals — one receipt can't
-  //    back two different amounts, so that's lazy linking, not reuse. Keying on
-  //    slide + amount keeps genuine "same receipt, same claim" duplicates and
-  //    drops the noise.
+  // 2) Reused evidence: the same specific slide pinned on a FEW rows. Some
+  //    employees lazily paste the deck's first-slide link onto every row, so a
+  //    slideKey can land on many rows of unrelated totals — that's linking
+  //    noise, not reuse. A genuine "same receipt used twice" shows up as a
+  //    small group (2-3 rows), so we flag those and drop the big lazy sets.
   const slideGroups = new Map();
   for (const r of expenses) {
     if (!r.slideKey) continue;
-    const key = `${r.slideKey}|${r.amountOut.toFixed(2)}`;
-    (slideGroups.get(key) || slideGroups.set(key, []).get(key)).push(r);
+    (slideGroups.get(r.slideKey) || slideGroups.set(r.slideKey, []).get(r.slideKey)).push(r);
   }
   const slideDup = [...slideGroups.values()]
-    .filter(g => g.length > 1)
+    .filter(g => g.length >= 2 && g.length <= 3)
     .map(g => ({ slideKey: g[0].slideKey, rows: g }))
     .sort((a, b) => b.rows.length - a.rows.length);
 
