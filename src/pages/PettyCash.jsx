@@ -29,8 +29,10 @@ const SLIDES_FIELDS =
   + 'table(tableRows(tableCells(text(textElements(textRun(content))))))))';
 
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-const baht = n => '฿' + Math.round(n).toLocaleString('en-US');
-const baht2 = n => '฿' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Amounts keep their satang — the raw sheet numbers carry decimals, so show 2
+// places everywhere rather than rounding them away.
+const baht = n => '฿' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const baht2 = baht;
 const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1] || null;
 
 const FLAG_LABEL = {
