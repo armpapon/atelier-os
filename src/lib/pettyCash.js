@@ -235,7 +235,8 @@ function splitMergedBlocks(rows) {
     // mismatch (mis-parse, missing amount) still falls back to one row.
     const tol = Math.max(5, Math.min(total * 0.02, 40));
     if (parts.every(p => p != null) && Math.abs(sum - total) <= tol) {
-      // Give siblings their parsed amounts; the anchor takes the exact rest.
+      // Give siblings their parsed amounts; the anchor takes the exact rest so
+      // the running balance is preserved.
       let assigned = 0;
       for (let k = 0; k < sibs.length; k++) {
         sibs[k].amountOut = parts[k + 1];
@@ -246,6 +247,16 @@ function splitMergedBlocks(rows) {
       anchor.amountOut = Math.round((total - assigned) * 100) / 100;
       anchor.isExpense = anchor.amountOut > 0;
       anchor.fromMerge = true;
+      // Money has to add up. If the sub-rows' own totals don't sum to the total
+      // the employee recorded, that's a miscalculation worth flagging — not
+      // something to smooth over silently.
+      if (Math.abs(sum - total) > 1) {
+        anchor.sumMismatch = {
+          recorded: total,
+          itemsSum: Math.round(sum * 100) / 100,
+          diff: Math.round((total - sum) * 100) / 100, // + = employee recorded too much
+        };
+      }
     } else {
       // Can't verify the split — keep the combined total, but surface the other
       // receipts so none is lost.
@@ -321,11 +332,17 @@ export function deriveFlags(rows) {
   // 5) Missing evidence: an employee claim with neither a slide link nor a slip.
   const noEvidence = empExpenses.filter(r => !r.hasEvidence);
 
+  // 6) Sum mismatch: a merged block whose sub-item totals don't add up to the
+  //    total the employee recorded — a calculation error, flagged so Pat can
+  //    follow it up (money must be exact).
+  const sumMismatch = expenses.filter(r => r.sumMismatch)
+    .sort((a, b) => Math.abs(b.sumMismatch.diff) - Math.abs(a.sumMismatch.diff));
+
   return {
-    workDup, slideDup, reconcile, outlier, noEvidence,
+    workDup, slideDup, reconcile, outlier, noEvidence, sumMismatch,
     outlierThreshold: threshold,
     deckLevelCount: expenses.filter(r => r.deckLevel).length,
-    total: workDup.length + slideDup.length + reconcile.length + outlier.length + noEvidence.length,
+    total: workDup.length + slideDup.length + reconcile.length + outlier.length + noEvidence.length + sumMismatch.length,
   };
 }
 

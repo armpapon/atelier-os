@@ -37,7 +37,7 @@ const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1]
 
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
-  noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
+  noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ', sumMismatch: 'ยอดรวมไม่ตรง',
 };
 // Every observation explains itself on hover — Pat shares this screen with
 // people who don't know the audit rules, and a bare chip invites guessing.
@@ -50,8 +50,9 @@ const FLAG_HELP = {
   noSource: 'รายการนี้อยู่ในชีทหลัก แต่หาใบเบิกจากฟอร์มของพนักงานไม่เจอ — แปลว่าถูกพิมพ์เข้าชีทตรง ๆ ไม่ผ่านฟอร์ม ควรถามพนักงานว่าเบิกจริงไหม (จุดที่ควรดูก่อนเพื่อน)',
   formMissing: 'พนักงานกดเบิกผ่านฟอร์มแล้ว แต่รายการไม่ถูกนำไปลงในชีทหลัก — ตกหล่นระหว่างทาง หรือถูกตัดออก',
   formDup: 'คนเดียวกันส่งฟอร์มยอดเท่ากัน ห่างกันไม่เกิน 3 วัน — เช็คว่าเป็น 2 งานจริง หรือกดส่งซ้ำ',
+  sumMismatch: 'ยอดรวมทั้งกลุ่มที่พนักงานลงไว้ ไม่เท่ากับผลรวมของรายการย่อยที่เขียนเอง — น่าจะบวก/ลบผิด ควรตรวจสอบ เพราะยอดเงินต้องตรงเป๊ะ (กระทบยอดจ่ายจริง)',
 };
-const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup') ? 'bad' : 'warn';
+const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sumMismatch') ? 'bad' : 'warn';
 // Form timestamps are sheet-local values stored as-if-UTC — display with the
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
@@ -85,6 +86,7 @@ function indexFlags(flags, recon = null) {
   for (const f of flags.reconcile) add(f.row.rowNo, 'reconcile');
   for (const r of flags.outlier) add(r.rowNo, 'outlier');
   for (const r of flags.noEvidence) add(r.rowNo, 'noEvidence');
+  for (const r of (flags.sumMismatch || [])) add(r.rowNo, 'sumMismatch');
   // A row in both a slide-dup and a work-dup group with the same partner would
   // list that partner twice ("↔ กับแถว 60, 60") — keep one per rowNo.
   for (const [k, arr] of partners) {
@@ -639,6 +641,12 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
             : <span style={{ color: 'var(--accent-strong)' }}> · รอทำจ่าย</span>)}
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
+        {r.sumMismatch && (
+          <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>
+            ⚠ พนักงานลงยอดรวม {baht(r.sumMismatch.recorded)} · รวมรายการย่อยได้ {baht(r.sumMismatch.itemsSum)}
+            {' '}({r.sumMismatch.diff > 0 ? 'ลงเกิน' : 'ลงขาด'} {baht(Math.abs(r.sumMismatch.diff))})
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>
           {mark === 'ok' && (flagsSet?.size || cmpView) && (
             <span style={{ ...mono10, alignSelf: 'center', color: '#3c5c3b' }}>ตรวจแล้ว ✓</span>
