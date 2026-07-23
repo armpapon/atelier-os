@@ -79,6 +79,10 @@ export function parseDeck(slides, presId = null) {
       objectId: s.objectId,
       presId,
       date: curDate,
+      // "รายการที่ N" number. N restarts per batch (NOT unique deck-wide), but a
+      // consecutive run of N — or a repeated same N (one claim over 2 slides) —
+      // defines a block, which is what the anchor-window matcher walks.
+      no: Number((s.text.match(/รายการที่\s*(\d+)/) || [])[1]) || null,
       title: itemTitle(s.text),
       amount: parseSlideAmount(s.text),
     });
@@ -100,15 +104,21 @@ function tokens(s = '') {
 
 // Best content match for a sheet row across all parsed deck items.
 // Requires either the amount to agree or ≥2 distinctive shared tokens, so a
-// generic travel claim can't latch onto a random slide.
+// generic travel claim can't latch onto a random slide. Title overlap is weighted
+// ABOVE a bare amount hit (overlap*2 vs +3) so a 2-token งาน match outranks an
+// amount-only coincidence — and an amount-only best (zero title overlap) is trusted
+// ONLY when that amount is unique in the deck. Several months carry the same baht
+// figure, so amount-only across a multi-month deck is the wrong-month trap.
 export function findSlideByContent(row, items) {
   const want = tokens(`${row.work || ''} ${row.project || ''}`);
+  const amtHits = items.filter(i => i.amount != null && Math.abs(i.amount - row.amountOut) <= 1).length;
   let best = null, bestScore = 0;
   for (const item of items) {
     const overlap = [...tokens(item.title)].filter(t => want.has(t)).length;
     const amtOk = item.amount != null && Math.abs(item.amount - row.amountOut) <= 1;
     if (!amtOk && overlap < 2) continue;
-    const score = overlap + (amtOk ? 3 : 0);
+    if (overlap === 0 && amtHits !== 1) continue;
+    const score = overlap * 2 + (amtOk ? 3 : 0);
     if (score > bestScore) { best = item; bestScore = score; }
   }
   return best;
@@ -151,38 +161,93 @@ function overlapsRow(row, group) {
 }
 
 // One sheet row that bundles several receipts (e.g. "…อาหาร 950 / …เดินทาง 153",
-// amount 1,103) has no single slide matching its total. Two ways to pair it up,
-// robust to employees who don't write a TOTAL and split lines differently than
-// the deck does:
-//   1) slides under the SAME "PETTY CASH <date>" divider sum to the row total —
-//      the linked slide (or a title-token overlap) picks which divider;
-//   2) failing that, match each "N บาท" figure in the row to a distinct slide.
+// amount 1,103) has no single slide matching its total. Employees keep each งาน on
+// its own "รายการที่ N" slide, and the row's Evid link lands on the FIRST slide of
+// that row's own block (a consecutive run of N; a repeated N = one claim over 2
+// slides). Since real decks span many months and the same title+amount recurs, a
+// deck-wide amount search grabs another month's receipt (whose total still adds up,
+// so the card falsely shows "✓ ยอดตรง"). We pair the row four ways, most-trustworthy
+// first — this is a fraud audit, so an honest miss beats a confident wrong link:
+//   A) ANCHOR WINDOW (only when the link points at a real slide): walk the block
+//      forward from the anchor and pair each sheet line to a slide INSIDE that
+//      block — never deck-wide. The employee's own link is ground truth for which
+//      block, so a same-amount slide from another month can't be reached.
+//   0) deck-wide per-item (no usable anchor): for each line, the unused slide that
+//      shares its amount AND the most title overlap. HARDENED to fail rather than
+//      accept a zero-title-overlap (amount-only) best — that's the wrong-month trap.
+//   1) date-divider group whose slides sum to the row total — for decks that DO
+//      carry "PETTY CASH <date>" dividers (the linked slide or a title overlap
+//      picks which); PunPun's deck has none, other employees' do.
+//   2) last resort: pair the row's bare "N บาท" figures to distinct slides by amount.
 function matchMultiItem(row, allItems) {
   const presId = rowPresId(row);
   const pool = allItems.filter(i => i.amount != null && (!presId || i.presId === presId));
   if (pool.length < 2) return null;
   const linkedObj = row.slideKey ? row.slideKey.split(':')[1] : null;
+  const lines = lineItems(row.work);
   let pick = null;
 
-  // 0) Per-item match (preferred): for each line-item, take the slide that has
-  //    its amount AND the most title overlap with that line — so each shown
-  //    slide is genuinely that item's slide, even when several slides share an
-  //    amount. Every line must find its own slide, and the picks must sum back
-  //    to the row (a baht of slack per line for rounding).
-  const items = lineItems(row.work);
-  if (items.length >= 2) {
+  // A) Anchor window — stay inside the block the employee's own link points at.
+  if (linkedObj && lines.length >= 2) {
+    // Deck-ordered items for this deck, INCLUDING amount-null slides: a slide whose
+    // amount misparsed must not punch a hole in the block walk.
+    const ordered = allItems.filter(i => !presId || i.presId === presId);
+    const anchor = ordered.findIndex(i => i.objectId === linkedObj);
+    if (anchor >= 0) {
+      // Collect the block: a forward run of N (same N = a 2-slide claim, or N+1),
+      // stopping when the run breaks; capped a little past the line count for
+      // spanned slides so a title-only fallback still has room to land.
+      const win = [ordered[anchor]];
+      for (let k = anchor + 1; k < ordered.length && win.length < lines.length + 3; k++) {
+        const cur = win[win.length - 1], nx = ordered[k];
+        if (cur.no == null || nx.no == null) break;
+        if (nx.no === cur.no || nx.no === cur.no + 1) win.push(nx); else break;
+      }
+      // Assign each line, in order, to a distinct window slide: amount ±1 first,
+      // then title overlap, then window order. ONE line may pair by title/order
+      // alone (its slide's amount misparsed); a second unmatched line fails the pass.
+      const used = new Set(), chosen = [];
+      let ok = true, fell = 0;
+      for (const ln of lines) {
+        const avail = win.filter(s => !used.has(s.objectId));
+        if (!avail.length) { ok = false; break; }
+        const want = tokens(ln.text);
+        const ov = s => [...tokens(s.title)].filter(t => want.has(t)).length;
+        const amtc = avail.filter(s => s.amount != null && Math.abs(s.amount - ln.amount) <= 1);
+        let s, amt;
+        if (amtc.length) {
+          amtc.sort((a, b) => ov(b) - ov(a) || win.indexOf(a) - win.indexOf(b));
+          s = amtc[0]; amt = s.amount;
+        } else {
+          if (fell++) { ok = false; break; }
+          const rest = [...avail].sort((a, b) => ov(b) - ov(a) || win.indexOf(a) - win.indexOf(b));
+          s = rest[0];
+          amt = s.amount != null ? s.amount : ln.amount; // slide amount unreadable → trust the line
+        }
+        used.add(s.objectId); chosen.push({ ...s, amount: amt });
+      }
+      if (ok && Math.abs(chosen.reduce((sum, c) => sum + c.amount, 0) - row.amountOut) <= Math.max(2, lines.length)) pick = chosen;
+    }
+  }
+
+  // 0) deck-wide per-item — no usable anchor, or the window didn't add up. Take,
+  //    per line, the unused slide with its amount AND the most title overlap.
+  if (!pick && lines.length >= 2) {
     const used = new Set(), parts = [];
     let ok = true;
-    for (const it of items) {
+    for (const it of lines) {
       const cands = pool.filter(s => !used.has(s.objectId) && Math.abs(s.amount - it.amount) <= 1);
       if (!cands.length) { ok = false; break; }
       const want = tokens(it.text);
       cands.sort((a, b) =>
         [...tokens(b.title)].filter(t => want.has(t)).length -
         [...tokens(a.title)].filter(t => want.has(t)).length);
+      // A deck-wide best that shares NO งาน token is an amount-only hit — exactly
+      // the cross-month receipt this module exists to reject. Fail, don't guess.
+      if (![...tokens(cands[0].title)].some(t => want.has(t))) { ok = false; break; }
       used.add(cands[0].objectId); parts.push(cands[0]);
     }
-    if (ok && Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) <= Math.max(2, items.length)) pick = parts;
+    if (ok && Math.abs(parts.reduce((s, i) => s + i.amount, 0) - row.amountOut) <= Math.max(2, lines.length)) pick = parts;
   }
 
   // 1) date-divider group whose slides sum to the row total.

@@ -62,9 +62,9 @@ const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em'
 // Slide-compare results persist in localStorage so they survive a reload (the
 // session cache is in-memory only) — Pat runs them once per person and expects
 // them to still be there next time, not vanish on a deploy/refresh.
-const slidesKey = (id, y, code) => `pc:slides:${id}:${y}:${code}`;
+const slidesKey = (id, y, code) => `pc:slides2:${id}:${y}:${code}`;
 function readSavedSlides(id, y) {
-  const out = {}, prefix = `pc:slides:${id}:${y}:`;
+  const out = {}, prefix = `pc:slides2:${id}:${y}:`;
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k && k.startsWith(prefix)) {
