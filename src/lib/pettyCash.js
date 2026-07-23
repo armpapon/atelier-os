@@ -229,7 +229,12 @@ function splitMergedBlocks(rows) {
     const total = anchor.amountOut;
     const parts = [anchor, ...sibs].map(r => amountFromText(r.work));
     const sum = parts.reduce((a, b) => a + (b || 0), 0);
-    if (parts.every(p => p != null) && Math.abs(sum - total) <= 1) {
+    // Allow a small gap between the sub-rows' own totals and the merged total —
+    // employees' arithmetic slips a few baht (a subtraction, a rounded satang).
+    // The anchor absorbs the gap so the running balance is untouched; a large
+    // mismatch (mis-parse, missing amount) still falls back to one row.
+    const tol = Math.max(5, Math.min(total * 0.02, 40));
+    if (parts.every(p => p != null) && Math.abs(sum - total) <= tol) {
       // Give siblings their parsed amounts; the anchor takes the exact rest.
       let assigned = 0;
       for (let k = 0; k < sibs.length; k++) {
