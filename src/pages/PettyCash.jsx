@@ -37,7 +37,7 @@ const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1]
 
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
-  noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ', sumMismatch: 'ยอดรวมไม่ตรง',
+  noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
   sheetDup: 'ลงซ้ำในชีท',
 };
 // Every observation explains itself on hover — Pat shares this screen with
@@ -51,10 +51,9 @@ const FLAG_HELP = {
   noSource: 'รายการนี้อยู่ในชีทหลัก แต่หาใบเบิกจากฟอร์มของพนักงานไม่เจอ — แปลว่าถูกพิมพ์เข้าชีทตรง ๆ ไม่ผ่านฟอร์ม ควรถามพนักงานว่าเบิกจริงไหม (จุดที่ควรดูก่อนเพื่อน)',
   formMissing: 'พนักงานกดเบิกผ่านฟอร์มแล้ว แต่รายการไม่ถูกนำไปลงในชีทหลัก — ตกหล่นระหว่างทาง หรือถูกตัดออก',
   formDup: 'คนเดียวกันส่งฟอร์มยอดเท่ากัน ห่างกันไม่เกิน 3 วัน — เช็คว่าเป็น 2 งานจริง หรือกดส่งซ้ำ',
-  sumMismatch: 'ยอดรวมทั้งกลุ่มที่พนักงานลงไว้ ไม่เท่ากับผลรวมของรายการย่อยที่เขียนเอง — น่าจะบวก/ลบผิด ควรตรวจสอบ เพราะยอดเงินต้องตรงเป๊ะ (กระทบยอดจ่ายจริง)',
   sheetDup: 'รายการนี้ถูกลงในชีทหลักซ้ำ — ยอดเดียวกัน หลักฐาน (สไลด์) ใบเดียวกัน แต่พนักงานส่งฟอร์มมาแค่ครั้งเดียว แถวนี้คือสำเนาที่เกินมาในชีท (ไม่ใช่งานคนละครั้ง) แม้จะขึ้น "จ่ายแล้ว" ก็เพราะผูกกับใบเบิกใบเดียวกัน — ต้องเช็คว่าเงินจริงจ่ายออกกี่ครั้งใน Make/บัญชี',
 };
-const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sumMismatch' || t === 'sheetDup') ? 'bad' : 'warn';
+const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sheetDup') ? 'bad' : 'warn';
 // Form timestamps are sheet-local values stored as-if-UTC — display with the
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
@@ -89,7 +88,6 @@ function indexFlags(flags, recon = null) {
   for (const f of flags.reconcile) add(f.row.rowNo, 'reconcile');
   for (const r of flags.outlier) add(r.rowNo, 'outlier');
   for (const r of flags.noEvidence) add(r.rowNo, 'noEvidence');
-  for (const r of (flags.sumMismatch || [])) add(r.rowNo, 'sumMismatch');
   // A row in both a slide-dup and a work-dup group with the same partner would
   // list that partner twice ("↔ กับแถว 60, 60") — keep one per rowNo.
   for (const [k, arr] of partners) {
@@ -510,6 +508,50 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
   );
 }
 
+// Split a month's rows into render segments: consecutive rows sharing a blockId
+// become one { block: true } segment (a merged sheet block, shown as one group
+// whose header is the column-H total); everything between stays plain rows.
+function groupBlocks(rows) {
+  const segs = [];
+  for (const r of rows) {
+    const last = segs[segs.length - 1];
+    if (r.blockId != null) {
+      if (last?.block && last.rows[0].blockId === r.blockId) last.rows.push(r);
+      else segs.push({ block: true, rows: [r] });
+    } else if (last && !last.block) last.rows.push(r);
+    else segs.push({ block: false, rows: [r] });
+  }
+  return segs;
+}
+
+// One merged sheet block as a single bordered group: header = "แถวรวม X–Y" with
+// the authoritative column-H total, then every member row inside with its own
+// written amount, slide compare, flags, and ✓/✗ marks — mirroring the sheet 1:1.
+function BlockGroup({ rows, slides, byRow, partners, marks, setMark, matchInfo, isSeal }) {
+  const anchor = rows.find(r => r.blockTotal != null) || rows[0];
+  const first = rows[0].rowNo, last = rows[rows.length - 1].rowNo;
+  const matched = rows.filter(r => matchInfo?.get(r.rowNo));
+  const allPaid = matched.length > 0 && matched.every(r => matchInfo.get(r.rowNo).paid);
+  return (
+    <div style={{ margin: '10px 12px', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--background-soft)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '9px 14px', borderBottom: '1px dashed var(--line)' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>แถวรวม {first}–{last} · {rows.length} รายการ</div>
+          <div style={{ ...mono10, marginTop: 1 }}>
+            ยอดก้อนเดียวตามชีท (ช่อง H)
+            {matched.length > 0 && <span style={{ color: '#3c5c3b' }}> · ✓ ใบเบิกฟอร์ม {matched.length}/{rows.length}{allPaid ? ' · จ่ายแล้ว ✓' : ''}</span>}
+          </div>
+        </div>
+        <div style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 15.5, fontWeight: 600 }}>{baht2(anchor.blockTotal ?? rows.reduce((s, r) => s + r.amountOut, 0))}</div>
+      </div>
+      {rows.map((r, i) => (
+        <ClaimRow key={r.rowNo} r={r} inBlock={i === 0 ? 'first' : true} flagsSet={byRow.get(r.rowNo)} partners={partners.get(r.rowNo)}
+          cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
+      ))}
+    </div>
+  );
+}
+
 function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, isSeal }) {
   // Group rows by month; respect the month filter.
   const byMonth = {};
@@ -540,10 +582,13 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
             <span>{mk === -1 ? 'ไม่ระบุเดือน' : TH_MONTHS[mk]} · {byMonth[mk].length} รายการ</span>
             <span>{baht(byMonth[mk].reduce((s, r) => s + r.amountOut, 0))}</span>
           </div>
-          {byMonth[mk].map(r => (
-            <ClaimRow key={r.rowNo} r={r} flagsSet={byRow.get(r.rowNo)} partners={partners.get(r.rowNo)}
-              cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
-          ))}
+          {groupBlocks(byMonth[mk]).map(seg => seg.block
+            ? <BlockGroup key={`b${seg.rows[0].rowNo}`} rows={seg.rows} slides={slides} byRow={byRow}
+                partners={partners} marks={marks} setMark={setMark} matchInfo={matchInfo} isSeal={isSeal} />
+            : seg.rows.map(r => (
+              <ClaimRow key={r.rowNo} r={r} flagsSet={byRow.get(r.rowNo)} partners={partners.get(r.rowNo)}
+                cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
+            )))}
         </div>
       ))}
 
@@ -629,11 +674,17 @@ function FormRow({ tone, tag, help, left, main, amt, url }) {
   );
 }
 
-function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal }) {
+function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal, inBlock }) {
   const cmpView = compareView(cmp);
-  const bg = cmp?.status === 'amount_mismatch' ? '#fdf3f0' : (mark === 'no' ? '#fdf3f0' : 'transparent');
+  // A row Pat ticked "✓ ตรง" reads green across the whole strip — verified state
+  // should be visible from across the room. The green wins over the mismatch
+  // tint: her judgement closes the row.
+  const ok = mark === 'ok';
+  const bg = ok ? '#eaf1e6' : cmp?.status === 'amount_mismatch' ? '#fdf3f0' : (mark === 'no' ? '#fdf3f0' : 'transparent');
   return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 14px', borderTop: '1px solid var(--line)', background: bg }}>
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 14px',
+      borderTop: inBlock === 'first' ? 'none' : inBlock ? '1px dashed var(--line)' : '1px solid var(--line)', background: bg,
+      boxShadow: ok ? 'inset 3px 0 0 var(--profit, #3c5c3b)' : 'none' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ ...mono10, marginBottom: 2 }}>
           แถว {r.rowNo}{r.project ? ` · ${r.project}` : ''}
@@ -644,12 +695,6 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
             : <span style={{ color: 'var(--accent-strong)' }}> · รอทำจ่าย</span>)}
         </div>
         <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
-        {r.sumMismatch && (
-          <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>
-            ⚠ พนักงานลงยอดรวม {baht(r.sumMismatch.recorded)} · รวมรายการย่อยได้ {baht(r.sumMismatch.itemsSum)}
-            {' '}({r.sumMismatch.diff > 0 ? 'ลงเกิน' : 'ลงขาด'} {baht(Math.abs(r.sumMismatch.diff))})
-          </div>
-        )}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>
           {mark === 'ok' && (flagsSet?.size || cmpView) && (
             <span style={{ ...mono10, alignSelf: 'center', color: '#3c5c3b' }}>ตรวจแล้ว ✓</span>
@@ -662,13 +707,10 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-        {/* Show what the employee wrote (writtenAmount) for a block-split row; a
-            warped anchor differs from amountOut, so surface the H-side figure below
-            so the person total still visibly reconciles. Money math elsewhere uses amountOut. */}
+        {/* Block rows show the row's own written figure — the block header above
+            already carries the authoritative column-H total, so no reconciling
+            side-note here. Money math elsewhere still uses amountOut. */}
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500 }}>{baht2(r.writtenAmount ?? r.amountOut)}</div>
-        {r.writtenAmount != null && r.writtenAmount !== r.amountOut && (
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>ตามชีท {baht2(r.amountOut)} (แบกส่วนต่างของบล็อก)</div>
-        )}
         {cmp?.parts ? (
           <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
             {cmp.parts.map((p, i) => (

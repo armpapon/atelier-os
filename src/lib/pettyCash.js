@@ -249,28 +249,26 @@ function splitMergedBlocks(rows) {
       // the running balance is preserved. `writtenAmount` records each row's own
       // figure (display-only) — the anchor's amountOut may differ from what the
       // employee wrote because it absorbed the block's discrepancy.
+      // The UI renders the whole block as ONE group: every member carries
+      // blockId (= anchor rowNo) and the anchor carries blockTotal — the exact
+      // column-H figure, which is the only total that ever gets displayed.
+      // Employee side-notes (the หมายเหตุ column, their own line arithmetic)
+      // are theirs to keep — never compared, never flagged.
       let assigned = 0;
       for (let k = 0; k < sibs.length; k++) {
         sibs[k].amountOut = parts[k + 1];
         sibs[k].isExpense = parts[k + 1] > 0;
         sibs[k].fromMerge = true;
         sibs[k].writtenAmount = parts[k + 1];
+        sibs[k].blockId = anchor.rowNo;
         assigned += parts[k + 1];
       }
       anchor.amountOut = Math.round((total - assigned) * 100) / 100;
       anchor.isExpense = anchor.amountOut > 0;
       anchor.fromMerge = true;
       anchor.writtenAmount = parts[0];
-      // Money has to add up. If the sub-rows' own totals don't sum to the total
-      // the employee recorded, that's a miscalculation worth flagging — not
-      // something to smooth over silently.
-      if (Math.abs(sum - total) > 1) {
-        anchor.sumMismatch = {
-          recorded: total,
-          itemsSum: Math.round(sum * 100) / 100,
-          diff: Math.round((total - sum) * 100) / 100, // + = employee recorded too much
-        };
-      }
+      anchor.blockId = anchor.rowNo;
+      anchor.blockTotal = total;
     } else {
       // Can't verify the split — keep the combined total, but surface the other
       // receipts so none is lost.
@@ -342,19 +340,15 @@ export function deriveFlags(rows) {
     .sort((a, b) => b.amountOut - a.amountOut);
 
   // 5) Missing evidence: an employee claim with neither a slide link nor a slip.
+  //    (There is deliberately NO flag comparing column H against the employee's
+  //    own written figures/side-notes — those are theirs; H is the only money.)
   const noEvidence = empExpenses.filter(r => !r.hasEvidence);
 
-  // 6) Sum mismatch: a merged block whose sub-item totals don't add up to the
-  //    total the employee recorded — a calculation error, flagged so Pat can
-  //    follow it up (money must be exact).
-  const sumMismatch = expenses.filter(r => r.sumMismatch)
-    .sort((a, b) => Math.abs(b.sumMismatch.diff) - Math.abs(a.sumMismatch.diff));
-
   return {
-    workDup, slideDup, reconcile, outlier, noEvidence, sumMismatch,
+    workDup, slideDup, reconcile, outlier, noEvidence,
     outlierThreshold: threshold,
     deckLevelCount: expenses.filter(r => r.deckLevel).length,
-    total: workDup.length + slideDup.length + reconcile.length + outlier.length + noEvidence.length + sumMismatch.length,
+    total: workDup.length + slideDup.length + reconcile.length + outlier.length + noEvidence.length,
   };
 }
 
