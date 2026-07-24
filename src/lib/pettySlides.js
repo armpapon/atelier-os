@@ -214,9 +214,31 @@ function matchMultiItem(row, allItems) {
   };
   let pick = null;
 
+  // A0) Numbered link list — the team's current habit: ONE cell carrying a link
+  //     per line ("1) …\n2) …"), in the same order as the Work lines. When the
+  //     row has exactly one deep link per line, the employee has already told us
+  //     which slide is which — pair 1:1 and only verify the amounts. Any hole
+  //     (stale id, deck-level link, amount that disagrees) drops to the tiers
+  //     below rather than guessing.
+  const deepKeys = (row.slideKeys || []).filter(Boolean);
+  if (lines.length >= 2 && deepKeys.length === lines.length) {
+    const byKey = new Map(allItems.map(i => [`${i.presId}:${i.objectId}`, i]));
+    const chosen = [];
+    let ok = true, fell = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const item = byKey.get(deepKeys[i]);
+      if (!item) { ok = false; break; }
+      let amt = item.amount;
+      if (amt == null) { if (fell++) { ok = false; break; } amt = lines[i].amount; }
+      else if (Math.abs(amt - lines[i].amount) > 1) { ok = false; break; }
+      chosen.push({ ...item, amount: amt });
+    }
+    if (ok && gateOk(chosen.reduce((s, c) => s + c.amount, 0), lines.length)) pick = chosen;
+  }
+
   // A) Anchor window — stay inside the block the employee's own link points at.
   //    Resolve the window from the link three ways, first hit wins (see header).
-  if (linkedObj && lines.length >= 1) {
+  if (!pick && linkedObj && lines.length >= 1) {
     // Deck-ordered items for this deck, INCLUDING amount-null slides: a slide whose
     // amount misparsed must not punch a hole in the block walk.
     const ordered = allItems.filter(i => !presId || i.presId === presId);

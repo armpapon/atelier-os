@@ -98,8 +98,11 @@ export function reconcile(formRows, destRows, { year } = {}) {
 
   const destBySlide = new Map();
   for (const d of dests) {
-    const k = slideParts(d.evidenceUrl).key;
-    if (k) (destBySlide.get(k) || destBySlide.set(k, []).get(k)).push(d);
+    // A row may carry a numbered list of links ("1) 2) 3)") — index every one,
+    // once per row, so a form pointing at ANY of the row's slides still ties.
+    const urls = d.evidenceLinks?.length ? d.evidenceLinks : [d.evidenceUrl];
+    const keys = [...new Set(urls.map(u => slideParts(u).key).filter(Boolean))];
+    for (const k of keys) (destBySlide.get(k) || destBySlide.set(k, []).get(k)).push(d);
   }
 
   const fmatch = new Map(); // formRow -> {how, destRows:[rowNo]}

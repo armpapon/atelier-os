@@ -22,19 +22,28 @@ function text(cell) {
   return String(cell?.formattedValue ?? '').trim();
 }
 
-// The evidence URL hides behind the display text. Try, in order: a real cell
-// hyperlink, a link run on the rich text, a =HYPERLINK() formula, then a bare
-// URL typed as the value.
-function cellUrl(cell) {
-  if (!cell) return '';
-  if (cell.hyperlink) return cell.hyperlink;
-  const run = (cell.textFormatRuns || []).find(r => r?.format?.link?.uri);
-  if (run) return run.format.link.uri;
+// The evidence URLs hide behind the display text. The team's habit is a numbered
+// list in ONE cell — "1) PETTY CASH …\n2) PETTY CASH …" — each line its own link
+// run, in the same order as the Work lines. Collect them ALL, in order: the
+// cell-level hyperlink, every rich-text link run, a =HYPERLINK() formula, then a
+// bare URL typed as the value. Consecutive duplicates collapse (the cell
+// hyperlink usually repeats the first run's link); the same link appearing again
+// later is kept — that's the employee's own statement, not noise.
+function cellUrls(cell) {
+  if (!cell) return [];
+  const urls = [];
+  if (cell.hyperlink) urls.push(cell.hyperlink);
+  for (const run of (cell.textFormatRuns || [])) {
+    const u = run?.format?.link?.uri;
+    if (u) urls.push(u);
+  }
   const f = cell.userEnteredValue?.formulaValue;
-  if (f) { const m = f.match(/HYPERLINK\(\s*"([^"]+)"/i); if (m) return m[1]; }
-  const v = String(cell.formattedValue ?? '');
-  return /^https?:\/\//.test(v.trim()) ? v.trim() : '';
+  if (f) { const m = f.match(/HYPERLINK\(\s*"([^"]+)"/i); if (m) urls.push(m[1]); }
+  const v = String(cell.formattedValue ?? '').trim();
+  if (/^https?:\/\//.test(v)) urls.push(v);
+  return urls.filter((u, i) => i === 0 || u !== urls[i - 1]);
 }
+function cellUrl(cell) { return cellUrls(cell)[0] || ''; }
 
 // Google Slides evidence → a dedupe key. A per-slide link (…?slide=id.gXXX)
 // pins one slide, so the same key on two rows = the *same* receipt reused. A
@@ -165,7 +174,8 @@ export function parsePettyCash(sheet) {
     if (mIdx === null) mIdx = lastMonth; else lastMonth = mIdx;
 
     const who = parseName(nameRaw);
-    const ev = slideRef(cellUrl(at(cells, col.evid)));
+    const urls = cellUrls(at(cells, col.evid));
+    const ev = slideRef(urls[0] || '');
     const slip = text(at(cells, col.slip));
     const hasSlip = slip !== '' && slip !== '-';
     rows.push({
@@ -178,6 +188,11 @@ export function parsePettyCash(sheet) {
       evidenceUrl: ev.url,
       slideKey: ev.slideKey,
       deckLevel: ev.deckLevel,
+      // Every link in the cell, in list order ("1) 2) 3)" → line 1, 2, 3), and
+      // the per-link slide keys (null where a link is deck-level). Lets the
+      // compare engine pin line N to its own slide instead of walking a window.
+      evidenceLinks: urls,
+      slideKeys: urls.map(u => slideRef(u).slideKey),
       slip: hasSlip ? slip : '',
       hasEvidence: !!ev.url || hasSlip,
       amountIn, amountOut, balance,
@@ -301,14 +316,16 @@ export function deriveFlags(rows) {
   //    slideKey can land on many rows of unrelated totals — that's linking
   //    noise, not reuse. A genuine "same receipt used twice" shows up as a
   //    small group (2-3 rows), so we flag those and drop the big lazy sets.
+  //    A row may pin SEVERAL slides (the numbered "1) 2) 3)" link list) — every
+  //    one of them counts, but a row joins each slide's group only once.
   const slideGroups = new Map();
   for (const r of expenses) {
-    if (!r.slideKey) continue;
-    (slideGroups.get(r.slideKey) || slideGroups.set(r.slideKey, []).get(r.slideKey)).push(r);
+    const keys = [...new Set([...(r.slideKeys || []), r.slideKey].filter(Boolean))];
+    for (const k of keys) (slideGroups.get(k) || slideGroups.set(k, []).get(k)).push(r);
   }
-  const slideDup = [...slideGroups.values()]
-    .filter(g => g.length >= 2 && g.length <= 3)
-    .map(g => ({ slideKey: g[0].slideKey, rows: g }))
+  const slideDup = [...slideGroups.entries()]
+    .filter(([, g]) => g.length >= 2 && g.length <= 3)
+    .map(([k, g]) => ({ slideKey: k, rows: g }))
     .sort((a, b) => b.rows.length - a.rows.length);
 
   // 3) Balance reconcile: walk the ledger; each recorded balance should equal

@@ -63,16 +63,35 @@ const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em'
 // Slide-compare results persist in localStorage so they survive a reload (the
 // session cache is in-memory only) — Pat runs them once per person and expects
 // them to still be there next time, not vanish on a deploy/refresh.
-const slidesKey = (id, y, code) => `pc:slides3:${id}:${y}:${code}`;
-function readSavedSlides(id, y) {
-  const out = {}, prefix = `pc:slides3:${id}:${y}:`;
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith(prefix)) {
-      try { out[k.slice(prefix.length)] = JSON.parse(localStorage.getItem(k)); } catch { /* ignore */ }
+// Keys carry the TAB TITLE, not the year: the sheet now runs two 2026 tabs
+// ("2026 (2)" the new float, "🟢 2026 (1)" the history) whose row numbers
+// collide, so year-keyed results would light up the wrong rows. The original
+// 🟢-prefixed tabs fall back to their old year-keyed entries so Pat's existing
+// results survive the migration.
+const readLS = k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+const slidesKey = (id, tab, code) => `pc:slides4:${id}:${tab}:${code}`;
+function readSavedSlides(id, tab) {
+  const collect = (prefix) => {
+    const out = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) {
+        const v = readLS(k);
+        if (v) out[k.slice(prefix.length)] = v;
+      }
     }
+    return out;
+  };
+  const out = collect(`pc:slides4:${id}:${tab}:`);
+  if (Object.keys(out).length === 0 && String(tab).startsWith('🟢')) {
+    return collect(`pc:slides3:${id}:${tabYear(tab)}:`);
   }
   return out;
+}
+function readMarks(id, tab) {
+  return readLS(`pc:review2:${id}:${tab}`)
+    ?? (String(tab).startsWith('🟢') ? readLS(`pc:review:${id}:${tabYear(tab)}`) : null)
+    ?? {};
 }
 
 // rowNo → Set(flagType), plus rowNo → partner rows for the grouped dup flags.
@@ -101,8 +120,9 @@ export function PettyCash() {
   const [urlInput, setUrlInput] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [data, setData] = useState(null); // { year, rows, flags }
-  const [yearTabs, setYearTabs] = useState([]);
+  const [data, setData] = useState(null); // { tab, year, rows, flags }
+  const [tabList, setTabList] = useState([]); // real year-tab titles, newest year first, sheet order within a year
+  const [tab, setTab] = useState(null); // selected tab TITLE (e.g. "2026 (2)")
   const [year, setYear] = useState(new Date().getFullYear());
   const [lastSync, setLastSync] = useState(null);
   const [month, setMonth] = useState(null); // null = ทั้งปี
@@ -123,32 +143,35 @@ export function PettyCash() {
     [],
   );
 
-  const load = useCallback(async (id, wantYear) => {
+  const load = useCallback(async (id, wantTab) => {
     if (!id) return;
     setBusy(true);
     try {
       const props = await callProvider('google', { url: `${SHEETS_API}/${id}?fields=sheets.properties(title,sheetId)` });
       if (props?.error) throw new Error(props.error.message || JSON.stringify(props.error));
       const titles = (props.sheets || []).map(s => s.properties?.title || '').filter(Boolean);
-      // year → the real tab title, so we fetch by the actual name (which may be
-      // "SEAL 2026" or "2569"), not by the bare year.
-      const yearMap = new Map();
-      for (const t of titles) { const y = tabYear(t); if (y != null && !yearMap.has(y)) yearMap.set(y, t); }
-      const tabs = [...yearMap.keys()].sort((a, b) => b - a);
+      // Every year-ish tab is selectable BY TITLE — the sheet legitimately runs
+      // several tabs of the same year (a new cash float opens a new tab, e.g.
+      // "2026 (2)" next to "🟢 2026 (1)"), so picking "the tab for year X" is
+      // ambiguous. Newest year first; within a year, sheet order (the keeper
+      // puts the live tab leftmost).
+      const tabs = titles.filter(t => tabYear(t) != null)
+        .sort((a, b) => tabYear(b) - tabYear(a) || titles.indexOf(a) - titles.indexOf(b));
       if (!tabs.length) throw new Error(`ไม่พบแท็บรายปี (เช่น "2026" หรือ "2569") — แท็บที่เจอในชีท: ${titles.join(', ') || '(ไม่มี)'}`);
-      setYearTabs(tabs);
-      const y = tabs.includes(wantYear) ? wantYear : tabs[0];
-      setYear(y);
-      const tabTitle = yearMap.get(y);
+      setTabList(tabs);
+      const remembered = localStorage.getItem(`pc:tab:${id}`);
+      const t = tabs.includes(wantTab) ? wantTab : tabs.includes(remembered) ? remembered : tabs[0];
+      setTab(t); setYear(tabYear(t));
+      localStorage.setItem(`pc:tab:${id}`, t);
       const grid = await callProvider('google', {
-        url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${tabTitle.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
+        url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${t.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
       });
       if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
       const parsed = parsePettyCash((grid.sheets || [])[0]);
-      const result = { year: y, rows: parsed.rows, flags: deriveFlags(parsed.rows) };
-      setData(result); setCache(`pc:${id}:${y}`, result); setLastSync(Date.now());
-      setOpenCode(null); setSlidesByCode(readSavedSlides(id, y));
-      setMarks(JSON.parse(localStorage.getItem(`pc:review:${id}:${y}`) || '{}'));
+      const result = { tab: t, year: tabYear(t), rows: parsed.rows, flags: deriveFlags(parsed.rows) };
+      setData(result); setCache(`pc:${id}:${t}`, result); setLastSync(Date.now());
+      setOpenCode(null); setSlidesByCode(readSavedSlides(id, t));
+      setMarks(readMarks(id, t));
     } catch (e) {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) setInteg(null);
@@ -163,14 +186,14 @@ export function PettyCash() {
       if (cancelled) return;
       const id = i?.meta?.pettycash_sheet_id;
       if (i && (i.scope || '').includes('spreadsheets') && id) {
-        const y = new Date().getFullYear();
-        const key = `pc:${id}:${y}`;
-        if (cacheAge(key) <= STALE_MS) {
+        const remembered = localStorage.getItem(`pc:tab:${id}`);
+        const key = `pc:${id}:${remembered}`;
+        if (remembered && cacheAge(key) <= STALE_MS && getCache(key)?.data?.tab) {
           const c = getCache(key);
-          setData(c.data); setYear(c.data.year); setLastSync(c.ts);
-          setSlidesByCode(readSavedSlides(id, c.data.year));
-          setMarks(JSON.parse(localStorage.getItem(`pc:review:${id}:${c.data.year}`) || '{}'));
-        } else { load(id, y); }
+          setData(c.data); setTab(c.data.tab); setYear(c.data.year); setLastSync(c.ts);
+          setSlidesByCode(readSavedSlides(id, c.data.tab));
+          setMarks(readMarks(id, c.data.tab));
+        } else { load(id, remembered || undefined); }
       }
     };
     run();
@@ -209,15 +232,16 @@ export function PettyCash() {
 
   useEffect(() => { loadRecon(formSheetId, data); }, [formSheetId, data, loadRecon]);
 
-  const pickYear = (y) => {
-    if (y === year && data) return;
+  const pickTab = (t) => {
+    if (t === tab && data) return;
     setMonth(null); setOpenCode(null);
-    const key = `pc:${sheetId}:${y}`;
-    if (cacheAge(key) <= STALE_MS) {
-      const c = getCache(key); setYear(y); setData(c.data); setLastSync(c.ts);
-      setSlidesByCode(readSavedSlides(sheetId, y));
-      setMarks(JSON.parse(localStorage.getItem(`pc:review:${sheetId}:${y}`) || '{}'));
-    } else { setYear(y); load(sheetId, y); }
+    const key = `pc:${sheetId}:${t}`;
+    if (cacheAge(key) <= STALE_MS && getCache(key)?.data?.tab) {
+      const c = getCache(key); setTab(t); setYear(tabYear(t)); setData(c.data); setLastSync(c.ts);
+      localStorage.setItem(`pc:tab:${sheetId}`, t);
+      setSlidesByCode(readSavedSlides(sheetId, t));
+      setMarks(readMarks(sheetId, t));
+    } else { setTab(t); setYear(tabYear(t)); load(sheetId, t); }
   };
 
   const saveSheet = async () => {
@@ -234,7 +258,7 @@ export function PettyCash() {
         pettycash_form_sheet_url: formId ? formUrlInput.trim() : undefined,
       });
       await refreshInteg(); setEditing(false); setUrlInput(''); setFormUrlInput('');
-      load(id, new Date().getFullYear());
+      load(id, undefined);
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + (e.message || e)); }
     finally { setBusy(false); }
   };
@@ -243,13 +267,13 @@ export function PettyCash() {
     setMarks(prev => {
       const next = { ...prev };
       if (next[rowNo] === val) delete next[rowNo]; else next[rowNo] = val;
-      localStorage.setItem(`pc:review:${sheetId}:${year}`, JSON.stringify(next));
+      localStorage.setItem(`pc:review2:${sheetId}:${tab}`, JSON.stringify(next));
       return next;
     });
   };
 
   const compareDeck = async (person) => {
-    const cacheKey = `pcslides:${sheetId}:${year}:${person.code}`;
+    const cacheKey = `pcslides:${sheetId}:${tab}:${person.code}`;
     if (cacheAge(cacheKey) <= STALE_MS) {
       setSlidesByCode(s => ({ ...s, [person.code]: getCache(cacheKey).data })); return;
     }
@@ -275,7 +299,7 @@ export function PettyCash() {
       for (const r of rows) res[r.rowNo] = compareRow(r, itemsByKey, allItems);
       setSlidesByCode(s => ({ ...s, [person.code]: res }));
       setCache(cacheKey, res);
-      try { localStorage.setItem(slidesKey(sheetId, year, person.code), JSON.stringify(res)); } catch { /* quota */ }
+      try { localStorage.setItem(slidesKey(sheetId, tab, person.code), JSON.stringify(res)); } catch { /* quota */ }
     } catch (e) { alert('อ่านสไลด์ไม่สำเร็จ: ' + (e.message || e)); }
     finally { setComparing(null); }
   };
@@ -283,15 +307,15 @@ export function PettyCash() {
   // ── Header actions ─────────────────────────────────────────────────────────
   const actions = connected && sheetId && !editing && (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      {yearTabs.length > 0 && (
-        <div style={{ display: 'flex', gap: 4 }}>
-          {yearTabs.map(y => (
-            <button key={y} onClick={() => pickYear(y)} style={chip(y === year)}>{y}</button>
+      {tabList.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {tabList.map(t => (
+            <button key={t} onClick={() => pickTab(t)} style={chip(t === tab)}>{t}</button>
           ))}
         </div>
       )}
       {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-      <button onClick={() => load(sheetId, year)} disabled={busy} title="รีเฟรช"
+      <button onClick={() => load(sheetId, tab)} disabled={busy} title="รีเฟรช"
         style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
       <button onClick={() => {
         setEditing(true);
@@ -724,6 +748,16 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
               style={{ fontSize: 11.5, color: '#3c5c3b', textDecoration: 'none', border: '1px solid var(--profit, #5b8a5a)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--profit-soft, #dbe7d3)', whiteSpace: 'nowrap' }}>สไลด์ที่ใช่ ↗</a>
             {r.evidenceUrl && <a href={r.evidenceUrl} target="_blank" rel="noreferrer"
               style={{ fontSize: 11.5, color: 'var(--ink-3)', textDecoration: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ลิงก์เดิม ↗</a>}
+          </span>
+        ) : (r.evidenceLinks?.length || 0) > 1 ? (
+          // The team's numbered link list ("1) 2) 3)") — one button per link, in
+          // the same order as the Work lines, until a slide compare replaces
+          // them with amount-verified buttons.
+          <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: 180 }}>
+            {r.evidenceLinks.map((u, i) => (
+              <a key={i} href={u} target="_blank" rel="noreferrer"
+                style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-sm)', padding: '2px 7px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ใบ {i + 1} ↗</a>
+            ))}
           </span>
         ) : r.evidenceUrl
           ? <a href={r.evidenceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--accent-strong)', textDecoration: 'none', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ดูสไลด์ ↗</a>
