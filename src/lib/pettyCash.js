@@ -155,8 +155,11 @@ export function parsePettyCash(sheet) {
     const balance = num(at(cells, col.balance));
     const work = text(at(cells, col.work));
     const project = text(at(cells, col.project));
-    // Skip fully-blank spacer rows (no party, no money, no balance).
-    if (!nameRaw && !work && amountIn === null && amountOut === null && balance === null) continue;
+    // Skip rows that carry no claim and no ledger anchor: spacer rows, and the
+    // keeper's treasury notes ("โอนเพิ่ม 6,566.19" with the amount parked in the
+    // เงินออก column) — a claim always names a party or describes the work, so a
+    // bare amount with neither is bookkeeping, not an expense.
+    if (!nameRaw && !work && balance === null) continue;
 
     let mIdx = monthIndex(text(at(cells, col.month)));
     if (mIdx === null) mIdx = lastMonth; else lastMonth = mIdx;

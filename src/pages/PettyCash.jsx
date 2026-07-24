@@ -38,6 +38,7 @@ const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1]
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
   noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ', sumMismatch: 'ยอดรวมไม่ตรง',
+  sheetDup: 'ลงซ้ำในชีท',
 };
 // Every observation explains itself on hover — Pat shares this screen with
 // people who don't know the audit rules, and a bare chip invites guessing.
@@ -51,8 +52,9 @@ const FLAG_HELP = {
   formMissing: 'พนักงานกดเบิกผ่านฟอร์มแล้ว แต่รายการไม่ถูกนำไปลงในชีทหลัก — ตกหล่นระหว่างทาง หรือถูกตัดออก',
   formDup: 'คนเดียวกันส่งฟอร์มยอดเท่ากัน ห่างกันไม่เกิน 3 วัน — เช็คว่าเป็น 2 งานจริง หรือกดส่งซ้ำ',
   sumMismatch: 'ยอดรวมทั้งกลุ่มที่พนักงานลงไว้ ไม่เท่ากับผลรวมของรายการย่อยที่เขียนเอง — น่าจะบวก/ลบผิด ควรตรวจสอบ เพราะยอดเงินต้องตรงเป๊ะ (กระทบยอดจ่ายจริง)',
+  sheetDup: 'รายการนี้ถูกลงในชีทหลักซ้ำ — ยอดเดียวกัน หลักฐาน (สไลด์) ใบเดียวกัน แต่พนักงานส่งฟอร์มมาแค่ครั้งเดียว แถวนี้คือสำเนาที่เกินมาในชีท (ไม่ใช่งานคนละครั้ง) แม้จะขึ้น "จ่ายแล้ว" ก็เพราะผูกกับใบเบิกใบเดียวกัน — ต้องเช็คว่าเงินจริงจ่ายออกกี่ครั้งใน Make/บัญชี',
 };
-const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sumMismatch') ? 'bad' : 'warn';
+const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sumMismatch' || t === 'sheetDup') ? 'bad' : 'warn';
 // Form timestamps are sheet-local values stored as-if-UTC — display with the
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
@@ -81,6 +83,7 @@ function indexFlags(flags, recon = null) {
   const partners = new Map();
   const add = (rowNo, t) => { if (!byRow.has(rowNo)) byRow.set(rowNo, new Set()); byRow.get(rowNo).add(t); };
   if (recon) for (const d of recon.destNoSource) add(d.rowNo, 'noSource');
+  if (recon) for (const d of (recon.destDup || [])) add(d.rowNo, 'sheetDup');
   for (const g of flags.slideDup) g.rows.forEach(r => { add(r.rowNo, 'slideDup'); partners.set(r.rowNo, g.rows.filter(x => x.rowNo !== r.rowNo)); });
   for (const g of flags.workDup) g.rows.forEach(r => { add(r.rowNo, 'workDup'); partners.set(r.rowNo, [...(partners.get(r.rowNo) || []), ...g.rows.filter(x => x.rowNo !== r.rowNo)]); });
   for (const f of flags.reconcile) add(f.row.rowNo, 'reconcile');

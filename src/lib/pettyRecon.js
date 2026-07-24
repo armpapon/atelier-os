@@ -151,6 +151,38 @@ export function reconcile(formRows, destRows, { year } = {}) {
     }
   }
 
+  // Same claim recorded on the curated sheet MORE times than the employee
+  // actually submitted it: one form (matched by its own slide link) is tied to
+  // several sheet rows carrying the SAME amount. The lowest row is the real one;
+  // the rest are the sheet's own extra copies — they still read as "จ่ายแล้ว"
+  // off that single form, so they'd otherwise pass silently. The amount must
+  // match, so a legitimate split (one form → sheet lines of DIFFERENT amounts
+  // that sum to it) is never touched, and neither is a reused evidence link
+  // across genuinely different amounts (บิว ฿672/฿668). This is the sheet-side
+  // double-entry the fraud audit is looking for; verify the real cash-out in
+  // Make/bank, since Loop only reads.
+  const destDup = [];
+  const dupSeen = new Set(); // a row can be reached via >1 form (shared slide) — flag it once
+  for (const [formRow, m] of fmatch) {
+    if (m.how !== 'slide' || m.destRows.length < 2) continue;
+    const byAmt = new Map();
+    for (const rn of m.destRows) {
+      const d = dests.find(x => x.rowNo === rn);
+      if (!d) continue;
+      const k = d.amountOut.toFixed(2);
+      (byAmt.get(k) || byAmt.set(k, []).get(k)).push(d);
+    }
+    for (const grp of byAmt.values()) {
+      if (grp.length < 2) continue;
+      grp.sort((a, b) => a.rowNo - b.rowNo);
+      for (const d of grp.slice(1)) {
+        if (dupSeen.has(d.rowNo)) continue;
+        dupSeen.add(d.rowNo);
+        destDup.push({ rowNo: d.rowNo, code: d.code, amount: d.amountOut, keep: grp[0].rowNo, formRow });
+      }
+    }
+  }
+
   // The last form→sheet copy lags; a recent unmatched form row is "pending",
   // not "missing". 21 days covers the payout batching seen in the data.
   const cutoff = Date.now() - 21 * 86400000;
@@ -190,7 +222,7 @@ export function reconcile(formRows, destRows, { year } = {}) {
     forms, dests, fmatch, dmatch, coverage,
     matchedForms: forms.filter(f => fmatch.has(f.formRow)).length,
     matchedDests: dests.filter(d => dmatch.has(d.rowNo)).length,
-    formMissing, formPending, destNoSource, formDup,
+    formMissing, formPending, destNoSource, formDup, destDup,
   };
 }
 
