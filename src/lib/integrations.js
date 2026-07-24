@@ -147,7 +147,11 @@ export async function callProvider(provider, { url, method = 'GET', body } = {})
       if (text) {
         try {
           const j = JSON.parse(text);
+          // The proxy's own crash wrapper is { error: 'exception', detail: <real
+          // cause> } — the bare word must never win over its detail, or every
+          // failure (e.g. a Google token refresh rejection) reads as "exception".
           detail = j?.error?.message || j?.error?.detail || j?.errors?.[0]?.message
+            || (typeof j?.error === 'string' && j?.detail ? `${j.error} — ${j.detail}` : null)
             || j?.error || j?.detail || text;
         } catch { detail = text; }
       }

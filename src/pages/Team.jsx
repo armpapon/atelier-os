@@ -69,7 +69,10 @@ export function Team() {
     } catch (e) {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) setInteg(null);
-      else alert('อ่านทะเบียนไม่สำเร็จ: ' + msg);
+      else if (/refresh_failed|invalid_grant/.test(msg)) {
+        alert('การเชื่อม Google หมดอายุ — กด "เชื่อม Google" อีกครั้งเพื่อต่ออายุ');
+        setInteg(null);
+      } else alert('อ่านทะเบียนไม่สำเร็จ: ' + msg);
     } finally { setBusy(false); }
   }, []);
 

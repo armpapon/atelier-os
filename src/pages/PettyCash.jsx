@@ -175,7 +175,13 @@ export function PettyCash() {
     } catch (e) {
       const msg = String(e.message || e);
       if (msg.includes('not_connected')) setInteg(null);
-      else alert('อ่านชีทไม่สำเร็จ: ' + msg);
+      else if (/refresh_failed|invalid_grant/.test(msg)) {
+        // Google rejected the stored refresh token (revoked, or it expired —
+        // an OAuth app left in "Testing" kills refresh tokens every 7 days).
+        // Reconnecting mints a fresh one; show the connect screen, not a wall.
+        alert('การเชื่อม Google หมดอายุ — กด "เชื่อม Google" อีกครั้งเพื่อต่ออายุ แล้วข้อมูลจะกลับมาเหมือนเดิม');
+        setInteg(null);
+      } else alert('อ่านชีทไม่สำเร็จ: ' + msg);
     } finally { setBusy(false); }
   }, []);
 
@@ -300,8 +306,13 @@ export function PettyCash() {
       setSlidesByCode(s => ({ ...s, [person.code]: res }));
       setCache(cacheKey, res);
       try { localStorage.setItem(slidesKey(sheetId, tab, person.code), JSON.stringify(res)); } catch { /* quota */ }
-    } catch (e) { alert('อ่านสไลด์ไม่สำเร็จ: ' + (e.message || e)); }
-    finally { setComparing(null); }
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (/not_connected|refresh_failed|invalid_grant/.test(msg)) {
+        alert('การเชื่อม Google หมดอายุ — กด "เชื่อม Google" อีกครั้งเพื่อต่ออายุ');
+        setInteg(null);
+      } else alert('อ่านสไลด์ไม่สำเร็จ: ' + msg);
+    } finally { setComparing(null); }
   };
 
   // ── Header actions ─────────────────────────────────────────────────────────
