@@ -229,6 +229,34 @@ export function reconcile(formRows, destRows, { year } = {}) {
   };
 }
 
+// ── Cross-tab duplicates — the fresh-start blind spot ───────────────────────
+// The keeper opens a NEW tab per cash float ("2026 (2)" restarts from ฿10,000
+// while "🟢 2026 (1)" holds the closed first half). Each tab audits itself, so
+// a claim entered in BOTH tabs (easy during the hand-over: "ยอดตกหล่น" catch-up
+// rows) would be paid from two floats with no flag anywhere. Detect it here:
+// a display-tab row whose (person, own written amount, any pinned slide)
+// matches a sibling-tab row is the same claim living twice.
+// Returns Map(display rowNo → the sibling row it collides with).
+export function crossTabDups(rows, sibRows) {
+  const out = new Map();
+  if (!sibRows?.length) return out;
+  const amt = r => Number(r.writtenAmount ?? r.amountOut).toFixed(2);
+  const keysOf = r => [...new Set([...(r.slideKeys || []), r.slideKey].filter(Boolean))];
+  const sibIdx = new Map();
+  for (const s of sibRows) {
+    if (!s.isExpense || !s.isEmployee) continue;
+    for (const k of keysOf(s)) sibIdx.set(`${s.code}|${amt(s)}|${k}`, s);
+  }
+  for (const r of rows) {
+    if (!r.isExpense || !r.isEmployee) continue;
+    for (const k of keysOf(r)) {
+      const hit = sibIdx.get(`${r.code}|${amt(r)}|${k}`);
+      if (hit) { out.set(r.rowNo, hit); break; }
+    }
+  }
+  return out;
+}
+
 // ── Person-centric projections — the UI leads with people, not lists ────────
 // Split a reconcile() result per employee code so each person's card can carry
 // its own recon observations.

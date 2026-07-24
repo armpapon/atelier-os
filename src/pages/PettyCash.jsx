@@ -17,7 +17,7 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 import { parseSheetId } from '../lib/sheetTimeline.js';
 import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
-import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue } from '../lib/pettyRecon.js';
+import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const GRID_FIELDS =
@@ -38,7 +38,7 @@ const presIdOf = (url = '') => (url.match(/presentation\/d\/([\w-]+)/) || [])[1]
 const FLAG_LABEL = {
   slideDup: 'สไลด์ซ้ำ', workDup: 'เบิกซ้ำ', reconcile: 'คงเหลือเพี้ยน', outlier: 'ยอดสูง', noEvidence: 'ไม่มีหลักฐาน',
   noSource: 'ไม่ได้กรอกฟอร์ม', formMissing: 'เบิกแล้วไม่ถึงชีท', formDup: 'ส่งฟอร์มซ้ำ',
-  sheetDup: 'ลงซ้ำในชีท',
+  sheetDup: 'ลงซ้ำในชีท', crossTab: 'ลงซ้ำข้ามแท็บ',
 };
 // Every observation explains itself on hover — Pat shares this screen with
 // people who don't know the audit rules, and a bare chip invites guessing.
@@ -52,8 +52,9 @@ const FLAG_HELP = {
   formMissing: 'พนักงานกดเบิกผ่านฟอร์มแล้ว แต่รายการไม่ถูกนำไปลงในชีทหลัก — ตกหล่นระหว่างทาง หรือถูกตัดออก',
   formDup: 'คนเดียวกันส่งฟอร์มยอดเท่ากัน ห่างกันไม่เกิน 3 วัน — เช็คว่าเป็น 2 งานจริง หรือกดส่งซ้ำ',
   sheetDup: 'รายการนี้ถูกลงในชีทหลักซ้ำ — ยอดเดียวกัน หลักฐาน (สไลด์) ใบเดียวกัน แต่พนักงานส่งฟอร์มมาแค่ครั้งเดียว แถวนี้คือสำเนาที่เกินมาในชีท (ไม่ใช่งานคนละครั้ง) แม้จะขึ้น "จ่ายแล้ว" ก็เพราะผูกกับใบเบิกใบเดียวกัน — ต้องเช็คว่าเงินจริงจ่ายออกกี่ครั้งใน Make/บัญชี',
+  crossTab: 'ใบเบิกใบเดียวกัน (คนเดียวกัน ยอดเท่ากัน สไลด์ใบเดียวกัน) โผล่ทั้งแท็บนี้และอีกแท็บของปีเดียวกัน — ช่วงเปลี่ยนกองเงินอาจถูกลงซ้ำสองกอง = เสี่ยงจ่ายซ้ำ เช็คใน Make ว่าจ่ายจากกองไหนกันแน่',
 };
-const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sheetDup') ? 'bad' : 'warn';
+const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' || t === 'formDup' || t === 'sheetDup' || t === 'crossTab') ? 'bad' : 'warn';
 // Form timestamps are sheet-local values stored as-if-UTC — display with the
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
@@ -96,12 +97,13 @@ function readMarks(id, tab) {
 
 // rowNo → Set(flagType), plus rowNo → partner rows for the grouped dup flags.
 // `recon` (optional) folds the form-source result in as one more observation.
-function indexFlags(flags, recon = null) {
+function indexFlags(flags, recon = null, crossDup = null) {
   const byRow = new Map();
   const partners = new Map();
   const add = (rowNo, t) => { if (!byRow.has(rowNo)) byRow.set(rowNo, new Set()); byRow.get(rowNo).add(t); };
   if (recon) for (const d of recon.destNoSource) add(d.rowNo, 'noSource');
   if (recon) for (const d of (recon.destDup || [])) add(d.rowNo, 'sheetDup');
+  if (crossDup) for (const rowNo of crossDup.keys()) add(rowNo, 'crossTab');
   for (const g of flags.slideDup) g.rows.forEach(r => { add(r.rowNo, 'slideDup'); partners.set(r.rowNo, g.rows.filter(x => x.rowNo !== r.rowNo)); });
   for (const g of flags.workDup) g.rows.forEach(r => { add(r.rowNo, 'workDup'); partners.set(r.rowNo, [...(partners.get(r.rowNo) || []), ...g.rows.filter(x => x.rowNo !== r.rowNo)]); });
   for (const f of flags.reconcile) add(f.row.rowNo, 'reconcile');
@@ -168,7 +170,29 @@ export function PettyCash() {
       });
       if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
       const parsed = parsePettyCash((grid.sheets || [])[0]);
-      const result = { tab: t, year: tabYear(t), rows: parsed.rows, flags: deriveFlags(parsed.rows) };
+      // Same-year sibling tabs ride along for the form reconcile: a fresh-start
+      // tab ("2026 (2)") only holds the new float's rows, so matching forms
+      // against it alone would scream "เบิกแล้วไม่ถึงชีท" for every claim already
+      // settled in "🟢 2026 (1)" — and a claim entered in BOTH floats would slip
+      // through unseen. Sibling rowNos are offset far out of the display range
+      // (they collide with the display tab's), keeping their real number and
+      // tab title for the cross-tab flag. Siblings are an enhancement: any
+      // failure here must never break the main tab.
+      const sibTitles = tabs.filter(x => x !== t && tabYear(x) === tabYear(t));
+      let siblingRows = [];
+      for (let i = 0; i < sibTitles.length; i++) {
+        try {
+          const g2 = await callProvider('google', {
+            url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${sibTitles[i].replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
+          });
+          if (g2?.error) continue;
+          const p2 = parsePettyCash((g2.sheets || [])[0]);
+          siblingRows = siblingRows.concat(p2.rows.map(r => ({
+            ...r, origRowNo: r.rowNo, rowNo: r.rowNo + 100000 * (i + 1), tabTitle: sibTitles[i],
+          })));
+        } catch { /* sibling tab unreadable — recon just sees less */ }
+      }
+      const result = { tab: t, year: tabYear(t), rows: parsed.rows, flags: deriveFlags(parsed.rows), siblingRows };
       setData(result); setCache(`pc:${id}:${t}`, result); setLastSync(Date.now());
       setOpenCode(null); setSlidesByCode(readSavedSlides(id, t));
       setMarks(readMarks(id, t));
@@ -230,7 +254,9 @@ export function PettyCash() {
         forms = parseFormResponses((grid.sheets || [])[0]);
         if (forms.length) setCache(cacheKey, forms);
       }
-      setRecon(forms.length ? reconcile(forms, destData.rows, { year: destData.year }) : null);
+      setRecon(forms.length
+        ? reconcile(forms, destData.rows.concat(destData.siblingRows || []), { year: destData.year })
+        : null);
     } catch {
       setRecon(null); // recon is an enhancement — the sheet view must not break with it
     }
@@ -362,7 +388,8 @@ export function PettyCash() {
 // ── Board: month filter, tiles, person cards ─────────────────────────────────
 function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCode, comparing, compareDeck, hasSlides, marks, setMark, onConnectSlides }) {
   const { year, rows, flags } = data;
-  const { byRow, partners } = indexFlags(flags, recon);
+  const crossDup = crossTabDups(rows, data?.siblingRows);
+  const { byRow, partners } = indexFlags(flags, recon, crossDup);
   const perRecon = recon ? reconByPerson(recon) : new Map();
   const matchInfo = recon ? destMatchInfo(recon) : new Map();
   const inMonth = r => month == null || r.monthIdx === month;
@@ -457,7 +484,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
               <PersonCard key={p.code} p={p} open={openCode === p.code}
                 onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
                 slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
-                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} />
+                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} crossDup={crossDup} />
             ))}
           </div>
         </>
@@ -470,7 +497,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
               <PersonCard key={p.code} p={p} open={openCode === p.code}
                 onToggle={() => setOpenCode(openCode === p.code ? null : p.code)}
                 slides={slidesByCode[p.code]} comparing={comparing === p.code} compareDeck={compareDeck}
-                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} />
+                hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} crossDup={crossDup} />
             ))}
           </div>
         </>
@@ -482,7 +509,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
             <PersonCard p={seal} open={openCode === seal.code}
               onToggle={() => setOpenCode(openCode === seal.code ? null : seal.code)}
               slides={slidesByCode[seal.code]} comparing={comparing === seal.code} compareDeck={compareDeck}
-              hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} isSeal />
+              hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} crossDup={crossDup} isSeal />
           </div>
         </>
       )}
@@ -496,7 +523,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
   );
 }
 
-function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, isSeal }) {
+function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, crossDup, isSeal }) {
   const avatar = (p.label || '?').trim()[0] || '?';
   const border = p.flagTotal > 0 ? 'var(--danger)' : (isSeal ? 'var(--line)' : 'var(--profit)');
   const reviewed = p.rows.filter(r => marks[r.rowNo]).length;
@@ -537,7 +564,7 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
 
       {open && (
         <PersonDetail p={p} slides={slides} comparing={comparing} compareDeck={compareDeck}
-          hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} isSeal={isSeal} />
+          hasSlides={hasSlides} byRow={byRow} partners={partners} marks={marks} setMark={setMark} month={month} matchInfo={matchInfo} crossDup={crossDup} isSeal={isSeal} />
       )}
     </div>
   );
@@ -562,7 +589,7 @@ function groupBlocks(rows) {
 // One merged sheet block as a single bordered group: header = "แถวรวม X–Y" with
 // the authoritative column-H total, then every member row inside with its own
 // written amount, slide compare, flags, and ✓/✗ marks — mirroring the sheet 1:1.
-function BlockGroup({ rows, slides, byRow, partners, marks, setMark, matchInfo, isSeal }) {
+function BlockGroup({ rows, slides, byRow, partners, marks, setMark, matchInfo, crossDup, isSeal }) {
   const anchor = rows.find(r => r.blockTotal != null) || rows[0];
   const first = rows[0].rowNo, last = rows[rows.length - 1].rowNo;
   const matched = rows.filter(r => matchInfo?.get(r.rowNo));
@@ -581,13 +608,13 @@ function BlockGroup({ rows, slides, byRow, partners, marks, setMark, matchInfo, 
       </div>
       {rows.map((r, i) => (
         <ClaimRow key={r.rowNo} r={r} inBlock={i === 0 ? 'first' : true} flagsSet={byRow.get(r.rowNo)} partners={partners.get(r.rowNo)}
-          cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
+          cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} crossInfo={crossDup?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
       ))}
     </div>
   );
 }
 
-function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, isSeal }) {
+function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, partners, marks, setMark, month, matchInfo, crossDup, isSeal }) {
   // Group rows by month; respect the month filter.
   const byMonth = {};
   for (const r of p.rows) { const k = r.monthIdx ?? -1; (byMonth[k] || (byMonth[k] = [])).push(r); }
@@ -619,10 +646,10 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
           </div>
           {groupBlocks(byMonth[mk]).map(seg => seg.block
             ? <BlockGroup key={`b${seg.rows[0].rowNo}`} rows={seg.rows} slides={slides} byRow={byRow}
-                partners={partners} marks={marks} setMark={setMark} matchInfo={matchInfo} isSeal={isSeal} />
+                partners={partners} marks={marks} setMark={setMark} matchInfo={matchInfo} crossDup={crossDup} isSeal={isSeal} />
             : seg.rows.map(r => (
               <ClaimRow key={r.rowNo} r={r} flagsSet={byRow.get(r.rowNo)} partners={partners.get(r.rowNo)}
-                cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
+                cmp={slides?.[r.rowNo]} formMatch={matchInfo?.get(r.rowNo)} crossInfo={crossDup?.get(r.rowNo)} mark={marks[r.rowNo]} setMark={setMark} isSeal={isSeal} />
             )))}
         </div>
       ))}
@@ -709,7 +736,7 @@ function FormRow({ tone, tag, help, left, main, amt, url }) {
   );
 }
 
-function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal, inBlock }) {
+function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setMark, isSeal, inBlock }) {
   const cmpView = compareView(cmp);
   // A row Pat ticked "✓ ตรง" reads green across the whole strip — verified state
   // should be visible from across the room. The green wins over the mismatch
@@ -737,6 +764,11 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, mark, setMark, isSeal
           {[...(flagsSet || [])].map(t => <FlagChip key={t} type={t} />)}
           {partners && partners.length > 0 && (flagsSet?.has('slideDup') || flagsSet?.has('workDup')) && (
             <span style={{ ...mono10, alignSelf: 'center' }}>↔ กับแถว {partners.map(x => x.rowNo).join(', ')}</span>
+          )}
+          {crossInfo && (
+            <span style={{ ...mono10, alignSelf: 'center', color: 'var(--danger)' }}>
+              ↔ ใบเดียวกันอยู่ในแท็บ {crossInfo.tabTitle} แถว {crossInfo.origRowNo}
+            </span>
           )}
           {cmpView && <FlagChip tone={cmpView.tone} label={cmpView.text} help={cmpView.help} />}
         </div>
