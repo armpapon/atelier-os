@@ -257,6 +257,35 @@ export function crossTabDups(rows, sibRows) {
   return out;
 }
 
+// ── Which tab owns a form-side observation? ─────────────────────────────────
+// Same-year tabs split the year at each tab's earliest active month: a
+// fresh-start float ("2026 (2)", opened July) owns July onward; the earliest
+// tab reaches back through its own months into the prior year's late-filed
+// forms. Only UNMATCHED form observations (เบิกแล้วไม่ถึงชีท / ส่งฟอร์มซ้ำ /
+// รอลงชีท) are routed — row-bound matches already sit on their tab's rows.
+// Without this, the fresh tab surfaces June observations and reads as
+// "pulling the other tab's data" (Pat's เก้า report, 2026-07-26).
+export function formCoverage(rows, sibRows, year) {
+  const minMonth = rs => {
+    let m = null;
+    for (const r of rs || []) if (r.monthIdx != null) m = m == null ? r.monthIdx : Math.min(m, r.monthIdx);
+    return m;
+  };
+  const my = minMonth(rows);
+  if (my == null) return () => true;
+  const byTab = new Map();
+  for (const s of sibRows || []) (byTab.get(s.tabTitle) || byTab.set(s.tabTitle, []).get(s.tabTitle)).push(s);
+  const sibMins = [...byTab.values()].map(minMonth).filter(m => m != null);
+  const lo = sibMins.some(m => m < my) ? my : -Infinity;
+  const next = sibMins.filter(m => m > my).sort((a, b) => a - b)[0];
+  const hi = next ?? Infinity;
+  return ts => {
+    const fy = ts.getUTCFullYear();
+    const m = fy < year ? -1 : fy > year ? 12 : ts.getUTCMonth();
+    return m >= lo && m < hi;
+  };
+}
+
 // ── Person-centric projections — the UI leads with people, not lists ────────
 // Split a reconcile() result per employee code so each person's card can carry
 // its own recon observations.

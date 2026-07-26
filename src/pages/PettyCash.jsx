@@ -17,7 +17,7 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 import { parseSheetId } from '../lib/sheetTimeline.js';
 import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
-import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups } from '../lib/pettyRecon.js';
+import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups, formCoverage } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const GRID_FIELDS =
@@ -419,11 +419,14 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
     for (const t of (byRow.get(r.rowNo) || [])) g.flagCounts[t] = (g.flagCounts[t] || 0) + 1;
   }
   // Fold in the form-side observations — including people who claimed via the
-  // form but have NO sheet rows at all (they must still surface).
+  // form but have NO sheet rows at all (they must still surface). Each one is
+  // routed to the tab whose period it belongs to (formCoverage), so a
+  // fresh-start tab doesn't parade the closed tab's leftovers.
+  const inTab = formCoverage(rows, data.siblingRows, year);
   for (const [code, pr] of perRecon) {
-    const missing = pr.missing.filter(tsInMonth);
-    const pending = pr.pending.filter(tsInMonth);
-    const dups = pr.dups.filter(([a]) => tsInMonth(a));
+    const missing = pr.missing.filter(f => inTab(f.ts) && tsInMonth(f));
+    const pending = pr.pending.filter(f => inTab(f.ts) && tsInMonth(f));
+    const dups = pr.dups.filter(([a]) => inTab(a.ts) && tsInMonth(a));
     if (!missing.length && !pending.length && !dups.length) continue;
     const label = map.get(code)?.label
       || parseName((missing[0] || pending[0] || dups[0]?.[0])?.who || code).label;
