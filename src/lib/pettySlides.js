@@ -147,7 +147,7 @@ function lineAmounts(text = '') {
 // Employees list one งาน per line ("… ถ่ายคอนเทนต์งานกาชาด … ค่าสินค้า (110 THB)"),
 // so we can match each line to the slide that shares BOTH the amount and the
 // งาน name — not just any slide that helps the total add up.
-function lineItems(text = '') {
+export function lineItems(text = '') {
   const out = [];
   for (const line of String(text).split('\n')) {
     if (/total|รวม/i.test(line)) continue;

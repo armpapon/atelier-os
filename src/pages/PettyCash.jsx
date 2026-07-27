@@ -16,7 +16,7 @@ import {
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { parseSheetId } from '../lib/sheetTimeline.js';
 import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCash.js';
-import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
+import { flattenSlides, parseDeck, compareRow, lineItems } from '../lib/pettySlides.js';
 import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups, formCoverage } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -775,7 +775,10 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
             ? <span style={{ color: '#3c5c3b' }}> · จ่ายแล้ว ✓</span>
             : <span style={{ color: 'var(--accent-strong)' }}> · รอทำจ่าย</span>)}
         </div>
-        <div style={{ fontSize: 13.5, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work || '—'}</div>
+        {/* Full claim text, every line — Pat reads the item names to judge a
+            claim, so nothing is cut with an ellipsis. Sheet line breaks are
+            preserved (pre-line) and long lines wrap. */}
+        <div style={{ fontSize: 13.5, color: 'var(--ink)', whiteSpace: 'pre-line', overflowWrap: 'anywhere', lineHeight: 1.5 }}>{r.work || '—'}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>
           {mark === 'ok' && (flagsSet?.size || cmpView) && (
             <span style={{ ...mono10, alignSelf: 'center', color: '#3c5c3b' }}>ตรวจแล้ว ✓</span>
@@ -813,13 +816,21 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
           </span>
         ) : (r.evidenceLinks?.length || 0) > 1 ? (
           // The team's numbered link list ("1) 2) 3)") — one button per link, in
-          // the same order as the Work lines, until a slide compare replaces
-          // them with amount-verified buttons.
-          <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: 180 }}>
-            {r.evidenceLinks.map((u, i) => (
-              <a key={i} href={u} target="_blank" rel="noreferrer"
-                style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-sm)', padding: '2px 7px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ใบ {i + 1} ↗</a>
-            ))}
+          // the same order as the Work lines, so each button carries ITS OWN
+          // amount ("สไลด์ ฿55.00 ↗", the label Pat reads) instead of a bare
+          // index. Outline stays neutral until a slide compare turns the
+          // buttons green — green means "ยอดตรงกับสไลด์แล้ว", never just "a link".
+          <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end', maxWidth: 190 }}>
+            {r.evidenceLinks.map((u, i) => {
+              const lines = lineItems(r.work);
+              const amt = lines.length === r.evidenceLinks.length ? lines[i]?.amount : null;
+              return (
+                <a key={i} href={u} target="_blank" rel="noreferrer" title={amt != null ? lines[i].text : undefined}
+                  style={{ fontSize: 11.5, color: 'var(--accent-strong)', textDecoration: 'none', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>
+                  {amt != null ? `สไลด์ ${baht(amt)} ↗` : `สไลด์ ${i + 1} ↗`}
+                </a>
+              );
+            })}
           </span>
         ) : r.evidenceUrl
           ? <a href={r.evidenceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--accent-strong)', textDecoration: 'none', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ดูสไลด์ ↗</a>
