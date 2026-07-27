@@ -33,10 +33,23 @@ function cellUrls(cell) {
   if (!cell) return [];
   const urls = [];
   if (cell.hyperlink) urls.push(cell.hyperlink);
+  // Links hide in two different run lists depending on how they were pasted:
+  // Ctrl+K text links land in textFormatRuns, while a Drive link dropped in as
+  // a SMART CHIP (the cell shows the deck's title, not a URL) lands in chipRuns
+  // and sets neither `hyperlink` nor a text run — a chip-only cell looks empty
+  // of links unless we read here. Merge both by position so "1) 2) 3)" keeps
+  // the employee's own order.
+  const runs = [];
   for (const run of (cell.textFormatRuns || [])) {
     const u = run?.format?.link?.uri;
-    if (u) urls.push(u);
+    if (u) runs.push({ at: run.startIndex || 0, u });
   }
+  for (const run of (cell.chipRuns || [])) {
+    const u = run?.chip?.richLinkProperties?.uri;
+    if (u) runs.push({ at: run.startIndex || 0, u });
+  }
+  runs.sort((a, b) => a.at - b.at);
+  for (const r of runs) urls.push(r.u);
   const f = cell.userEnteredValue?.formulaValue;
   if (f) { const m = f.match(/HYPERLINK\(\s*"([^"]+)"/i); if (m) urls.push(m[1]); }
   const v = String(cell.formattedValue ?? '').trim();

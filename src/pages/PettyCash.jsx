@@ -20,9 +20,34 @@ import { flattenSlides, parseDeck, compareRow } from '../lib/pettySlides.js';
 import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups, formCoverage } from '../lib/pettyRecon.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
-const GRID_FIELDS =
-  'sheets(properties(title,sheetId),data(rowData(values('
-  + 'formattedValue,effectiveValue,hyperlink,textFormatRuns(format/link),userEnteredValue))))';
+const gridFields = v => `sheets(properties(title,sheetId),data(rowData(values(${v}))))`;
+// Smart-chip links (chipRuns) are the only place a chip-pasted Drive link
+// appears — without it those cells read as "no evidence". Older API surfaces
+// reject the field name outright, so keep the previous mask as a fallback.
+const GRID_VALUES = 'formattedValue,effectiveValue,hyperlink,textFormatRuns(format/link),'
+  + 'chipRuns(startIndex,chip(richLinkProperties(uri))),userEnteredValue';
+const GRID_VALUES_LEGACY = 'formattedValue,effectiveValue,hyperlink,textFormatRuns(format/link),userEnteredValue';
+const GRID_FIELDS = gridFields(GRID_VALUES);
+// One tab's grid. Falls back to the legacy mask if the endpoint rejects the
+// chipRuns selection — a stricter API degrades to fewer links, never to a
+// blank page.
+async function fetchGrid(id, tabTitle) {
+  const range = encodeURIComponent(`'${String(tabTitle).replace(/'/g, "''")}'`);
+  const call = async fields => {
+    const res = await callProvider('google', {
+      url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${range}&fields=${encodeURIComponent(fields)}`,
+    });
+    if (res?.error) throw new Error(res.error.message || JSON.stringify(res.error));
+    return res;
+  };
+  try {
+    return await call(GRID_FIELDS);
+  } catch (e) {
+    if (!/chiprun|invalid field|field mask|unknown name/i.test(String(e.message || e))) throw e;
+    return call(gridFields(GRID_VALUES_LEGACY));
+  }
+}
+
 const SLIDES_API = 'https://slides.googleapis.com/v1/presentations';
 const SLIDES_FIELDS =
   'slides(objectId,pageElements(shape(text(textElements(textRun(content)))),'
@@ -165,10 +190,7 @@ export function PettyCash() {
       const t = tabs.includes(wantTab) ? wantTab : tabs.includes(remembered) ? remembered : tabs[0];
       setTab(t); setYear(tabYear(t));
       localStorage.setItem(`pc:tab:${id}`, t);
-      const grid = await callProvider('google', {
-        url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${t.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
-      });
-      if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
+      const grid = await fetchGrid(id, t);
       const parsed = parsePettyCash((grid.sheets || [])[0]);
       // Same-year sibling tabs ride along for the form reconcile: a fresh-start
       // tab ("2026 (2)") only holds the new float's rows, so matching forms
@@ -182,10 +204,7 @@ export function PettyCash() {
       let siblingRows = [];
       for (let i = 0; i < sibTitles.length; i++) {
         try {
-          const g2 = await callProvider('google', {
-            url: `${SHEETS_API}/${id}?includeGridData=true&ranges=${encodeURIComponent(`'${sibTitles[i].replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
-          });
-          if (g2?.error) continue;
+          const g2 = await fetchGrid(id, sibTitles[i]);
           const p2 = parsePettyCash((g2.sheets || [])[0]);
           siblingRows = siblingRows.concat(p2.rows.map(r => ({
             ...r, origRowNo: r.rowNo, rowNo: r.rowNo + 100000 * (i + 1), tabTitle: sibTitles[i],
@@ -247,10 +266,7 @@ export function PettyCash() {
         const tabs = (props.sheets || []).map(s => s.properties?.title || '');
         const tab = tabs.find(t => /form responses/i.test(t) && !/old/i.test(t)) || tabs[0];
         if (!tab) throw new Error('ไม่พบแท็บ Form Responses');
-        const grid = await callProvider('google', {
-          url: `${SHEETS_API}/${fid}?includeGridData=true&ranges=${encodeURIComponent(`'${tab.replace(/'/g, "''")}'`)}&fields=${encodeURIComponent(GRID_FIELDS)}`,
-        });
-        if (grid?.error) throw new Error(grid.error.message || JSON.stringify(grid.error));
+        const grid = await fetchGrid(fid, tab);
         forms = parseFormResponses((grid.sheets || [])[0]);
         if (forms.length) setCache(cacheKey, forms);
       }
