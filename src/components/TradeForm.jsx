@@ -148,7 +148,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
       <form style={s.drawer} onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
         <div style={s.header}>
           <div>
-            <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · HA-50 DEMO'}</div>
+            <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · HA-50'}</div>
             <div style={s.title}>{isEdit ? 'แก้ไข Trade' : 'บันทึก Trade ใหม่'}</div>
           </div>
           <button type="button" onClick={onClose} style={s.close}>✕</button>

@@ -3,10 +3,21 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v3.79',
+    date: '2026-07-30',
+    title: 'Trading Journal · เอาป้าย Demo ออกทั้งหมด — เทรดจริงแล้ว',
+    badge: 'Current',
+    changes: [
+      '🎯 ถอดป้าย "DEMO" สีอำพันข้างหัวเรื่องหน้า Trading, การ์ด HA-50 MISSION และการ์ด Playbook ออกทั้งหมด',
+      '✍️ Subtitle หน้า Trading, หัวการ์ดภารกิจ, ฟอร์มบันทึก trade ใหม่ และคำคมท้ายการ์ด — ตัดคำว่า "Demo" ออกจากทุกจุด',
+      '📌 บรรทัดท้ายการ์ดภารกิจเปลี่ยนเป็น "เป้าหมายของ 30 ไม้แรกคือวินัย ไม่ใช่กำไร — ผ่านเกณฑ์ครบก่อน แล้วค่อยคุยเรื่องขยับขนาด"',
+      'ℹ️ ไม่แตะ flag/infra ของโหมด preview (?preview=1) ที่ใช้ demo-auth เข้าเว็บ — คนละเรื่องกับ Trading module',
+    ],
+  },
+  {
     version: 'v3.78',
     date: '2026-07-30',
     title: 'Trading Journal · เปลี่ยนจาก ICT เป็นระบบ HA-50 (ภารกิจ demo 30 ไม้)',
-    badge: 'Current',
     changes: [
       '🎯 การ์ดใหม่ "HA-50 DEMO MISSION" บนสุดของหน้า Trading — นับไม้ที่ปิดแล้ว x/30 พร้อมแถบความคืบหน้า, Winrate, Avg R (expectancy) และ % ทำตามกติกา',
       '✅ เกณฑ์ผ่านภารกิจโชว์สด 3 ข้อ: ครบ 30 ไม้ · ทำตามกติกา ≥ 90% · Avg R > 0 (ผ่าน / รออยู่ / ไม่ผ่าน)',

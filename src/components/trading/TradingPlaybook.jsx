@@ -91,9 +91,8 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
         title="วันนี้เทรดได้ไหม เข้าเงื่อนไขไหม"
         meta={
           <span>
-            <Badge tone="warning" size="sm">DEMO เท่านั้น</Badge>
-            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>
-              · XAUUSD · TF 1h · EMA50 + Heikin Ashi · เสี่ยง 1% ต่อไม้
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              XAUUSD · TF 1h · EMA50 + Heikin Ashi · เสี่ยง 1% ต่อไม้
             </span>
           </span>
         }
@@ -247,7 +246,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
             fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 14,
             color: 'var(--text-secondary)', lineHeight: 1.6,
           }}>
-            "ภารกิจนี้ไม่ได้วัดว่าได้เงินเท่าไร — วัดว่า <strong style={{ color: 'var(--accent-strong)' }}>ทำตามกติกาได้ครบ 30 ไม้ไหม</strong> · expectancy ~0 เทรด demo เท่านั้น"
+            "ภารกิจนี้ไม่ได้วัดว่าได้เงินเท่าไร — วัดว่า <strong style={{ color: 'var(--accent-strong)' }}>ทำตามกติกาได้ครบ 30 ไม้ไหม</strong> · expectancy ~0"
           </div>
         </div>
       )}

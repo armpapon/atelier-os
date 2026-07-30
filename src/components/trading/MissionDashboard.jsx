@@ -61,10 +61,9 @@ export function MissionDashboard({ trades = [] }) {
   return (
     <Card>
       <CardHeader
-        eyebrow="🎯 HA-50 DEMO MISSION"
-        title="ภารกิจ 30 ไม้ demo — วัดวินัย ไม่ใช่กำไร"
+        eyebrow="🎯 HA-50 MISSION"
+        title="ภารกิจ 30 ไม้ — วัดวินัย ไม่ใช่กำไร"
         meta="XAUUSD · 1h · EMA50 + Heikin Ashi flip · เสี่ยง 1% ต่อไม้"
-        action={<Badge tone="warning" size="lg">DEMO</Badge>}
       />
 
       {!m.schemaReady && (
@@ -127,7 +126,7 @@ export function MissionDashboard({ trades = [] }) {
         marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)',
         fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, fontStyle: 'italic',
       }}>
-        เป้าหมายคือวินัย ไม่ใช่กำไร — ระบบนี้พิสูจน์แล้วว่า expectancy ~0, เทรด demo เท่านั้น
+        เป้าหมายของ 30 ไม้แรกคือวินัย ไม่ใช่กำไร — ผ่านเกณฑ์ครบก่อน แล้วค่อยคุยเรื่องขยับขนาด
       </div>
     </Card>
   );

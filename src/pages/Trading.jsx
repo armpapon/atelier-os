@@ -104,15 +104,9 @@ export function Trading() {
             <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--text-primary)', lineHeight: 1.1 }}>
               Trading <em style={{ color: 'var(--accent)' }}>Journal</em>
             </div>
-            <span style={{
-              fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em',
-              padding: '3px 9px', borderRadius: 'var(--radius-pill)',
-              background: 'var(--warning-soft)', color: 'var(--accent-strong)',
-              border: '1px solid var(--warning)',
-            }}>DEMO</span>
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 5 }}>
-            XAUUSD · 1h · Demo Mission 30 ไม้ · London–NY 14:00–23:00
+            XAUUSD · 1h · Mission 30 ไม้ · London–NY 14:00–23:00
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
