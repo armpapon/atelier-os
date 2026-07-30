@@ -58,7 +58,8 @@ function cleanDetail(s = '') {
 }
 
 // ── PDF text extraction ───────────────────────────────────────────────────────
-async function extractPdfText(arrayBuffer, password = '') {
+// Exported: the Petty Cash statement reconcile reads the same Make PDFs.
+export async function extractPdfText(arrayBuffer, password = '') {
   const loadingTask = pdfjsLib.getDocument({
     data: arrayBuffer,
     password: password || undefined,

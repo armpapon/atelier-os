@@ -8,7 +8,7 @@
 // deck and check the sheet amount against the slide automatically ("does the
 // sheet match the slide?"), recovering the exact day the slide records.
 // Loop audits only; paying still happens in Make.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader.jsx';
 import {
   startGoogleAuth, getIntegration, updateIntegrationMeta, callProvider, ALL_GOOGLE_SCOPES,
@@ -18,6 +18,7 @@ import { parseSheetId } from '../lib/sheetTimeline.js';
 import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCash.js';
 import { flattenSlides, parseDeck, compareRow, lineItems } from '../lib/pettySlides.js';
 import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups, formCoverage } from '../lib/pettyRecon.js';
+import { parseStatementText, matchStatement, txnCounterparty } from '../lib/pettyStatement.js';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const gridFields = v => `sheets(properties(title,sheetId),data(rowData(values(${v}))))`;
@@ -394,7 +395,7 @@ export function PettyCash() {
         <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีท…</div>
       ) : data ? (
         <Board data={data} recon={recon} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
-          slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck}
+          slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck} sheetId={sheetId}
           hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
       ) : null}
     </div>
@@ -402,7 +403,7 @@ export function PettyCash() {
 }
 
 // ── Board: month filter, tiles, person cards ─────────────────────────────────
-function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCode, comparing, compareDeck, hasSlides, marks, setMark, onConnectSlides }) {
+function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCode, comparing, compareDeck, sheetId, hasSlides, marks, setMark, onConnectSlides }) {
   const { year, rows, flags } = data;
   const crossDup = crossTabDups(rows, data?.siblingRows);
   const { byRow, partners } = indexFlags(flags, recon, crossDup);
@@ -478,6 +479,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
 
       {/* Payout queue — who is still owed money (form col N not ticked) */}
       {pay && pay.count > 0 && <PayQueue pay={pay} />}
+      <StatementPanel rows={rows} sheetId={sheetId} tab={data.tab} />
 
       {/* Tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
@@ -691,6 +693,171 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
             <FormRow key={f.formRow} tone="dim" tag="รอลงชีท" help="พนักงานเพิ่งส่งฟอร์มไม่เกิน 21 วัน และยังไม่ถูกนำไปลงชีทหลัก — ปกติของรอบทำจ่าย ยังไม่นับว่าตกหล่น"
               left={`ส่งฟอร์ม ${fmtD(f.ts)}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── เทียบ statement — prove the money moved the way the sheet says ──────────
+// Pat drops the Make/KBank PDF here; everything runs in the browser (the file
+// and its password never leave the machine). Personal-counterparty marks are
+// remembered per sheet so recurring private transfers stop asking.
+const KEY_LABEL = { amount: 'ยอดตรง', 'amount:รวมทั้งรอบ': 'ยอดรวมทั้งรอบ', 'amount:ยอดเดียวในช่วง': 'ยอดเดียวในช่วง', account: 'บัญชีตรง', name: 'ชื่อตรง' };
+const stmtChip = (tone) => ({
+  display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, borderRadius: 99, padding: '2px 9px',
+  border: `1px solid ${tone === 'g' ? 'var(--profit, #5b8a5a)' : tone === 'r' ? 'var(--danger)' : 'var(--line)'}`,
+  background: tone === 'g' ? 'var(--profit-soft, #dbe7d3)' : tone === 'r' ? 'var(--danger-soft, #fdf3f0)' : 'var(--surface)',
+  color: tone === 'g' ? '#3c5c3b' : tone === 'r' ? 'var(--danger)' : 'var(--ink-2)',
+});
+const fmtStmtDay = iso => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
+
+function StatementPanel({ rows, sheetId, tab }) {
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState(null);
+  const [pw, setPw] = useState('');
+  const [busy2, setBusy2] = useState(false);
+  const [err, setErr] = useState('');
+  const [txns, setTxns] = useState(null);
+  const [meta, setMeta] = useState(null);
+  const pKey = `pc:stmt-personal:${sheetId}`;
+  const [personal, setPersonal] = useState(() => readLS(pKey) || []);
+
+  const R = useMemo(
+    () => (txns ? matchStatement(txns, rows, { personalKeys: new Set(personal) }) : null),
+    [txns, rows, personal],
+  );
+
+  const run = async () => {
+    if (!file) return;
+    setBusy2(true); setErr('');
+    try {
+      const { extractPdfText } = await import('../lib/kbankPdfParser.js');
+      const text = await extractPdfText(await file.arrayBuffer(), pw.trim());
+      const parsed = parseStatementText(text);
+      if (!parsed.txns.length) throw new Error('อ่านไฟล์ได้ แต่ไม่พบรายการเดินบัญชี — ใช้ PDF statement จากแอพ Make/K PLUS โดยตรง');
+      setTxns(parsed.txns); setMeta(parsed.meta);
+    } catch (e) {
+      const msg = String(e?.name === 'PasswordException' ? 'รหัสเปิดไฟล์ไม่ถูกต้อง' : (e.message || e));
+      setErr(msg); setTxns(null); setMeta(null);
+    } finally { setBusy2(false); }
+  };
+  const markPersonal = txn => {
+    const next = [...new Set([...personal, txnCounterparty(txn)])];
+    setPersonal(next);
+    try { localStorage.setItem(pKey, JSON.stringify(next)); } catch { /* quota */ }
+  };
+
+  const TxnLine = ({ t, action }) => (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 14px', borderTop: '1px dashed var(--line)' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13 }}>{t.detail || t.kind}</div>
+        <div style={{ ...mono10, marginTop: 1 }}>{fmtStmtDay(t.date)} {t.time} · {t.kind}</div>
+      </div>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500, color: t.dir === 'in' ? '#3c5c3b' : 'var(--ink)' }}>
+        {t.dir === 'in' ? '+' : ''}{baht2(t.amount)}
+      </div>
+      {action}
+    </div>
+  );
+
+  return (
+    <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', overflow: 'hidden' }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>🏦 เทียบ statement</span>
+        <span style={{ fontSize: 11.5, color: 'var(--ink-3)', flex: 1 }}>
+          {R ? `${R.summary.rowsMatched}/${R.summary.rowsTotal} รายการชีทเจอเงินจริง · รอยืนยัน ${R.ask.length}` : 'อัปโหลด statement จากแอพ Make เพื่อพิสูจน์ว่าเงินจริงเดินตามชีท — ประมวลผลในเครื่อง ไม่ส่งขึ้นเซิร์ฟเวอร์'}
+        </span>
+        <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '11px 14px', flexWrap: 'wrap', background: 'var(--background-soft)' }}>
+            <input type="file" accept=".pdf" onChange={e => { setFile(e.target.files?.[0] || null); setTxns(null); }}
+              style={{ fontSize: 12.5, maxWidth: 260 }} />
+            <input type="password" placeholder="รหัสเปิดไฟล์ (ถ้ามี)" value={pw} onChange={e => setPw(e.target.value)}
+              style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', width: 150 }} />
+            <span style={{ ...mono10 }}>กองที่เทียบ: {tab}</span>
+            <button className="btn btn--primary" disabled={!file || busy2} onClick={run}>{busy2 ? 'กำลังอ่าน…' : 'เทียบเลย'}</button>
+            {err && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{err}</span>}
+          </div>
+
+          {R && (
+            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* summary */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span style={stmtChip(R.summary.rowsMatched === R.summary.rowsTotal ? 'g' : 'r')}>
+                  ชีทเจอเงินจริง {R.summary.rowsMatched}/{R.summary.rowsTotal}</span>
+                <span style={stmtChip()}>คงเหลือกองตามเงินจริง {baht2(R.summary.floatRemainder)}</span>
+                {R.ask.length > 0 && <span style={stmtChip('r')}>เงินออกรอยืนยัน {R.ask.length} รายการ · {baht2(R.summary.askTotal)}</span>}
+                {meta?.from && <span style={stmtChip()}>ช่วง {meta.from} – {meta.to}</span>}
+              </div>
+
+              {/* sheet rows that found no money — paid on paper only? */}
+              {R.unmatchedRows.length > 0 && (
+                <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft, #fdf3f0)' }}>
+                  <div style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
+                    ⚠ รายการในชีทที่ไม่พบเงินโอนใน statement นี้ — เงินยังไม่ออกจริง หรืออยู่นอกช่วงไฟล์</div>
+                  {R.unmatchedRows.map(r => (
+                    <div key={r.rowNo} style={{ display: 'flex', gap: 12, padding: '8px 14px', borderTop: '1px dashed var(--line)', fontSize: 13 }}>
+                      <span style={{ flex: 1 }}>แถว {r.rowNo} · {r.nick || r.code || 'SEAL'} · {(r.work || '').split('\n')[0].slice(0, 60)}</span>
+                      <span style={{ fontFamily: 'var(--f-mono)', fontWeight: 500 }}>{baht2(r.amountOut ?? r.amountIn)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* outgoing money nobody claimed */}
+              {R.ask.length > 0 && (
+                <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft, #fdf3f0)' }}>
+                  <div style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
+                    ❓ เงินออกที่ไม่มีใบเบิกรองรับ — ถ้าเป็นเรื่องส่วนตัวติ๊กเก็บได้ ระบบจะจำคู่โอนนี้ไว้</div>
+                  {R.ask.map(t => (
+                    <TxnLine key={t.id} t={t} action={
+                      <button className="btn btn--ghost" style={{ flexShrink: 0 }} onClick={() => markPersonal(t)}>👤 ส่วนตัว</button>
+                    } />
+                  ))}
+                </div>
+              )}
+
+              {/* matched */}
+              <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
+                <div style={{ padding: '8px 14px', background: 'var(--surface-2)', ...mono10, letterSpacing: '0.12em' }}>
+                  จับคู่สำเร็จ · {R.matched.length} รายการ
+                </div>
+                {R.matched.map((m, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 14px', borderTop: '1px dashed var(--line)', background: '#eef3ea', boxShadow: 'inset 3px 0 0 var(--profit, #3c5c3b)' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13 }}>
+                        แถว {m.row.rowNo} · {m.row.nick || m.row.code || m.row.nameRaw || 'SEAL'}
+                        <span style={{ marginLeft: 8, display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                          {m.keys.map(k => <span key={k} style={stmtChip('g')}>✓ {KEY_LABEL[k] || k}</span>)}
+                        </span>
+                      </div>
+                      <div style={{ ...mono10, marginTop: 1 }}>{fmtStmtDay(m.txn.date)} {m.txn.time} · {m.txn.detail.slice(0, 56)}</div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500, color: m.txn.dir === 'in' ? '#3c5c3b' : 'var(--ink)' }}>
+                      {m.txn.dir === 'in' ? '+' : ''}{baht2(m.row.amountOut ?? m.row.amountIn)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* the rest, tucked away */}
+              {(R.probablyPersonal.length + R.personal.length + R.depositsLeft.length) > 0 && (
+                <details>
+                  <summary style={{ fontSize: 12.5, color: 'var(--ink-3)', cursor: 'pointer' }}>
+                    👤 รายการส่วนตัว/นอกขอบเขต {R.probablyPersonal.length + R.personal.length + R.depositsLeft.length} รายการ
+                  </summary>
+                  <div style={{ opacity: 0.65 }}>
+                    {[...R.depositsLeft, ...R.probablyPersonal, ...R.personal].map(t => <TxnLine key={t.id} t={t} />)}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

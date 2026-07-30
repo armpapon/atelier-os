@@ -152,6 +152,9 @@ function locateColumns(rowData) {
       // 2024 keeps its receipts as filenames in a "สลิป/หลักฐาน" column instead
       // of a Slides link in Evid — count it so those rows aren't false "missing".
       slip: findLbl(x => x.includes('สลิป') || x.includes('หลักฐาน')),
+      // The fresh-start tab records each person's payout account ("JJ GUNWARA
+      // KBANK 048-1-69004-8") — the join key for statement reconciliation.
+      bank: findLbl(x => x === 'bank' || x.includes('ธนาคาร') || x.includes('บัญชี')),
     };
   }
   return null;
@@ -207,6 +210,7 @@ export function parsePettyCash(sheet) {
       evidenceLinks: urls,
       slideKeys: urls.map(u => slideRef(u).slideKey),
       slip: hasSlip ? slip : '',
+      bank: text(at(cells, col.bank)),
       hasEvidence: !!ev.url || hasSlip,
       amountIn, amountOut, balance,
       isExpense: typeof amountOut === 'number' && amountOut > 0,
