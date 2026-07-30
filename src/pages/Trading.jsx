@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { TradeForm } from '../components/TradeForm.jsx';
 import { TradeImporter } from '../components/trading/TradeImporter.jsx';
 import { TradingPlaybook } from '../components/trading/TradingPlaybook.jsx';
-import { DailyPlanCard } from '../components/trading/DailyPlanCard.jsx';
+import { MissionDashboard } from '../components/trading/MissionDashboard.jsx';
 import { PnLCalendar } from '../components/trading/PnLCalendar.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
@@ -10,6 +10,9 @@ import { useAuth } from '../lib/useAuth.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 
 const SESSION_COLOR = {
+  // HA-50 (ปัจจุบัน)
+  'London–NY':      'var(--accent-strong)',
+  // ICT เดิม — เก็บไว้ให้ trade ประวัติเก่ายังแสดงสีถูก
   'London KZ':      'var(--blue)',
   'NY KZ':          'var(--accent-strong)',
   'New York KZ':    'var(--accent-strong)',
@@ -95,13 +98,21 @@ export function Trading() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em' }}>
-            📈 TRADING JOURNAL · ICT METHODOLOGY
+            📈 TRADING JOURNAL · HA-50 SYSTEM
           </div>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--text-primary)', marginTop: 6, lineHeight: 1.1 }}>
-            Trading <em style={{ color: 'var(--accent)' }}>Journal</em>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--text-primary)', lineHeight: 1.1 }}>
+              Trading <em style={{ color: 'var(--accent)' }}>Journal</em>
+            </div>
+            <span style={{
+              fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em',
+              padding: '3px 9px', borderRadius: 'var(--radius-pill)',
+              background: 'var(--warning-soft)', color: 'var(--accent-strong)',
+              border: '1px solid var(--warning)',
+            }}>DEMO</span>
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 5 }}>
-            XAUUSD · Pepperstone · London KZ / NY KZ / Silver Bullet
+            XAUUSD · 1h · Demo Mission 30 ไม้ · London–NY 14:00–23:00
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -121,11 +132,11 @@ export function Trading() {
         </div>
       )}
 
-      {/* Playbook — daily schedule + rules + checklist */}
-      <TradingPlaybook tradesToday={tradesToday} lossesInRow={lossesInRow} />
+      {/* HA-50 demo mission — 30 ไม้ · วินัย ไม่ใช่กำไร */}
+      <MissionDashboard trades={trades} />
 
-      {/* Daily Trading Plan — Weekly bias + Daily bias + charts */}
-      <DailyPlanCard />
+      {/* Playbook — session window + rules + checklist */}
+      <TradingPlaybook tradesToday={tradesToday} lossesInRow={lossesInRow} />
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: isMobile ? 10 : 12 }}>
         <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} />
