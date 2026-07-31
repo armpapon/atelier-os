@@ -531,7 +531,9 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 
 /* ====== Daily Journal — Cupertino timeline ====== */
 .journal-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: start;
+  /* Day view takes the space; the side column stays widget-width so the
+     mini calendar reads compact like the Apple Calendar widget. */
+  display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start;
 }
 /* Cards below the top row span the full width so long titles (waiting email,
    Asana hours) can't squeeze the checklist column. */
