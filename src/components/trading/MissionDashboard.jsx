@@ -32,10 +32,14 @@ export function MissionDashboard({ trades = [] }) {
       .filter(v => Number.isFinite(v));
     const avgR = rs.length > 0 ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
 
-    const followed = closed.filter(t => t.followed_rules === true).length;
-    const rulePct  = n > 0 ? Math.round((followed / n) * 100) : null;
+    // Trades logged before the followed_rules column existed are null — they are
+    // "unknown", not "broke the rules". Counting them as violations dragged the
+    // discipline score down for every historical trade.
+    const rated    = closed.filter(t => t.followed_rules != null);
+    const followed = rated.filter(t => t.followed_rules === true).length;
+    const rulePct  = rated.length > 0 ? Math.round((followed / rated.length) * 100) : null;
 
-    return { schemaReady, n, wins, losses, winRate, avgR, rs, rulePct, followed };
+    return { schemaReady, n, wins, losses, winRate, avgR, rs, rulePct, followed, ratedCount: rated.length };
   }, [trades]);
 
   const pct = Math.min(100, Math.round((m.n / TARGET_TRADES) * 100));
@@ -48,7 +52,7 @@ export function MissionDashboard({ trades = [] }) {
     },
     {
       label: `ทำตามกติกา ≥ ${TARGET_RULE_PCT}%`,
-      detail: m.rulePct == null ? 'ยังไม่มีข้อมูล' : `${m.rulePct}% (${m.followed}/${m.n} ไม้)`,
+      detail: m.rulePct == null ? 'ยังไม่มีข้อมูล' : `${m.rulePct}% (${m.followed}/${m.ratedCount} ไม้ที่บันทึกไว้)`,
       state: m.rulePct == null ? 'pending' : m.rulePct >= TARGET_RULE_PCT ? 'pass' : 'fail',
     },
     {

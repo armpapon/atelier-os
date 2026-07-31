@@ -38,9 +38,20 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
   const summary  = useMemo(() => summarizeDebts(debts, payments, yearMonth), [debts, payments, yearMonth]);
   const forecast = useMemo(() => forecastDebts(debts, 12),                    [debts]);
 
+  // Ids currently being written. months_paid is a read-modify-write, so two
+  // fast clicks used to increment it twice for the same month.
+  const [busyDebts, setBusyDebts] = useState(() => new Set());
+  const setBusy = (id, on) => setBusyDebts(prev => {
+    const next = new Set(prev);
+    if (on) next.add(id); else next.delete(id);
+    return next;
+  });
+
   // Mark paid handler
   const markPaid = async (debt) => {
+    if (busyDebts.has(debt.id)) return;
     const monthDate = yearMonth + '-01';
+    setBusy(debt.id, true);
     try {
       await recordDebtPayment({
         debt_id: debt.id, pay_month: monthDate,
@@ -48,12 +59,16 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
       });
       onChange?.();
     } catch (e) { alert('บันทึกไม่สำเร็จ: ' + e.message); }
+    finally { setBusy(debt.id, false); }
   };
 
-  const unmarkPaid = async (paymentId) => {
+  const unmarkPaid = async (debtId, paymentId) => {
+    if (busyDebts.has(debtId)) return;
     if (!confirm('ยกเลิกบันทึกการจ่ายนี้?')) return;
+    setBusy(debtId, true);
     try { await deleteDebtPayment(paymentId); onChange?.(); }
     catch (e) { alert('ยกเลิกไม่สำเร็จ: ' + e.message); }
+    finally { setBusy(debtId, false); }
   };
 
   const handleDelete = async (debt) => {
@@ -125,8 +140,9 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
                 debt={debt}
                 status={status}
                 isEditing={editing?.id === debt.id}
+                busy={busyDebts.has(debt.id)}
                 onMarkPaid={() => markPaid(debt)}
-                onUnmark={() => unmarkPaid(status.payment_id)}
+                onUnmark={() => unmarkPaid(debt.id, status.payment_id)}
                 onEdit={() => setEditing(editing?.id === debt.id ? null : debt)}
                 onDelete={() => handleDelete(debt)}
               />
@@ -166,7 +182,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  Debt Row
 // ════════════════════════════════════════════════════════════════════════════
-function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDelete }) {
+function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, onEdit, onDelete }) {
   const typeMeta   = TYPE_META[debt.type]      || TYPE_META.other;
   const statusMeta = STATUS_META[status.status] || STATUS_META.upcoming;
   const monthsRemaining = debt.total_months
@@ -251,12 +267,12 @@ function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDele
       {/* Actions */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
         {status.status === 'paid' ? (
-          <Button variant="ghost" size="sm" onClick={onUnmark}>
+          <Button variant="ghost" size="sm" onClick={onUnmark} disabled={busy}>
             ✓ จ่ายแล้วเมื่อ {new Date(status.paid_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · ยกเลิก
           </Button>
         ) : (
-          <Button variant="primary" size="sm" onClick={onMarkPaid}>
-            ✓ บันทึกว่าจ่ายแล้ว
+          <Button variant="primary" size="sm" onClick={onMarkPaid} disabled={busy}>
+            {busy ? 'กำลังบันทึก…' : '✓ บันทึกว่าจ่ายแล้ว'}
           </Button>
         )}
         <Button variant="ghost" size="sm" onClick={onEdit}>{isEditing ? '× ปิด' : 'แก้ไข'}</Button>
@@ -631,7 +647,8 @@ function DebtStrategyCard({ debts }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
             อีก {result.totalMonthsWithExtra} เดือน
-            {result.monthsSaved > 0 && ` · โปะเพิ่มช่วยร่นเร็วขึ้น ${result.monthsSaved} เดือน ประหยัด ${fmt(result.cashSaved)}`}
+            {result.monthsSaved > 0 && ` · โปะเพิ่มช่วยร่นเร็วขึ้น ${result.monthsSaved} เดือน`}
+            {result.monthsSaved > 0 && result.cashSaved > 0 && ` ประหยัด ${fmt(result.cashSaved)}`}
           </div>
         </div>
       </div>
@@ -648,7 +665,7 @@ function DebtStrategyCard({ debts }) {
         <MiniStat label="เร็วขึ้น" value={`${result.monthsSaved} เดือน`}
           color={result.monthsSaved > 0 ? 'var(--success)' : 'var(--text-muted)'}
           sub={result.monthsSaved >= 12 ? `~${(result.monthsSaved / 12).toFixed(1)} ปี` : ''} />
-        <MiniStat label="ประหยัด" value={fmt(result.cashSaved)}
+        <MiniStat label="ประหยัด" value={result.cashSaved > 0 ? fmt(result.cashSaved) : '—'}
           color={result.cashSaved > 0 ? 'var(--success)' : 'var(--text-muted)'}
           sub="เทียบกับไม่โปะ" />
       </div>

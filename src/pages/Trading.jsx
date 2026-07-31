@@ -69,14 +69,19 @@ export function Trading() {
     const sorted = [...filtered].sort((a, b) =>
       a.trade_date.localeCompare(b.trade_date) || (a.created_at || '').localeCompare(b.created_at || '')
     );
+    // balance_after is an account balance; cum is a P&L total. Plotting them on
+    // one axis made the curve jump between two different scales — carry the last
+    // known balance forward and add P&L to it instead.
+    let lastKnown = null;
     let cum = 0;
     return sorted.map(t => {
-      cum += Number(t.pnl) || 0;
-      return {
-        date: t.trade_date,
-        equity: t.balance_after != null ? Number(t.balance_after) : cum,
-        pnl: Number(t.pnl) || 0,
-      };
+      const pnl = Number(t.pnl) || 0;
+      cum += pnl;
+      let equity;
+      if (t.balance_after != null) { equity = Number(t.balance_after); lastKnown = equity; }
+      else if (lastKnown != null)  { equity = lastKnown + pnl; lastKnown = equity; }
+      else                         { equity = cum; }
+      return { date: t.trade_date, equity, pnl };
     });
   }, [filtered]);
 
@@ -85,13 +90,16 @@ export function Trading() {
   // Today's stats for Playbook
   const today = todayStr();
   const tradesToday  = trades.filter(t => t.trade_date === today).length;
-  // Recent losing streak (last N trades by date desc)
+  // Losing streak WITHIN TODAY only. Counting all-time meant the "แพ้ 3 ไม้ติด
+  // ปิดจอ" block stayed red for days after the losses happened.
   const lossesInRow  = useMemo(() => {
-    const sorted = [...trades].sort((a, b) => (b.trade_date || '').localeCompare(a.trade_date || ''));
+    const todays = trades
+      .filter(t => t.trade_date === today)
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
     let cnt = 0;
-    for (const t of sorted) { if (t.status === 'LOSS') cnt++; else break; }
+    for (const t of todays) { if (t.status === 'LOSS') cnt++; else break; }
     return cnt;
-  }, [trades]);
+  }, [trades, today]);
 
   return (
     <div className="page-body" style={{ padding: isMobile ? '16px 14px 40px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -139,7 +147,7 @@ export function Trading() {
           color={stats.winRate >= 50 ? 'var(--success)' : 'var(--accent-strong)'} />
         <KPI label="Total P&L"       value={`${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}`}
           color={stats.totalPnl >= 0 ? 'var(--success)' : 'var(--danger)'} />
-        <KPI label="Avg RR"          value={typeof stats.avgRR === 'string' ? stats.avgRR : `1:${stats.avgRR}`} />
+        <KPI label="Avg RR"          value={stats.avgRR == null ? '—' : `1:${stats.avgRR.toFixed(1)}`} />
         <KPI label="Account Balance" value={`$${latestBalance.toFixed(2)}`}
           color="var(--accent-strong)" />
       </div>
@@ -177,8 +185,8 @@ export function Trading() {
             <MetricRow label="Profit Factor" value={stats.profitFactor}
               color={Number(stats.profitFactor) >= 1.5 ? 'var(--success)' : Number(stats.profitFactor) >= 1 ? 'var(--accent-strong)' : 'var(--danger)'} />
             <MetricRow label="Max Drawdown"  value={`$${stats.maxDrawdown.toFixed(2)}`} color="var(--danger)" />
-            <MetricRow label="Best Trade"    value={filtered.length ? `+$${Math.max(...filtered.map(t => Number(t.pnl) || 0)).toFixed(2)}` : '—'} color="var(--success)" />
-            <MetricRow label="Worst Trade"   value={filtered.length ? `-$${Math.abs(Math.min(...filtered.map(t => Number(t.pnl) || 0))).toFixed(2)}` : '—'} color="var(--danger)" />
+            <MetricRow label="Best Trade"    value={filtered.length ? fmtUsd(Math.max(...filtered.map(t => Number(t.pnl) || 0))) : '—'} color="var(--success)" />
+            <MetricRow label="Worst Trade"   value={filtered.length ? fmtUsd(Math.min(...filtered.map(t => Number(t.pnl) || 0))) : '—'} color="var(--danger)" />
             <MetricRow label="Wins / Losses" value={`${stats.wins} / ${stats.losses}`} />
           </div>
         </Card>
@@ -211,6 +219,13 @@ export function Trading() {
       {viewing && <TradeDetailDrawer trade={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />}
     </div>
   );
+}
+
+// Signed USD — a hard-coded '+' on "best" turned an all-losing week into a
+// phantom profit, and the '-' on "worst" did the same in reverse.
+function fmtUsd(v) {
+  const n = Number(v) || 0;
+  return `${n >= 0 ? '+' : '−'}$${Math.abs(n).toFixed(2)}`;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

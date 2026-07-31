@@ -236,7 +236,7 @@ export function subscribeTrades(userId, onChange) {
  */
 export function computeStats(trades) {
   if (!trades?.length) {
-    return { count: 0, wins: 0, losses: 0, winRate: 0, totalPnl: 0, avgRR: 0, profitFactor: 0, maxDrawdown: 0 };
+    return { count: 0, wins: 0, losses: 0, winRate: 0, totalPnl: 0, avgRR: null, profitFactor: 0, maxDrawdown: 0 };
   }
   const wins = trades.filter(t => t.status === 'WIN');
   const losses = trades.filter(t => t.status === 'LOSS');
@@ -251,7 +251,8 @@ export function computeStats(trades) {
     return null;
   };
   const rrs = trades.map(t => parseRR(t.rr)).filter(v => v != null);
-  const avgRR = rrs.length ? (rrs.reduce((a, b) => a + b, 0) / rrs.length).toFixed(1) : '—';
+  // Number, not a pre-formatted string — the call site decides how to print it.
+  const avgRR = rrs.length ? rrs.reduce((a, b) => a + b, 0) / rrs.length : null;
 
   // Profit factor = sum wins / abs(sum losses)
   const winSum = wins.reduce((s, t) => s + (Number(t.pnl) || 0), 0);

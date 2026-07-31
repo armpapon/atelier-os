@@ -26,13 +26,24 @@ function LeakRow({ icon, title, detail, value, tone = 'var(--text-primary)' }) {
 
 // ── Money Leaks / Insights ─────────────────────────────────────────────────────
 export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [], allCategories = [] }) {
+  // aggregateByCategory groups on `transaction.category` — the Thai LABEL —
+  // while this map was keyed by category id, so every lookup missed and every
+  // icon fell back to 📦. Key by label, and fall back to the row's `type`.
   const catOf = useMemo(() => {
-    const m = {};
-    for (const c of allCategories) m[c.id] = c;
-    return m;
+    const byLabel = {}, byType = {};
+    for (const c of allCategories) {
+      byLabel[c.label] = c;
+      if (c.type && !byType[c.type]) byType[c.type] = c;
+    }
+    return { byLabel, byType };
   }, [allCategories]);
-  const label = (id) => catOf[id]?.label || id || 'อื่น ๆ';
-  const icon  = (id) => catOf[id]?.icon || '📦';
+  const lookup = (row) => {
+    if (!row) return null;
+    const key = typeof row === 'string' ? row : row.category;
+    return catOf.byLabel[key] || (row && row.type ? catOf.byType[row.type] : null) || null;
+  };
+  const label = (row) => lookup(row)?.label || (typeof row === 'string' ? row : row?.category) || 'อื่น ๆ';
+  const icon  = (row) => lookup(row)?.icon || '📦';
 
   const insights = useMemo(() => {
     const thisSum = summarize(txns);
@@ -123,8 +134,8 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
       <div style={{ marginTop: 10 }}>
         {/* Lifestyle creep */}
         {creep.length > 0 && creep.map(c => (
-          <LeakRow key={'creep-' + c.category} icon={icon(c.category)}
-            title={`${label(c.category)} — โตขึ้นจากเดือนก่อน`}
+          <LeakRow key={'creep-' + c.category} icon={icon(c)}
+            title={`${label(c)} — โตขึ้นจากเดือนก่อน`}
             detail={`เดือนนี้ ${formatBaht(c.amount)} · ${c.count} รายการ`}
             value={`+${formatBaht(c.delta)}`} tone="var(--danger)" />
         ))}
@@ -140,7 +151,7 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
         {/* Small but frequent */}
         {frequent.map(c => (
           <LeakRow key={'freq-' + c.category} icon="☕"
-            title={`${label(c.category)} — เล็กแต่ถี่`}
+            title={`${label(c)} — เล็กแต่ถี่`}
             detail={`${c.count} ครั้ง · เฉลี่ย ${formatBaht(c.avg)}/ครั้ง`}
             value={formatBaht(c.amount)} />
         ))}
@@ -158,7 +169,7 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
           <>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', margin: '4px 0 6px' }}>หมวดที่ใช้มากสุดเดือนนี้</div>
             {topCats.map(c => (
-              <LeakRow key={'top-' + c.category} icon={icon(c.category)} title={label(c.category)}
+              <LeakRow key={'top-' + c.category} icon={icon(c)} title={label(c)}
                 detail={`${c.count} รายการ`} value={formatBaht(c.amount)} />
             ))}
           </>

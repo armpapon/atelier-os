@@ -202,7 +202,9 @@ export async function getModulePulse() {
     supabase.from('learning_sources').select('id', { count: 'exact', head: true }),
     supabase.from('family_events').select('id', { count: 'exact', head: true })
       .gte('event_date', todayStr()),
-    supabase.from('trades').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+    // Statuses are stored upper-case ('OPEN') — 'open' matched nothing, so the
+    // dashboard trading pulse always read 0.
+    supabase.from('trades').select('id', { count: 'exact', head: true }).eq('status', 'OPEN'),
   ]);
   return {
     learning: results[0].status === 'fulfilled' ? (results[0].value.count || 0) : 0,

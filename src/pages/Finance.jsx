@@ -11,6 +11,7 @@ import {
   deleteTransactionsInMonth,
   listDebts, listDebtPayments,
   listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
+  monthlyRecurringTotal,
 } from '../lib/api/finance.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
@@ -76,8 +77,12 @@ function InlineEdit({ value, onSave, type = 'text', display, placeholder, cellSt
 
   const save = async () => {
     setEditing(false);
-    const next = type === 'number' ? (draft === '' ? null : Number(draft))
+    // An emptied number field used to save as ฿0 without a word. Clearing a
+    // number is never an instruction to zero it — just cancel.
+    if (type === 'number' && String(draft).trim() === '') { setDraft(value ?? ''); return; }
+    const next = type === 'number' ? Number(draft)
               : (typeof draft === 'string' ? draft.trim() : draft);
+    if (type === 'number' && !Number.isFinite(next)) { setDraft(value ?? ''); return; }
     if (next === value || (next === '' && !value) || (next === null && !value)) return;
     try { await onSave(next); }
     catch (e) { alert(e.message); setDraft(value ?? ''); }
@@ -591,12 +596,18 @@ export function FinanceView({ scope }) {
   //  to default to today's month every time it opens, not stick to the
   //  last viewed month.)
 
+  // Month clicks fire overlapping loads; without a sequence number a slow
+  // earlier response could land after a fast later one and paint last month's
+  // totals under this month's header.
+  const reqSeq = useRef(0);
+
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setTxns([]); setPrevTxns([]); setTrend12([]); setAccounts([]); setBudgets([]); setGoals([]);
       setLoading(false);
       return;
     }
+    const myReq = ++reqSeq.current;
     setLoading(true); setError(null);
     try {
       const prev = previousMonth(yearMonth);
@@ -620,13 +631,17 @@ export function FinanceView({ scope }) {
         listRecurring({ scope }).catch(() => []),
       ]);
 
+      if (myReq !== reqSeq.current) return;   // a newer load already won
       setTxns(t || []); setPrevTxns(p || []); setTrend12(r12 || []);
       setAccounts(a || []); setBudgets(b || []); setGoals(g || []);
       setDebts(d || []); setDebtPayments(dp || []);
       setRecurring(rec || []);
     } catch (err) {
+      if (myReq !== reqSeq.current) return;
       setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
-    } finally { setLoading(false); }
+    } finally {
+      if (myReq === reqSeq.current) setLoading(false);
+    }
   }, [yearMonth, scope]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -647,7 +662,9 @@ export function FinanceView({ scope }) {
 
   // Cash Flow Forecast — uses avg of last 3 months for variable expense
   const forecast = useMemo(() => {
-    const recurringTotal = recurring.reduce((s, r) => s + Number(r.amount || 0), 0);
+    // Same monthlyization the forecast uses — reading r.amount raw counted a
+    // yearly bill twelve times over against a monthly average.
+    const recurringTotal = monthlyRecurringTotal(recurring);
     const trendAgg = aggregateByMonth(trend12).slice(-3);
     const avgIncome   = trendAgg.length ? trendAgg.reduce((s, x) => s + x.income, 0) / trendAgg.length : 0;
     const avgExpense  = trendAgg.length ? trendAgg.reduce((s, x) => s + x.expense, 0) / trendAgg.length : 0;
@@ -909,7 +926,11 @@ export function FinanceView({ scope }) {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {goals.map(g => {
-                  const pct = Math.min(Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100), 100);
+                  // target 0/blank made this NaN% — guard before dividing.
+                  const target = Number(g.target_amount) || 0;
+                  const pct = target > 0
+                    ? Math.min(Math.round((Number(g.current_amount) / target) * 100), 100)
+                    : 0;
                   return (
                     <div key={g.id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, gap: 10 }}>

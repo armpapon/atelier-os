@@ -57,7 +57,9 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
       await createTransaction({
         title: r.name,
         amount: -Math.abs(amt),
-        type: 'expense',
+        // 'expense' is not one of the app's types — the row then fell outside
+        // every type-based breakdown. Recurring bills are 'bills'.
+        type: 'bills',
         category: r.category || 'ค่าใช้จ่ายประจำ',
         note: 'บิลประจำ',
         occurred_at: `${yearMonth}-${dd}T12:00:00+07:00`,
@@ -369,7 +371,9 @@ export function CashFlowForecastCard({ forecast }) {
 // ════════════════════════════════════════════════════════════════════════════
 export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
   const [picking, setPicking] = useState(false);
-  const personalAccounts = (accounts || []).filter(a => a.scope === 'personal' || !a.scope);
+  // No scope filter: the emergency-fund flag applies to family accounts too,
+  // and the caller already passes the accounts for the scope being viewed.
+  const personalAccounts = accounts || [];
 
   const ringColor = coverage.status === 'safe' ? 'var(--success)' :
                     coverage.status === 'warning' ? 'var(--warning)' : 'var(--danger)';

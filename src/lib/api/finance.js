@@ -394,8 +394,8 @@ export async function createScopeTransfer({ from_scope, to_scope, amount, occurr
       user_id: user.id,
       title:    outTitle,
       amount:   -amt,
-      category: 'โอนระหว่าง scope',
-      type:     'other',
+      category: 'โอนภายใน',
+      type:     TRANSFER_TYPE,
       scope:    from_scope,
       occurred_at,
       note: note || null,
@@ -404,8 +404,8 @@ export async function createScopeTransfer({ from_scope, to_scope, amount, occurr
       user_id: user.id,
       title:    inTitle,
       amount:   amt,
-      category: 'รายรับ',
-      type:     'income',
+      category: 'โอนภายใน',
+      type:     TRANSFER_TYPE,
       scope:    to_scope,
       occurred_at,
       note: note || null,
@@ -441,22 +441,34 @@ export async function listTransactionsRange({ startDate, endDate, scope, limit =
 }
 
 // ── Analytics aggregators (pure client-side) ─────────────────────────────────
+
+/**
+ * Moving money between your own scopes is not income and not spending. Both
+ * legs used to land in P&L — the destination leg was even booked as INCOME,
+ * so a ฿80,000 personal→family move invented ฿80,000 of earnings.
+ * The rows stay visible in the transaction list; they just never count.
+ */
+export const TRANSFER_TYPE = 'transfer';
+export const isTransfer = (t) => t?.type === TRANSFER_TYPE;
+
 /** Sum income/expense for a list of transactions */
 export function summarize(txns) {
   let income = 0, expense = 0;
   for (const t of txns) {
+    if (isTransfer(t)) continue;
     if (t.amount > 0) income += t.amount;
     else expense += Math.abs(t.amount);
   }
   const net = income - expense;
   const savingsRate = income > 0 ? (net / income) * 100 : 0;
-  return { income, expense, net, savingsRate, count: txns.length };
+  return { income, expense, net, savingsRate, count: txns.filter(t => !isTransfer(t)).length };
 }
 
 /** Group by yearMonth → { ym: { income, expense, ... } } */
 export function aggregateByMonth(txns) {
   const m = {};
   for (const t of txns) {
+    if (isTransfer(t)) continue;
     const ym = bangkokMonth(t.occurred_at);
     if (!ym) continue;
     if (!m[ym]) m[ym] = { ym, income: 0, expense: 0, count: 0 };
@@ -473,6 +485,7 @@ export function aggregateByMonth(txns) {
 export function aggregateByCategory(txns) {
   const m = {};
   for (const t of txns) {
+    if (isTransfer(t)) continue;
     if (t.amount >= 0) continue;
     const c = t.category || 'อื่น ๆ';
     if (!m[c]) m[c] = { category: c, type: t.type, amount: 0, count: 0 };
@@ -665,9 +678,11 @@ export async function bulkUpsertAccountsByPocket(pockets) {
 
   // Update existing balances (parallel)
   if (toUpdate.length) {
-    await Promise.all(toUpdate.map(u =>
+    const results = await Promise.all(toUpdate.map(u =>
       supabase.from('accounts').update({ balance: u.balance }).eq('id', u.id)
     ));
+    const failed = results.find(r => r.error);
+    if (failed) throw failed.error;
   }
 
   return idMap;
@@ -852,10 +867,13 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
   // = no change to months_paid.
   // ────────────────────────────────────────────────────────────────────────
 
-  // Check if a payment already exists for this month
-  const { data: existing } = await supabase
+  // Check if a payment already exists for this month. The error used to be
+  // discarded — a failed lookup then looked like "no payment yet" and
+  // double-incremented months_paid.
+  const { data: existing, error: existErr } = await supabase
     .from('debt_payments').select('id')
     .eq('debt_id', debt_id).eq('pay_month', pay_month).maybeSingle();
+  if (existErr) throw existErr;
   const isNewMonth = !existing;
 
   // Upsert the payment row
@@ -870,17 +888,21 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
 
   // Only increment debt counters for genuinely new months
   if (isNewMonth) {
-    const { data: debtRow } = await supabase
+    const { data: debtRow, error: readErr } = await supabase
       .from('debts').select('months_paid, total_months, monthly_payment').eq('id', debt_id).single();
-    const newMonthsPaid = (Number(debtRow?.months_paid) || 0) + 1;
+    if (readErr) throw readErr;
+    let newMonthsPaid = (Number(debtRow?.months_paid) || 0) + 1;
+    // Never claim more instalments paid than the loan has.
+    if (debtRow?.total_months) newMonthsPaid = Math.min(newMonthsPaid, Number(debtRow.total_months));
     const remaining = debtRow?.total_months
       ? Math.max(0, (Number(debtRow.total_months) - newMonthsPaid) * Number(debtRow.monthly_payment))
       : null;
-    await supabase.from('debts').update({
+    const { error: writeErr } = await supabase.from('debts').update({
       months_paid: newMonthsPaid,
       remaining_balance: remaining,
       updated_at: new Date().toISOString(),
     }).eq('id', debt_id);
+    if (writeErr) throw writeErr;
   }
 
   return data;
@@ -895,17 +917,19 @@ export async function deleteDebtPayment(id) {
 
   // Decrement (clamp at 0) — opposite of recordDebtPayment increment
   if (debtId) {
-    const { data: debtRow } = await supabase
+    const { data: debtRow, error: readErr } = await supabase
       .from('debts').select('months_paid, total_months, monthly_payment').eq('id', debtId).single();
+    if (readErr) throw readErr;
     const newMonthsPaid = Math.max(0, (Number(debtRow?.months_paid) || 0) - 1);
     const remaining = debtRow?.total_months
       ? Math.max(0, (Number(debtRow.total_months) - newMonthsPaid) * Number(debtRow.monthly_payment))
       : null;
-    await supabase.from('debts').update({
+    const { error: writeErr } = await supabase.from('debts').update({
       months_paid: newMonthsPaid,
       remaining_balance: remaining,
       updated_at: new Date().toISOString(),
     }).eq('id', debtId);
+    if (writeErr) throw writeErr;
   }
 }
 
@@ -1092,6 +1116,43 @@ export function suggestDebtPaymentLinks(transactions, debts, existingPayments = 
  *   cashSaved (estimate based on remaining payments × interest portion)
  * }
  */
+/** One payoff run. Returns the simulated debts, payoff order, months and cash. */
+function runPayoffSim(enriched, strategy, extraPerMonth) {
+  const sim = enriched.map(d => ({ ...d, _simBalance: d._balance, _simMonths: d._baselineMonthsLeft }));
+  const sortFn = strategy === 'avalanche'
+    ? (a, b) => b._interest - a._interest || a._balance - b._balance
+    : (a, b) => a._simBalance - b._simBalance;
+
+  let active = [...sim];
+  const order = [];
+  let month = 0;
+  let cash = 0;
+  const MAX = 600;
+
+  while (active.length && month < MAX) {
+    month++;
+    active.sort(sortFn);
+    for (const d of active) {
+      const pay = Math.min(d._P, d._simBalance);
+      d._simBalance = Math.max(0, d._simBalance - pay);
+      cash += pay;
+    }
+    if (extraPerMonth > 0 && active[0] && active[0]._simBalance > 0) {
+      const apply = Math.min(extraPerMonth, active[0]._simBalance);
+      active[0]._simBalance -= apply;
+      cash += apply;
+    }
+    const stillActive = [];
+    for (const d of active) {
+      if (d._simBalance <= 0.01) { d._simMonths = month; order.push(d); }
+      else stillActive.push(d);
+    }
+    active = stillActive;
+  }
+
+  return { sim, order, months: month, cash };
+}
+
 export function simulatePayoff(debts, strategy = 'snowball', extraPerMonth = 0) {
   const enriched = (debts || [])
     .filter(d => d.total_months && Number(d.months_paid || 0) < Number(d.total_months))
@@ -1116,43 +1177,26 @@ export function simulatePayoff(debts, strategy = 'snowball', extraPerMonth = 0) 
     return { debts: [], totalMonthsBaseline: 0, totalMonthsWithExtra: 0, monthsSaved: 0, cashSaved: 0 };
   }
 
-  const totalMonthsBaseline = Math.max(...enriched.map(d => d._baselineMonthsLeft));
+  // The baseline is the SAME simulation with no extra payment. Deriving it from
+  // (total_months − months_paid) instead compared two different models, which
+  // produced "ประหยัด" figures that went DOWN as the extra payment went UP.
+  const baseline = runPayoffSim(enriched, strategy, 0);
+  const withExtra = extraPerMonth > 0
+    ? runPayoffSim(enriched, strategy, extraPerMonth)
+    : baseline;
 
-  // Simulate
-  const sim = enriched.map(d => ({ ...d, _simBalance: d._balance, _simMonths: d._baselineMonthsLeft }));
-  const sortFn = strategy === 'avalanche'
-    ? (a, b) => b._interest - a._interest || a._balance - b._balance
-    : (a, b) => a._simBalance - b._simBalance;
-
-  let active = [...sim];
-  const order = [];
-  let month = 0;
-  const MAX = 600;
-
-  while (active.length && month < MAX) {
-    month++;
-    active.sort(sortFn);
-    for (const d of active) d._simBalance = Math.max(0, d._simBalance - d._P);
-    if (extraPerMonth > 0 && active[0]) {
-      const apply = Math.min(extraPerMonth, active[0]._simBalance);
-      active[0]._simBalance -= apply;
-    }
-    const stillActive = [];
-    for (const d of active) {
-      if (d._simBalance <= 0.01) { d._simMonths = month; order.push(d); }
-      else stillActive.push(d);
-    }
-    active = stillActive;
-  }
-
-  const totalMonthsWithExtra = month;
+  const sim   = withExtra.sim;
+  const order = withExtra.order;
+  const totalMonthsBaseline  = baseline.months;
+  const totalMonthsWithExtra = withExtra.months;
   const monthsSaved = Math.max(0, totalMonthsBaseline - totalMonthsWithExtra);
 
-  // Cash saved: baseline vs sim total outflow
-  const baselineCash = sim.reduce((s, d) => s + d._P * d._baselineMonthsLeft, 0);
-  const simCash      = sim.reduce((s, d) => s + d._P * d._simMonths, 0)
-                       + (extraPerMonth * totalMonthsWithExtra);
-  const cashSaved = Math.max(0, baselineCash - simCash);
+  // Cash actually paid out in each run, measured the same way on both sides.
+  const cashSaved = Math.max(0, baseline.cash - withExtra.cash);
+
+  // Per-debt baseline months come from the baseline RUN, not from the raw
+  // instalment count, so "เร็วขึ้น N เดือน" compares like with like.
+  const baseMonthsById = new Map(baseline.sim.map(d => [d.id, d._simMonths]));
 
   return {
     debts: sim.map(d => ({
@@ -1160,9 +1204,9 @@ export function simulatePayoff(debts, strategy = 'snowball', extraPerMonth = 0) 
       monthly: d._P,
       interest_rate: d._interest,
       balance: d._balance,
-      baselineMonthsLeft: d._baselineMonthsLeft,
+      baselineMonthsLeft: baseMonthsById.get(d.id) ?? d._baselineMonthsLeft,
       simMonths: d._simMonths,
-      monthsSaved: Math.max(0, d._baselineMonthsLeft - d._simMonths),
+      monthsSaved: Math.max(0, (baseMonthsById.get(d.id) ?? d._baselineMonthsLeft) - d._simMonths),
       payoffOrder: order.findIndex(o => o.id === d.id) + 1 || enriched.length,
     })).sort((a, b) => a.payoffOrder - b.payoffOrder),
     totalMonthsBaseline,
@@ -1313,15 +1357,27 @@ export function checkRecurringStatus(recurring, transactions, yearMonth) {
 // ════════════════════════════════════════════════════════════════════════════
 
 /** Forecast cash flow for next N months. Pure calculation. */
+/**
+ * A recurring bill's amount is stated per its own frequency. Anything reading
+ * `r.amount` at face value silently mixes yearly and monthly money — the
+ * variable-spend derivation on the Finance page did exactly that while the
+ * forecast monthlyized, so the two disagreed. Single source of truth.
+ */
+export function monthlyizeRecurring(r) {
+  const a = Number(r?.amount || 0);
+  if (r?.frequency === 'yearly')    return a / 12;
+  if (r?.frequency === 'quarterly') return a / 3;
+  if (r?.frequency === 'weekly')    return a * 4.33;
+  return a; // monthly or unknown
+}
+
+/** Total monthly cost of a list of recurring bills. */
+export function monthlyRecurringTotal(recurring = []) {
+  return recurring.reduce((s, r) => s + monthlyizeRecurring(r), 0);
+}
+
 export function forecastCashFlow({ monthlyIncome = 0, recurring = [], debts = [], avgVariableExpense = 0, monthsAhead = 3 }) {
-  const monthlyize = (r) => {
-    const a = Number(r.amount || 0);
-    if (r.frequency === 'yearly')    return a / 12;
-    if (r.frequency === 'quarterly') return a / 3;
-    if (r.frequency === 'weekly')    return a * 4.33;
-    return a; // monthly or unknown
-  };
-  const fixedExpense = recurring.reduce((s, r) => s + monthlyize(r), 0);
+  const fixedExpense = monthlyRecurringTotal(recurring);
 
   const projection = [];
   let cumulative = 0;

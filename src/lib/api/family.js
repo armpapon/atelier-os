@@ -44,17 +44,39 @@ export async function deleteMember(id) {
 }
 
 // ── Family Events ─────────────────────────────────────────────────────────────
+const EVENT_SELECT = '*, member:family_members(name, color, initial)';
+
+/**
+ * Ordering ASC and then applying `limit` returned the OLDEST 30 events forever,
+ * so "upcoming" went permanently empty once history passed the limit. Upcoming
+ * and past are two different queries with two different sort directions.
+ */
 export async function listEvents({ limit = 50, upcoming = false } = {}) {
   if (!supabase) return [];
-  let q = supabase
-    .from('family_events')
-    .select('*, member:family_members(name, color, initial)')
+  const today = todayStr();
+
+  const upcomingQ = supabase
+    .from('family_events').select(EVENT_SELECT)
+    .gte('event_date', today)
     .order('event_date', { ascending: true })
     .limit(limit);
-  if (upcoming) q = q.gte('event_date', todayStr());
-  const { data, error } = await q;
-  if (error) throw error;
-  return data;
+
+  if (upcoming) {
+    const { data, error } = await upcomingQ;
+    if (error) throw error;
+    return data || [];
+  }
+
+  const pastQ = supabase
+    .from('family_events').select(EVENT_SELECT)
+    .lt('event_date', today)
+    .order('event_date', { ascending: false })
+    .limit(limit);
+
+  const [up, past] = await Promise.all([upcomingQ, pastQ]);
+  if (up.error) throw up.error;
+  if (past.error) throw past.error;
+  return [...(up.data || []), ...(past.data || [])];
 }
 
 export async function createEvent(input) {

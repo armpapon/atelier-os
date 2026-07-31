@@ -8,6 +8,17 @@ import {
 } from '../../lib/api/family.js';
 import { todayStr } from '../../lib/dates.js';
 
+/** Whole years between a birth date and today, by the calendar. */
+function calcAge(birthDate) {
+  const b = new Date(`${String(birthDate).slice(0, 10)}T00:00:00`);
+  if (isNaN(b)) return null;
+  const now = new Date();
+  let years = now.getFullYear() - b.getFullYear();
+  const m = now.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) years--;
+  return years < 0 ? null : years;
+}
+
 // ─── Avatar helper (small inline copy to keep this file self-contained) ──────
 function Avatar({ member, size = 56 }) {
   const initial = (member?.initial || member?.name || '?').charAt(0).toUpperCase();
@@ -57,9 +68,9 @@ export function MemberDetail({ member, onClose, onChange }) {
 
   if (!member) return null;
 
-  const age = member.birth_date
-    ? Math.floor((Date.now() - new Date(member.birth_date)) / (365.25 * 86400000))
-    : null;
+  // Calendar diff, not /365.25 — the average-year approximation reported the
+  // wrong age for roughly 43% of the year.
+  const age = member.birth_date ? calcAge(member.birth_date) : null;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', justifyContent: 'flex-end' }}>
