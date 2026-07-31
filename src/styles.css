@@ -1,9 +1,12 @@
-/* Loop — Editorial Minimal OS */
-/* Token + component system per UI brief: warm ivory, dark text, clear hierarchy */
-
-@import url('https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=IBM+Plex+Sans+Thai:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+/* Loop — Cupertino Warm */
+/* Apple/Cupertino structure on Loop's original warm ivory + clay palette.
+   Fonts are the native system stack (no webfont download).
+   Every token below is consumed by inline styles across src/ — renaming or
+   removing one silently breaks a component. Add, alias, retune: don't delete. */
 
 :root {
+  color-scheme: light;
+
   /* ── Surfaces — warm ivory / cream ─────────────────────────────────────── */
   --background:      #f5f0e7;
   --background-soft: #fbf8f1;
@@ -16,6 +19,7 @@
   --bg-2:      var(--surface-muted);
   --surface-2: var(--surface-muted);
   --surface-3: var(--surface-warm);
+  --card:      var(--surface);
   --paper:     var(--surface-warm);
   --paper-2:   #dcc9a8;
   --paper-ink: #4a3d2b;
@@ -34,53 +38,113 @@
   /* ── Borders ───────────────────────────────────────────────────────────── */
   --border:        #e3d8c8;
   --border-strong: #cdbda9;
+  --hairline:      rgba(74, 61, 43, 0.13);
   --line:   var(--border);
   --line-2: var(--border-strong);
 
   /* ── Accent — clay/terracotta, used with discipline ───────────────────── */
-  --accent:        #b98545;
+  --accent:        #a8752f;   /* deepened from #b98545 for contrast on ivory */
   --accent-strong: #8a5a2b;
   --accent-soft:   #ead6b8;
+  --accent-tint:   rgba(168, 117, 47, 0.11);
   --amber:         var(--accent);
   --amber-2:       var(--accent-strong);
   --amber-deep:    var(--accent-strong);
   --brass:         #9c7c4d;
 
+  /* ── Neutral fills — Cupertino segmented/hover surfaces ────────────────── */
+  --fill:   rgba(122, 103, 79, 0.08);
+  --fill-2: rgba(122, 103, 79, 0.16);
+
   /* ── Semantic ──────────────────────────────────────────────────────────── */
-  --success:      #5f8a63;   --success-soft: #dcebd8;
-  --danger:       #b76555;   --danger-soft:  #efd7d1;
+  --success:      #3e7d3a;   --success-soft: #dcebd8;
+  --danger:       #b3382a;   --danger-soft:  #efd7d1;
   --warning:      #c99a42;   --warning-soft: #f1e2bd;
 
   --profit:    var(--success);   --profit-bg: var(--success-soft);
   --loss:      var(--danger);    --loss-bg:   var(--danger-soft);
+  --profit-soft: var(--success-soft);
   --blue:      #59799f;
   --violet:    #7e6b9c;
   --rose:      #a86d78;
 
-  /* ── Type ──────────────────────────────────────────────────────────────── */
-  --f-display: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
-  --f-body:    'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
-  --f-mono:    'JetBrains Mono', ui-monospace, monospace;
+  /* ── Type — native system stack, no webfont ────────────────────────────── */
+  --f-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Sukhumvit Set", "Thonburi", "Helvetica Neue", sans-serif;
+  --f-body:    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Sukhumvit Set", "Thonburi", "Helvetica Neue", sans-serif;
+  --f-mono:    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
   /* ── Radius / Shadow ───────────────────────────────────────────────────── */
-  --radius-card:    18px;
-  --radius-control: 12px;
-  --radius-pill:    999px;
+  --radius-card:    20px;
+  --radius-btn:     999px;
+  --radius-field:   12px;
+  --radius-control: var(--radius-field);
+  --radius-pill:    var(--radius-btn);
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: var(--radius-card);
   --r-xl: 24px;
 
-  --shadow-soft: 0 10px 30px rgba(66, 48, 28, 0.06);
-  --shadow-card: 0 8px 18px rgba(66, 48, 28, 0.05);
-  --shadow-pop:  0 16px 40px rgba(66, 48, 28, 0.14);
+  --shadow-card: 0 1px 1px rgba(74, 61, 43, 0.03), 0 4px 16px rgba(74, 61, 43, 0.06);
+  --shadow-pop:  0 2px 4px rgba(74, 61, 43, 0.04), 0 16px 40px rgba(74, 61, 43, 0.10);
+  --shadow-soft: var(--shadow-card);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dark — espresso warm. Defined, not yet exposed: nothing sets data-theme
+   until the Phase 2 toggle ships, so production stays light.
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background:      #171310;
+  --background-soft: #1d1813;
+  --surface:         #211b15;
+  --surface-muted:   #2a221a;
+  --surface-warm:    #33291f;
+
+  --paper:     #2a221a;
+  --paper-2:   #3d3126;
+  --paper-ink: #f3ece0;
+
+  --text-primary:   #f3ece0;
+  --text-secondary: #a4937d;
+  --text-muted:     #8a7962;   /* Loop has 4 ink tiers to the prototype's 3 — this
+                                  intermediate tier stays ≥4.3:1 on #171310, while the
+                                  prototype's faintest (#57493a) drops to --ink-4 below */
+  --text-inverse:   #171310;
+  --ink-4: #57493a;
+
+  --border:        rgba(243, 236, 224, 0.10);
+  --border-strong: rgba(243, 236, 224, 0.18);
+  --hairline:      rgba(243, 236, 224, 0.10);
+
+  --accent:        #d9a45e;
+  --accent-strong: #e7bd83;
+  --accent-soft:   #3a2c1c;
+  --accent-tint:   rgba(217, 164, 94, 0.14);
+  --brass:         #c09257;
+
+  --fill:   rgba(160, 140, 110, 0.13);
+  --fill-2: rgba(160, 140, 110, 0.24);
+
+  --success:      #66bb6a;   --success-soft: rgba(102, 187, 106, 0.16);
+  --danger:       #e57368;   --danger-soft:  rgba(229, 115, 104, 0.16);
+  --warning:      #e0b25f;   --warning-soft: rgba(224, 178, 95, 0.16);
+
+  --blue:   #7ba7d4;
+  --violet: #a996c8;
+  --rose:   #d49aa5;
+
+  --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.20), 0 4px 16px rgba(0, 0, 0, 0.30);
+  --shadow-pop:  0 2px 4px rgba(0, 0, 0, 0.30), 0 16px 40px rgba(0, 0, 0, 0.50);
+  --shadow-soft: var(--shadow-card);
 }
 
 /* ── Shared utility primitives (used by inline components) ─────────────── */
 .focus-ring:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-field);
 }
 
 * { box-sizing: border-box; }
@@ -91,18 +155,25 @@ body {
   font-family: var(--f-body);
   font-size: 14px;
   line-height: 1.5;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  transition: background 350ms ease, color 350ms ease;
 }
+@media (prefers-reduced-motion: reduce) { body { transition: none; } }
 
 button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 
+/* Numbers line up in columns wherever the mono face is used */
+.mono, .stat__value--mono, .trade-row, .txn-row__amount, .num,
+input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--line); border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: var(--line-2); }
+::-webkit-scrollbar-thumb { background: var(--fill-2); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--line-2); background-clip: content-box; }
 
 /* ====== App shell ====== */
 .app { display: grid; grid-template-columns: 240px 1fr; height: 100vh; width: 100vw; transition: grid-template-columns 180ms ease; }
@@ -196,10 +267,13 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 .page-body { padding: 28px 40px 64px; }
 
 /* ====== Primitives ====== */
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; }
+.card {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 20px;
+}
 .card--paper { background: var(--paper); color: var(--paper-ink); border-color: var(--paper-2); }
 .card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.card__title { font-family: var(--f-display); font-size: 17px; color: var(--ink); margin: 0; font-weight: 500; }
+.card__title { font-family: var(--f-display); font-size: 17px; color: var(--ink); margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 .card--paper .card__title { color: var(--paper-ink); }
 .card__label {
   font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.18em;
@@ -207,16 +281,19 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 }
 
 .btn {
-  display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
-  font-size: 13px; border-radius: var(--r-md); border: 1px solid var(--line-2);
-  background: var(--surface-2); color: var(--ink); transition: background 120ms, border-color 120ms;
+  display: inline-flex; align-items: center; gap: 8px; padding: 7px 16px;
+  font-size: 13px; font-weight: 500; border-radius: var(--radius-btn);
+  border: 1px solid transparent; background: var(--fill-2); color: var(--ink);
+  transition: background 120ms, border-color 120ms, filter 120ms, transform 120ms;
 }
-.btn:hover { background: var(--surface-3); border-color: var(--ink-4); }
-.btn--ghost { background: transparent; border-color: var(--line); color: var(--ink-2); }
-.btn--ghost:hover { color: var(--ink); }
-.btn--primary { background: var(--amber); color: #1a1410; border-color: var(--amber); font-weight: 500; }
-.btn--primary:hover { background: var(--brass); border-color: var(--brass); }
-.btn--sm { padding: 5px 10px; font-size: 12px; }
+.btn:hover { background: var(--fill-2); filter: brightness(0.96); }
+.btn:active { transform: scale(0.97); }
+.btn--ghost { background: transparent; border-color: var(--hairline); color: var(--ink-2); }
+.btn--ghost:hover { color: var(--ink); background: var(--fill); filter: none; }
+.btn--primary { background: var(--accent); color: #fffaf0; border-color: transparent; font-weight: 500; }
+.btn--primary:hover { background: var(--accent); filter: brightness(1.08); }
+.btn--sm { padding: 5px 12px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
 
 .tag {
   display: inline-flex; align-items: center; gap: 5px;
@@ -270,10 +347,11 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 .tab--active { color: var(--ink); border-bottom-color: var(--amber); }
 
 .input {
-  width: 100%; background: var(--bg-2); border: 1px solid var(--line);
-  border-radius: var(--r-md); padding: 8px 12px; color: var(--ink); transition: border-color 120ms;
+  width: 100%; background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: var(--radius-field); padding: 9px 12px; color: var(--ink);
+  transition: border-color 120ms, box-shadow 120ms;
 }
-.input:focus { outline: none; border-color: var(--amber-deep); }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .input::placeholder { color: var(--ink-4); }
 
 /* ====== Dashboard ====== */
