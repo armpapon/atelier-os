@@ -116,10 +116,21 @@ export function reconcile(formRows, destRows, { year } = {}) {
     }
   };
 
-  for (const f of forms) { // P1 slide
+  for (const f of forms) { // P1 slide — same receipt AND same money
+    // The slide key alone is not enough: employees paste the wrong slide link
+    // into a form (Fern's DDPAI form carried the Watsadu slide, 31 Jul) and a
+    // key-only tie hands the form to another claim, leaving the real row
+    // flagged "ไม่ได้กรอกฟอร์ม". เงินต้องตรงเป๊ะ — the tied rows must carry the
+    // form's amount (per row, or summing to it for a split); otherwise the
+    // form falls through to the amount passes.
     const k = slideParts(f.slideUrl).key;
     const hit = k && destBySlide.get(k);
-    if (hit) tie(f, hit, 'slide');
+    if (!hit) continue;
+    const open = hit.filter(d => !dmatch.has(d.rowNo));
+    if (!open.length) continue;
+    const exact = open.filter(d => Math.abs(d.amountOut - f.amount) <= 1);
+    if (exact.length) tie(f, exact, 'slide');
+    else if (Math.abs(open.reduce((s, d) => s + d.amountOut, 0) - f.amount) <= 1) tie(f, open, 'slide');
   }
   for (const f of forms) { // P2 person+amount
     if (fmatch.has(f.formRow)) continue;
