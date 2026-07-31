@@ -219,7 +219,7 @@ function KPI({ label, value, sub, color = 'var(--text-primary)' }) {
       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color, marginTop: 6, fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.01em' }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color, marginTop: 6, fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
       {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
@@ -231,7 +231,7 @@ function MetricRow({ label, value, color = 'var(--text-primary)' }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
       <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color, fontWeight: 500 }}>{value}</span>
+      <span style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );
 }
@@ -360,7 +360,7 @@ function TradeTable({ trades, onView, onDelete }) {
 function TradeDetailDrawer({ trade, onClose, onEdit }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
         position: 'relative', width: '90vw', maxWidth: 560, height: '100%',
         background: 'var(--background)', borderLeft: '1px solid var(--border)',

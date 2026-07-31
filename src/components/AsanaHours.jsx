@@ -301,7 +301,7 @@ export function AsanaHours({ date }) {
 
   const inputStyle = {
     width: '100%', padding: '7px 8px', fontSize: 12, color: 'var(--ink)',
-    background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+    background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)',
   };
   const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
   const linkBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--ink-3)', padding: 0 };
@@ -467,8 +467,8 @@ export function AsanaHours({ date }) {
                           {fmtHr(p.total)} / {fmtHr(p.target)}{low ? ` · ขาด ${fmtHr(p.target - p.total)}` : ' ✓'}
                         </span>
                       </div>
-                      <div style={{ height: 4, background: low ? 'var(--surface-2)' : 'var(--bg-2)', borderRadius: 2, margin: '6px 0', overflow: 'hidden' }}>
-                        <div style={{ width: `${p.target ? Math.min(100, (p.total / p.target) * 100) : 100}%`, height: '100%', background: low ? 'var(--warning)' : 'var(--profit)' }} />
+                      <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, margin: '6px 0', overflow: 'hidden' }}>
+                        <div style={{ width: `${p.target ? Math.min(100, (p.total / p.target) * 100) : 100}%`, height: '100%', borderRadius: 999, background: low ? 'var(--warning)' : 'var(--profit)' }} />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {STATUSES.map(s => (
@@ -485,7 +485,7 @@ export function AsanaHours({ date }) {
                       </div>
                     </button>
                     {open && p.tasks.length > 0 && (
-                      <div style={{ borderTop: '1px solid var(--line)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ borderTop: '1px solid var(--hairline)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {p.tasks.map(t => (
                           <div key={t.gid} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12 }}>
                             <span style={{
@@ -501,7 +501,7 @@ export function AsanaHours({ date }) {
                       </div>
                     )}
                     {open && !p.tasks.length && (
-                      <div style={{ borderTop: '1px solid var(--line)', padding: '6px 10px', fontSize: 12, color: 'var(--ink-3)' }}>
+                      <div style={{ borderTop: '1px solid var(--hairline)', padding: '6px 10px', fontSize: 12, color: 'var(--ink-3)' }}>
                         ยังไม่ได้วางการ์ดงานวันนี้เลย
                       </div>
                     )}

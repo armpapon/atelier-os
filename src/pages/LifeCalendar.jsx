@@ -128,7 +128,7 @@ function Stat({ label, value, sub, tone }) {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div className="stat__label">{label}</div>
-      <div className="stat__value" style={{ fontSize: 26, color: tone || 'var(--ink)' }}>{value}</div>
+      <div className="stat__value" style={{ fontSize: 26, color: tone || 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-4)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
@@ -348,7 +348,7 @@ export function LifeCalendar() {
 
             {/* Progress bar */}
             <div>
-              <div style={{ height: 8, borderRadius: 999, background: 'var(--surface-muted)', overflow: 'hidden' }}>
+              <div style={{ height: 8, borderRadius: 999, background: 'var(--fill)', overflow: 'hidden' }}>
                 <div style={{ width: `${stats.pct}%`, height: '100%', background: 'var(--accent)', transition: 'width 400ms' }} />
               </div>
             </div>

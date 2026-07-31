@@ -302,13 +302,13 @@ function TodayHero({
             </div>
           )}
           {focus.map(f => (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '8px 0', borderBottom: '1px dotted var(--line)' }}>
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid var(--hairline)' }}>
               <button onClick={() => onFocusToggle(f.id, !f.done)} aria-label={f.done ? 'ยกเลิก' : 'เสร็จ'}
                 style={{
-                  width: 18, height: 18, borderRadius: 5, flexShrink: 0, cursor: 'pointer',
-                  border: `1.6px solid ${f.done ? 'var(--amber)' : 'var(--line-2)'}`,
-                  background: f.done ? 'var(--amber)' : 'transparent',
-                  color: '#fff', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 20, height: 20, borderRadius: '50%', flexShrink: 0, cursor: 'pointer',
+                  border: `1.6px solid ${f.done ? 'var(--accent)' : 'var(--ink-3)'}`,
+                  background: f.done ? 'var(--accent)' : 'transparent',
+                  color: 'var(--text-inverse)', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                 {f.done ? '✓' : ''}
               </button>

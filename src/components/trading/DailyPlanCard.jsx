@@ -170,7 +170,7 @@ function PlanView({ plan, onImageRemove }) {
                   style={{
                     position: 'absolute', top: 6, right: 6,
                     width: 22, height: 22, borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0,
+                    background: 'var(--dim)', color: 'var(--text-inverse)', border: 0,
                     cursor: 'pointer', fontSize: 12,
                   }}>×</button>
               </div>
@@ -396,8 +396,8 @@ function FieldTA({ label, value, onChange, rows = 2, placeholder, mono }) {
       <textarea value={value || ''} onChange={e => onChange(e.target.value)}
         rows={rows} placeholder={placeholder}
         style={{
-          width: '100%', background: 'var(--surface)', border: '1px solid var(--border-strong)',
-          borderRadius: 'var(--radius-control)', padding: '8px 11px',
+          width: '100%', background: 'var(--fill)', border: '1px solid transparent',
+          borderRadius: 'var(--radius-field)', padding: '10px 12px',
           color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.6,
           resize: 'vertical', minHeight: rows * 22,
           fontFamily: mono ? 'var(--f-mono)' : 'var(--f-body)',

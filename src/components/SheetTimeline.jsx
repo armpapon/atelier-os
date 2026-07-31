@@ -121,7 +121,7 @@ export function SheetTimeline({ date }) {
   const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
   const inputStyle = {
     width: '100%', padding: '7px 8px', fontSize: 12, color: 'var(--ink)',
-    background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+    background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)',
   };
   const moreBtn = {
     background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
@@ -155,7 +155,7 @@ export function SheetTimeline({ date }) {
           )}
         </button>
         {open && (
-          <div style={{ borderTop: '1px solid var(--line)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <div style={{ borderTop: '1px solid var(--hairline)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div style={{ ...mono10, color: 'var(--ink-2)' }}>
               {j.steps.map(s => `${s.struck ? '✓' : '·'} ${s.label} ${fmtD(s.date)}`).join('  ')}
             </div>

@@ -89,12 +89,12 @@ export function MissionDashboard({ trades = [] }) {
           </span>
         </div>
         <div style={{
-          height: 8, borderRadius: 'var(--radius-pill)',
-          background: 'var(--surface-muted)', border: '1px solid var(--border)',
+          height: 4, borderRadius: 999,
+          background: 'var(--fill)',
           overflow: 'hidden',
         }}>
           <div style={{
-            width: `${pct}%`, height: '100%',
+            width: `${pct}%`, height: '100%', borderRadius: 999,
             background: pct >= 100 ? 'var(--success)' : 'var(--accent)',
             transition: 'width 240ms',
           }} />

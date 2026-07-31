@@ -3,10 +3,23 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v4.4',
+    date: '2026-07-31',
+    title: 'ปิดจ็อบ Loop 2.0 Cupertino Warm — เก็บทุกหน้าที่เหลือ ครบทั้งแอป',
+    badge: 'Current',
+    changes: [
+      '🎉 จบโปรเจกต์ Loop 2.0 — ทุกหน้าในแอปใช้ดีไซน์ชุดเดียวกันหมดแล้ว: แดชบอร์ด · Trading · Learning Hub · ครอบครัว · Petty Cash · ทะเบียนพนักงาน · Second Brain · Life Calendar · หน้า login และหน้าต่างประวัติเวอร์ชัน',
+      '🌙 โหมดมืดใช้ได้จริงทั้งแอปแล้ว — ไล่เก็บสีที่ hard-code ไว้ (สีขาว/ดำ/เทาแบบตายตัวที่ค้างจากธีมเก่า) ออกจากทุกหน้า เปลี่ยนไปใช้โทนกลางของธีม จุดที่เคยอ่านไม่ออกในโหมดมืดหายไปหมด',
+      '🔘 ปุ่มทั้งแอปเป็นทรงแคปซูลชุดเดียวกัน · ช่องกรอกทุกช่องเป็นพื้นเทาไร้ขอบ มีวงแหวนสีเน้นตอนคลิก · การ์ดไร้เส้นขอบ มุมมน 20px เงานุ่ม เหมือนกันทุกหน้า',
+      '🔢 ตัวเลขที่เรียงเป็นคอลัมน์ (ยอดเงิน ชั่วโมง จำนวนครั้ง) เรียงหลักตรงกันหมดด้วย tabular-nums',
+      '📱 ตรวจทุกหน้าบนจอมือถือแล้ว ไม่มีหน้าไหนต้องเลื่อนซ้าย-ขวา',
+      'ℹ️ เฟสนี้ไม่แตะ logic เลยแม้แต่บรรทัดเดียว — การคำนวณ การนำเข้าข้อมูล การเชื่อม Google/Asana และการบันทึกทั้งหมดทำงานเหมือนเดิมทุกอย่าง',
+    ],
+  },
+  {
     version: 'v4.3',
     date: '2026-07-31',
     title: 'Loop 2.0 · Daily Journal โฉม Cupertino — timeline ใหม่ + ปฏิทิน + อารมณ์/Habits',
-    badge: 'Current',
     changes: [
       '📋 หน้าไดอารี่เปลี่ยนจากกระดาษจุดสีครีมเป็น timeline สะอาดตา: เวลาชิดขวาด้านซ้ายสุด · นัดหมายมีแถบสีตั้งบาง ๆ · งานเป็นวงกลมติ๊กแบบ iOS (ติ๊กแล้วขีดฆ่าและจางลง) · โน้ตเป็น — ดาวเป็น ★ (สีทองในโหมดมืด) งานที่โยกเป็น ›',
       '💗 นัดที่ทำเครื่องหมาย "ด้วยกัน" เด่นชัดขึ้น — แถบสีชมพูข้างรายการ พร้อมป้าย ♥ ด้วยกัน',
@@ -1424,10 +1437,10 @@ export const CHANGELOG = [
 export function VersionHistory({ onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.45)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
         position: 'relative', width: '90vw', maxWidth: 620, maxHeight: '85vh',
-        background: 'var(--surface)', border: '1px solid var(--border)',
+        background: 'var(--surface)', border: 'none', boxShadow: 'var(--shadow-pop)',
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>

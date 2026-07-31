@@ -49,7 +49,7 @@ export function StudyDrawer({ source, onClose, onChange }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)', backdropFilter: 'blur(2px)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)', backdropFilter: 'blur(2px)' }} />
       <div style={{
         position: 'relative', width: '92vw', maxWidth: 760, height: '100%',
         background: 'var(--background)', borderLeft: '1px solid var(--border)',
@@ -115,7 +115,7 @@ export function StudyDrawer({ source, onClose, onChange }) {
               {t.id === 'insights' && openActions > 0 && (
                 <span style={{
                   marginLeft: 5, fontSize: 9, padding: '1px 5px', borderRadius: 8,
-                  background: 'var(--warning)', color: '#1a1410', fontFamily: 'var(--f-mono)', fontWeight: 600,
+                  background: 'var(--warning)', color: 'var(--text-inverse)', fontFamily: 'var(--f-mono)', fontWeight: 600,
                 }}>{openActions} to-do</span>
               )}
             </button>
@@ -180,17 +180,17 @@ function ProgressHero({ source, stats, isBook }) {
             <span style={{ marginLeft: 8, color: 'var(--accent-strong)' }}>· อ่านจบมาแล้ว {source.reading_count} รอบ</span>
           )}
         </div>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, fontWeight: 600, color: progress >= 100 ? 'var(--success)' : 'var(--accent-strong)', lineHeight: 1 }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, fontWeight: 600, color: progress >= 100 ? 'var(--success)' : 'var(--accent-strong)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {progress}%
         </div>
       </div>
 
       {/* progress bar */}
-      <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 5, overflow: 'hidden' }}>
+      <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
         <div style={{
           width: `${progress}%`, height: '100%',
           background: progress >= 100 ? 'var(--success)' : 'linear-gradient(90deg, var(--accent), var(--accent-strong))',
-          borderRadius: 5, transition: 'width 400ms cubic-bezier(.2,.8,.3,1)',
+          borderRadius: 999, transition: 'width 400ms cubic-bezier(.2,.8,.3,1)',
         }} />
       </div>
 
@@ -389,7 +389,7 @@ function BookStudy({ source, onSaved }) {
 // ════════════════════════════════════════════════════════════════════════════
 const KINDS = {
   takeaway: { label: 'ข้อคิด',    icon: '💡', color: 'var(--accent)',  soft: 'var(--accent-soft)' },
-  quote:    { label: 'Quote',     icon: '❝',  color: 'var(--violet, #8b7355)', soft: 'var(--background-soft)' },
+  quote:    { label: 'Quote',     icon: '❝',  color: 'var(--violet)', soft: 'var(--background-soft)' },
   action:   { label: 'ลงมือทำ',   icon: '✅', color: 'var(--success)', soft: 'var(--success-soft)' },
 };
 
@@ -594,6 +594,8 @@ function VideoStudy({ source, onSaved }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {videoId ? (
+        // Fixed black letterbox behind the iframe while it loads — not a themed
+        // surface, so intentionally left off the token palette.
         <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, borderRadius: 'var(--radius-control)', overflow: 'hidden', background: '#000' }}>
           <iframe
             src={getYouTubeEmbedUrl(videoId, { startSec: source.video_position_sec || 0 })}
@@ -805,10 +807,10 @@ function StatsTab({ source, stats, insights, onCompletePass }) {
                 ? `อ่านแล้ว ${source.current_page || 0} / ${source.total_pages} หน้า`
                 : 'Progress'}
             </span>
-            <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--accent-strong)', fontWeight: 600 }}>{progress}%</span>
+            <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--accent-strong)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{progress}%</span>
           </div>
-          <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ width: `${progress}%`, height: '100%', background: 'var(--accent)', transition: 'width 300ms' }} />
+          <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
+            <div style={{ width: `${progress}%`, height: '100%', borderRadius: 999, background: 'var(--accent)', transition: 'width 300ms' }} />
           </div>
         </div>
 
@@ -880,7 +882,7 @@ function Field({ label, children }) {
 }
 
 const inputStyle = {
-  background: 'var(--surface)', border: '1px solid var(--border-strong)',
-  borderRadius: 'var(--radius-control)', padding: '8px 11px',
+  background: 'var(--fill)', border: '1px solid transparent',
+  borderRadius: 'var(--radius-field)', padding: '10px 12px',
   color: 'var(--text-primary)', fontSize: 13, width: '100%',
 };

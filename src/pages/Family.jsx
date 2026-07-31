@@ -11,6 +11,7 @@ import { uploadFamilyAvatar, removeFamilyAvatar, uploadFamilyEventPhoto, deleteE
 import { MemberDetail } from '../components/family/MemberDetail.jsx';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// Colour DATA the user picks a member's avatar fallback from — not a token, keep literal.
 const AVATAR_COLORS = ['#d4a574', '#7ba7d4', '#a78fcc', '#d49aa5', '#6cbf83', '#e8b84b', '#e07a6e'];
 
 function daysUntil(dateStr) {
@@ -54,13 +55,14 @@ function videoEmbed(url) {
 // Avatar — shows photo if avatar_url, else colored circle with initial
 function Avatar({ member, size = 44, borderColor }) {
   const initial = member?.initial || getInitial(member?.name);
+  // Fallback mirrors AVATAR_COLORS[0] — decorative data default, not a token.
   const bg = member?.color || '#d4a574';
   const baseStyle = {
     width: size, height: size, borderRadius: '50%',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0, overflow: 'hidden',
     border: borderColor ? `3px solid ${borderColor}` : 'none',
-    boxShadow: '0 1px 3px rgba(66, 48, 28, 0.08)',
+    boxShadow: 'var(--shadow-card)',
   };
   if (member?.avatar_url) {
     return (
@@ -150,7 +152,7 @@ function MemberModal({ initial, onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{
         position: 'relative', background: 'var(--surface)', border: '1px solid var(--border)',
         borderRadius: 'var(--radius-card)', padding: 28, width: 420,
@@ -168,7 +170,10 @@ function MemberModal({ initial, onSave, onClose }) {
             <Avatar member={previewMember} size={88} />
             <div style={{
               position: 'absolute', inset: 0, borderRadius: '50%',
-              background: 'rgba(0,0,0,0.45)', color: '#fff',
+              background: 'var(--dim)',
+              // Fixed white: sits on the always-dark scrim above, independent of theme
+              // (var(--text-inverse) assumes an accent-coloured surface, not this scrim).
+              color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               opacity: 0, transition: 'opacity 130ms', fontSize: 11,
               fontFamily: 'var(--f-mono)', letterSpacing: '0.1em',
@@ -293,7 +298,7 @@ function AddEventModal({ members, onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{
         position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
         borderRadius: 'var(--r-xl)', padding: 32, width: 360, display: 'flex', flexDirection: 'column', gap: 16,
@@ -329,8 +334,10 @@ function AddEventModal({ members, onSave, onClose }) {
               {photos.map((p, i) => (
                 <div key={i} style={{ position: 'relative', aspectRatio: '1' }}>
                   <img src={p.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)' }} />
+                  {/* Fixed dark scrim + white glyph: sits on top of arbitrary photo content,
+                      independent of page theme (same reasoning as the Lightbox controls below). */}
                   <button type="button" onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
-                    style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>×</button>
+                    style={{ position: 'absolute', top: 3, right: 3, background: 'var(--dim)', color: '#fff', border: 0, borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', fontSize: 12, lineHeight: 1 }}>×</button>
                 </div>
               ))}
             </div>
@@ -369,7 +376,7 @@ function AddNoteDrawer({ onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{
         position: 'relative', width: 420, height: '100%', background: 'var(--surface)',
         borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto',
@@ -413,6 +420,10 @@ function Lightbox({ photos, index, onIndex, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   });
   return (
+    // Immersive full-screen photo viewer — deliberately kept near-opaque black
+    // (not var(--dim), which is a much lighter ambient scrim meant for card
+    // modals) so arbitrary photo content always sits on a true-black backdrop,
+    // and the white icon/counter controls stay legible regardless of app theme.
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <img src={photos[index]} alt="" onClick={e => e.stopPropagation()}
         style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 6 }} />
@@ -493,7 +504,7 @@ function EventDetail({ event, members, onChange, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 550, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
         position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
         borderRadius: 'var(--r-xl)', padding: 28, width: 640, maxWidth: '100%', maxHeight: '90vh',
@@ -547,8 +558,9 @@ function EventDetail({ event, members, onChange, onClose }) {
                     ▶ เปิดวิดีโอ
                   </a>
                 )}
+                {/* Fixed dark scrim + white glyph — overlays arbitrary video/photo content, independent of theme */}
                 <button onClick={() => removeVideo(url)} title="ลบวิดีโอ"
-                  style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+                  style={{ position: 'absolute', top: 6, right: 6, background: 'var(--dim)', color: '#fff', border: 0, borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
               </div>
             );
           })}
@@ -582,8 +594,9 @@ function EventDetail({ event, members, onChange, onClose }) {
                 <div key={url} style={{ position: 'relative', aspectRatio: '1' }}>
                   <img src={url} alt="" loading="lazy" onClick={() => setLightbox(i)}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--r-md)', border: '1px solid var(--line)', cursor: 'pointer' }} />
+                  {/* Fixed dark scrim + white glyph — overlays arbitrary photo content, independent of theme */}
                   <button onClick={() => removePhoto(url)}
-                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.6)', color: '#fff', border: 0, borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'var(--dim)', color: '#fff', border: 0, borderRadius: '50%', width: 22, height: 22, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>×</button>
                 </div>
               ))}
             </div>
@@ -591,7 +604,7 @@ function EventDetail({ event, members, onChange, onClose }) {
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--hairline)', paddingTop: 14 }}>
           <button onClick={removeEvent} style={{ fontSize: 12.5, color: 'var(--danger)', cursor: 'pointer' }}>ลบเหตุการณ์</button>
           <button className="btn btn--ghost" onClick={onClose}>ปิด</button>
         </div>
@@ -693,7 +706,7 @@ function KidQuotesCard({ quotes, members, onChange }) {
               <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 15.5, lineHeight: 1.5, color: 'var(--ink)' }}>
                 “{q.quote}”
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}>
                 <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
                   {q.member?.name ? `— ${q.member.name} · ` : ''}{new Date(q.said_on + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
@@ -780,7 +793,7 @@ export function Family() {
         <div className="card card--paper" style={{ marginBottom: 22, padding: 36 }}>
           <div className="row row--between" style={{ alignItems: 'flex-start' }}>
             <div style={{ maxWidth: 600 }}>
-              <div className="card__label" style={{ color: '#8a6438', marginBottom: 10 }}>แรงบันดาลใจ</div>
+              <div className="card__label" style={{ color: 'var(--accent-strong)', marginBottom: 10 }}>แรงบันดาลใจ</div>
               <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 28, lineHeight: 1.4, color: 'var(--paper-ink)' }}>
                 เงินที่หามาได้, การเรียนรู้, และ trade ที่ชนะ — ทั้งหมดมีค่าเพราะมีคนข้างหลังที่เรารัก
               </div>
@@ -799,8 +812,8 @@ export function Family() {
 
           {/* Birthday reminder */}
           {birthdayMembers.length > 0 && (
-            <div style={{ marginTop: 20, padding: '10px 14px', background: 'rgba(212,165,116,0.15)', border: '1px solid rgba(212,165,116,0.3)', borderRadius: 'var(--r-md)' }}>
-              <span style={{ color: '#8a6438', fontSize: 13 }}>🎂 วันเกิดเดือนนี้: </span>
+            <div style={{ marginTop: 20, padding: '10px 14px', background: 'var(--accent-tint)', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-md)' }}>
+              <span style={{ color: 'var(--accent-strong)', fontSize: 13 }}>🎂 วันเกิดเดือนนี้: </span>
               <span style={{ color: 'var(--paper-ink)', fontSize: 13, fontFamily: 'var(--f-display)' }}>
                 {birthdayMembers.map(m => `${m.name} (${new Date(m.birth_date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`).join(', ')}
               </span>
@@ -887,16 +900,17 @@ export function Family() {
                   const pics = eventPhotos(ev);
                   return (
                     <div key={ev.id} onClick={() => setViewingEvent(ev)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--hairline)', cursor: 'pointer' }}>
                       {/* Day countdown badge */}
                       <div style={{
                         minWidth: 44, height: 44, borderRadius: 'var(--r-md)',
-                        background: days === 0 ? 'var(--amber)' : days <= 3 ? '#2a1f15' : 'var(--surface-2)',
+                        background: days === 0 ? 'var(--amber)' : days <= 3 ? 'var(--warning-soft)' : 'var(--surface-2)',
                         border: `1px solid ${days === 0 ? 'var(--amber)' : 'var(--line)'}`,
                         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                         fontFamily: 'var(--f-mono)',
                       }}>
-                        <div style={{ fontSize: 9, color: days === 0 ? '#1a1410' : 'var(--ink-3)', letterSpacing: '0.1em' }}>
+                        {/* text-inverse flips correctly here since the badge bg is the accent/amber surface */}
+                        <div style={{ fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)', letterSpacing: '0.1em' }}>
                           {days === 0 ? 'วันนี้' : days === 1 ? 'พรุ่งนี้' : 'อีก'}
                         </div>
                         {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}
@@ -907,7 +921,7 @@ export function Family() {
                           <img src={pics[0]} alt="" loading="lazy"
                             style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', objectFit: 'cover', border: '1px solid var(--line)', display: 'block' }} />
                           {pics.length > 1 && (
-                            <span style={{ position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: '#fff', borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-mono)', fontSize: 8.5, padding: '1px 5px' }}>📷{pics.length}</span>
+                            <span style={{ position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-mono)', fontSize: 8.5, padding: '1px 5px' }}>📷{pics.length}</span>
                           )}
                         </div>
                       )}
@@ -934,7 +948,7 @@ export function Family() {
                       const pics = eventPhotos(ev);
                       return (
                         <div key={ev.id} onClick={() => setViewingEvent(ev)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', padding: '8px 0', opacity: 0.7, borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', padding: '8px 0', opacity: 0.7, borderBottom: '1px solid var(--hairline)', cursor: 'pointer' }}>
                           {pics.length > 0 && (
                             <img src={pics[0]} alt="" loading="lazy"
                               style={{ width: 32, height: 32, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
@@ -988,7 +1002,7 @@ export function Family() {
                   <div style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--ink)', whiteSpace: 'pre-wrap' }}>
                     {note.body}
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}>
                     <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
                       {note.author ? `✍ ${note.author} · ` : ''}{new Date(note.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </div>

@@ -130,11 +130,11 @@ export function Team() {
           )}
 
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: '1px solid var(--hairline)' }}>
               <span>รหัส</span><span>ชื่อ</span><span style={{ textAlign: 'right' }}>เบิกปี {data.year ?? '—'}</span>
             </div>
             {data.roster.map(e => (
-              <div key={e.code} style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--line)' }}>
+              <div key={e.code} style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--hairline)' }}>
                 <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink-2)' }}>{e.code}</span>
                 <span style={{ minWidth: 0 }}>
                   <span style={{ fontSize: 13.5, color: 'var(--ink)' }}>{e.fullName}</span>
@@ -160,7 +160,7 @@ function Tile({ v, l, warn }) {
       border: `1px solid ${warn ? 'var(--warning)' : 'var(--line)'}`,
       borderRadius: 'var(--r-md)', padding: '13px 14px',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 500, color: warn ? 'var(--accent-strong)' : 'var(--ink)' }}>{v}</div>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 500, color: warn ? 'var(--accent-strong)' : 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{v}</div>
       <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 3 }}>{l}</div>
     </div>
   );

@@ -137,13 +137,13 @@ const styles = {
   container: {
     position: 'fixed', inset: 0,                   // ครอบ viewport จริง ไม่อิงกับ meta width=1280
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'radial-gradient(800px 400px at 50% 0%, rgba(212,165,116,0.12), transparent 60%), var(--bg)',
+    background: 'radial-gradient(800px 400px at 50% 0%, var(--accent-tint), transparent 60%), var(--bg)',
     padding: 20, overflow: 'auto',
   },
   card: {
     width: '100%', maxWidth: 380,
-    background: 'var(--surface)', border: '1px solid var(--line)',
-    borderRadius: 'var(--r-xl)', padding: 36,
+    background: 'var(--surface)', border: 'none', boxShadow: 'var(--shadow-pop)',
+    borderRadius: 'var(--radius-card)', padding: 36,
     display: 'flex', flexDirection: 'column', gap: 14,
   },
   brand: {
@@ -153,7 +153,7 @@ const styles = {
   },
   title: {
     fontFamily: 'var(--f-display)', fontSize: 26, color: 'var(--ink)',
-    letterSpacing: '-0.01em',
+    fontWeight: 700, letterSpacing: '-0.02em',
   },
   sub: { color: 'var(--ink-3)', fontSize: 13.5, marginBottom: 8 },
   field: { display: 'flex', flexDirection: 'column', gap: 6 },
@@ -162,15 +162,15 @@ const styles = {
     textTransform: 'uppercase', color: 'var(--ink-3)',
   },
   input: {
-    background: 'var(--bg-2)', border: '1px solid var(--line)',
-    borderRadius: 'var(--r-md)', padding: '10px 12px',
+    background: 'var(--fill)', border: '1px solid transparent',
+    borderRadius: 'var(--radius-field)', padding: '11px 12px',
     color: 'var(--ink)', fontSize: 14, outline: 'none',
     fontFamily: 'inherit',
   },
   submit: {
-    marginTop: 6, padding: '11px 14px', borderRadius: 'var(--r-md)',
-    background: 'var(--amber)', color: '#1a1410',
-    border: 0, fontWeight: 500, fontSize: 14, cursor: 'pointer',
+    marginTop: 6, padding: '12px 14px', borderRadius: 'var(--radius-btn)',
+    background: 'var(--accent)', color: 'var(--text-inverse)',
+    border: 0, fontWeight: 600, fontSize: 14, cursor: 'pointer',
     fontFamily: 'inherit',
   },
   switch: {
@@ -179,16 +179,16 @@ const styles = {
     fontFamily: 'inherit',
   },
   alert: {
-    padding: '10px 12px', borderRadius: 'var(--r-md)',
+    padding: '10px 12px', borderRadius: 'var(--radius-field)',
     fontSize: 12.5, lineHeight: 1.5,
   },
   alertError: {
-    background: 'var(--loss-bg)', color: 'var(--loss)',
-    border: '1px solid #4a2e2a',
+    background: 'var(--danger-soft)', color: 'var(--danger)',
+    border: 'none',
   },
   alertInfo: {
-    background: '#2a2014', color: 'var(--amber)',
-    border: '1px solid #4a3a22',
+    background: 'var(--accent-tint)', color: 'var(--accent)',
+    border: 'none',
   },
 };
 

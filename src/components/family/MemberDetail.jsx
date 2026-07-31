@@ -14,7 +14,7 @@ function Avatar({ member, size = 56 }) {
     width: size, height: size, borderRadius: '50%',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0, overflow: 'hidden',
-    boxShadow: '0 1px 3px rgba(66, 48, 28, 0.08)',
+    boxShadow: 'var(--shadow-card)',
   };
   if (member?.avatar_url) {
     return (
@@ -62,7 +62,7 @@ export function MemberDetail({ member, onClose, onChange }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
         position: 'relative', width: '90vw', maxWidth: 640, height: '100%',
         background: 'var(--background)', borderLeft: '1px solid var(--border)',
@@ -441,7 +441,7 @@ function GrowthTab({ member }) {
                 <div key={r.id} style={{
                   display: 'grid', gridTemplateColumns: '90px 1fr auto', gap: 10,
                   padding: '7px 12px', fontSize: 12,
-                  borderBottom: '1px solid var(--border)',
+                  borderBottom: '1px solid var(--hairline)',
                 }}>
                   <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)' }}>
                     {new Date(r.recorded_at).toLocaleDateString('th-TH')}
@@ -749,8 +749,8 @@ function MilestoneForm({ memberId, onSubmit, onCancel }) {
 
 // ─── Reusable bits ──────────────────────────────────────────────────────────
 const fieldInputStyle = {
-  background: 'var(--surface)', border: '1px solid var(--border-strong)',
-  borderRadius: 'var(--radius-control)', padding: '7px 10px',
+  background: 'var(--fill)', border: '1px solid transparent',
+  borderRadius: 'var(--radius-field)', padding: '7px 10px',
   color: 'var(--text-primary)', fontSize: 12.5, width: '100%',
 };
 

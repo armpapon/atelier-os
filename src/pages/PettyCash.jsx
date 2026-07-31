@@ -564,7 +564,7 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{isSeal ? 'ค่าใช้จ่ายบริษัท' : p.code}</div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 500 }}>{baht(p.out)}</div>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600 }}>{baht(p.out)}</div>
             <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{p.count} รายการ</div>
           </div>
         </div>
@@ -622,7 +622,7 @@ function BlockGroup({ rows, slides, byRow, partners, marks, setMark, matchInfo, 
           <div style={{ fontSize: 13, fontWeight: 600 }}>แถวรวม {first}–{last} · {rows.length} รายการ</div>
           <div style={{ ...mono10, marginTop: 1 }}>
             ยอดก้อนเดียวตามชีท (ช่อง H)
-            {matched.length > 0 && <span style={{ color: '#3c5c3b' }}> · ✓ ใบเบิกฟอร์ม {matched.length}/{rows.length}{allPaid ? ' · จ่ายแล้ว ✓' : ''}</span>}
+            {matched.length > 0 && <span style={{ color: 'var(--success)' }}> · ✓ ใบเบิกฟอร์ม {matched.length}/{rows.length}{allPaid ? ' · จ่ายแล้ว ✓' : ''}</span>}
           </div>
         </div>
         <div style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 15.5, fontWeight: 600 }}>{baht2(anchor.blockTotal ?? rows.reduce((s, r) => s + r.amountOut, 0))}</div>
@@ -678,7 +678,7 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
       {/* Form-side observations — these have no sheet row to sit on */}
       {(p.formMissing?.length > 0 || p.formPending?.length > 0 || p.formDups?.length > 0) && (
         <div>
-          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, color: '#8a3a2c', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, color: 'var(--danger)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
             🧾 ใบเบิกจากฟอร์มที่ยังไม่อยู่ในชีท
           </div>
           {p.formDups?.map(([a, b], i) => (
@@ -706,9 +706,9 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
 const KEY_LABEL = { amount: 'ยอดตรง', 'amount:รวมทั้งรอบ': 'ยอดรวมทั้งรอบ', 'amount:ยอดเดียวในช่วง': 'ยอดเดียวในช่วง', account: 'บัญชีตรง', name: 'ชื่อตรง' };
 const stmtChip = (tone) => ({
   display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, borderRadius: 99, padding: '2px 9px',
-  border: `1px solid ${tone === 'g' ? 'var(--profit, #5b8a5a)' : tone === 'r' ? 'var(--danger)' : 'var(--line)'}`,
-  background: tone === 'g' ? 'var(--profit-soft, #dbe7d3)' : tone === 'r' ? 'var(--danger-soft, #fdf3f0)' : 'var(--surface)',
-  color: tone === 'g' ? '#3c5c3b' : tone === 'r' ? 'var(--danger)' : 'var(--ink-2)',
+  border: `1px solid ${tone === 'g' ? 'var(--success)' : tone === 'r' ? 'var(--danger)' : 'var(--line)'}`,
+  background: tone === 'g' ? 'var(--success-soft)' : tone === 'r' ? 'var(--danger-soft)' : 'var(--surface)',
+  color: tone === 'g' ? 'var(--success)' : tone === 'r' ? 'var(--danger)' : 'var(--ink-2)',
 });
 const fmtStmtDay = iso => { const [, m, d] = iso.split('-'); return `${Number(d)}/${Number(m)}`; };
 
@@ -754,7 +754,7 @@ function StatementPanel({ rows, sheetId, tab }) {
         <div style={{ fontSize: 13 }}>{t.detail || t.kind}</div>
         <div style={{ ...mono10, marginTop: 1 }}>{fmtStmtDay(t.date)} {t.time} · {t.kind}</div>
       </div>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500, color: t.dir === 'in' ? '#3c5c3b' : 'var(--ink)' }}>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 600, color: t.dir === 'in' ? 'var(--success)' : 'var(--ink)' }}>
         {t.dir === 'in' ? '+' : ''}{baht2(t.amount)}
       </div>
       {action}
@@ -777,8 +777,8 @@ function StatementPanel({ rows, sheetId, tab }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '11px 14px', flexWrap: 'wrap', background: 'var(--background-soft)' }}>
             <input type="file" accept=".pdf" onChange={e => { setFile(e.target.files?.[0] || null); setTxns(null); }}
               style={{ fontSize: 12.5, maxWidth: 260 }} />
-            <input type="password" placeholder="รหัสเปิดไฟล์ (ถ้ามี)" value={pw} onChange={e => setPw(e.target.value)}
-              style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', width: 150 }} />
+            <input type="password" className="input" placeholder="รหัสเปิดไฟล์ (ถ้ามี)" value={pw} onChange={e => setPw(e.target.value)}
+              style={{ width: 150, padding: '6px 10px', fontSize: 13 }} />
             <span style={{ ...mono10 }}>กองที่เทียบ: {tab}</span>
             <button className="btn btn--primary" disabled={!file || busy2} onClick={run}>{busy2 ? 'กำลังอ่าน…' : 'เทียบเลย'}</button>
             {err && <span style={{ fontSize: 12, color: 'var(--danger)' }}>{err}</span>}
@@ -797,13 +797,13 @@ function StatementPanel({ rows, sheetId, tab }) {
 
               {/* sheet rows that found no money — paid on paper only? */}
               {R.unmatchedRows.length > 0 && (
-                <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft, #fdf3f0)' }}>
+                <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft)' }}>
                   <div style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
                     ⚠ รายการในชีทที่ไม่พบเงินโอนใน statement นี้ — เงินยังไม่ออกจริง หรืออยู่นอกช่วงไฟล์</div>
                   {R.unmatchedRows.map(r => (
                     <div key={r.rowNo} style={{ display: 'flex', gap: 12, padding: '8px 14px', borderTop: '1px dashed var(--line)', fontSize: 13 }}>
                       <span style={{ flex: 1 }}>แถว {r.rowNo} · {r.nick || r.code || 'SEAL'} · {(r.work || '').split('\n')[0].slice(0, 60)}</span>
-                      <span style={{ fontFamily: 'var(--f-mono)', fontWeight: 500 }}>{baht2(r.amountOut ?? r.amountIn)}</span>
+                      <span style={{ fontFamily: 'var(--f-mono)', fontWeight: 600 }}>{baht2(r.amountOut ?? r.amountIn)}</span>
                     </div>
                   ))}
                 </div>
@@ -811,7 +811,7 @@ function StatementPanel({ rows, sheetId, tab }) {
 
               {/* outgoing money nobody claimed */}
               {R.ask.length > 0 && (
-                <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft, #fdf3f0)' }}>
+                <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft)' }}>
                   <div style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
                     ❓ เงินออกที่ไม่มีใบเบิกรองรับ — ถ้าเป็นเรื่องส่วนตัวติ๊กเก็บได้ ระบบจะจำคู่โอนนี้ไว้</div>
                   {R.ask.map(t => (
@@ -828,7 +828,7 @@ function StatementPanel({ rows, sheetId, tab }) {
                   จับคู่สำเร็จ · {R.matched.length} รายการ
                 </div>
                 {R.matched.map((m, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 14px', borderTop: '1px dashed var(--line)', background: '#eef3ea', boxShadow: 'inset 3px 0 0 var(--profit, #3c5c3b)' }}>
+                  <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 14px', borderTop: '1px dashed var(--line)', background: 'var(--success-soft)', boxShadow: 'inset 3px 0 0 var(--success)' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13 }}>
                         แถว {m.row.rowNo} · {m.row.nick || m.row.code || m.row.nameRaw || 'SEAL'}
@@ -838,7 +838,7 @@ function StatementPanel({ rows, sheetId, tab }) {
                       </div>
                       <div style={{ ...mono10, marginTop: 1 }}>{fmtStmtDay(m.txn.date)} {m.txn.time} · {m.txn.detail.slice(0, 56)}</div>
                     </div>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500, color: m.txn.dir === 'in' ? '#3c5c3b' : 'var(--ink)' }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 600, color: m.txn.dir === 'in' ? 'var(--success)' : 'var(--ink)' }}>
                       {m.txn.dir === 'in' ? '+' : ''}{baht2(m.row.amountOut ?? m.row.amountIn)}
                     </div>
                   </div>
@@ -890,7 +890,7 @@ function PayQueue({ pay }) {
                     <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(c.detail || '—').replace(/\s+/g, ' ')}</div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500 }}>{baht2(c.amount)}</div>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 600 }}>{baht2(c.amount)}</div>
                     {c.slideUrl && <a href={c.slideUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>ดูสไลด์ ↗</a>}
                   </div>
                 </div>
@@ -915,7 +915,7 @@ function FormRow({ tone, tag, help, left, main, amt, url }) {
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 500 }}>{baht2(amt)}</div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13.5, fontWeight: 600 }}>{baht2(amt)}</div>
         {url && <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>ดูสไลด์ ↗</a>}
       </div>
     </div>
@@ -928,18 +928,18 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
   // should be visible from across the room. The green wins over the mismatch
   // tint: her judgement closes the row.
   const ok = mark === 'ok';
-  const bg = ok ? '#eaf1e6' : cmp?.status === 'amount_mismatch' ? '#fdf3f0' : (mark === 'no' ? '#fdf3f0' : 'transparent');
+  const bg = ok ? 'var(--success-soft)' : cmp?.status === 'amount_mismatch' ? 'var(--danger-soft)' : (mark === 'no' ? 'var(--danger-soft)' : 'transparent');
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 14px',
       borderTop: inBlock === 'first' ? 'none' : inBlock ? '1px dashed var(--line)' : '1px solid var(--line)', background: bg,
-      boxShadow: ok ? 'inset 3px 0 0 var(--profit, #3c5c3b)' : 'none' }}>
+      boxShadow: ok ? 'inset 3px 0 0 var(--success)' : 'none' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ ...mono10, marginBottom: 2 }}>
           แถว {r.rowNo}{r.project ? ` · ${r.project}` : ''}
           {cmp?.slideDate ? ` · สไลด์ลงวันที่ ${cmp.slideDate.d}/${cmp.slideDate.m + 1}` : ''}
-          {formMatch?.ts && <span style={{ color: '#3c5c3b' }}> · ✓ ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
+          {formMatch?.ts && <span style={{ color: 'var(--success)' }}> · ✓ ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
           {formMatch && (formMatch.paid
-            ? <span style={{ color: '#3c5c3b' }}> · จ่ายแล้ว ✓</span>
+            ? <span style={{ color: 'var(--success)' }}> · จ่ายแล้ว ✓</span>
             : <span style={{ color: 'var(--accent-strong)' }}> · รอทำจ่าย</span>)}
         </div>
         {/* Full claim text, every line — Pat reads the item names to judge a
@@ -948,7 +948,7 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
         <div style={{ fontSize: 13.5, color: 'var(--ink)', whiteSpace: 'pre-line', overflowWrap: 'anywhere', lineHeight: 1.5 }}>{r.work || '—'}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>
           {mark === 'ok' && (flagsSet?.size || cmpView) && (
-            <span style={{ ...mono10, alignSelf: 'center', color: '#3c5c3b' }}>ตรวจแล้ว ✓</span>
+            <span style={{ ...mono10, alignSelf: 'center', color: 'var(--success)' }}>ตรวจแล้ว ✓</span>
           )}
           {[...(flagsSet || [])].map(t => <FlagChip key={t} type={t} />)}
           {partners && partners.length > 0 && (flagsSet?.has('slideDup') || flagsSet?.has('workDup')) && (
@@ -966,18 +966,18 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
         {/* Block rows show the row's own written figure — the block header above
             already carries the authoritative column-H total, so no reconciling
             side-note here. Money math elsewhere still uses amountOut. */}
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500 }}>{baht2(r.writtenAmount ?? r.amountOut)}</div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 600 }}>{baht2(r.writtenAmount ?? r.amountOut)}</div>
         {cmp?.parts ? (
           <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
             {cmp.parts.map((p, i) => (
               <a key={i} href={p.url} target="_blank" rel="noreferrer" title={p.title}
-                style={{ fontSize: 11.5, color: '#3c5c3b', textDecoration: 'none', border: '1px solid var(--profit, #5b8a5a)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--profit-soft, #dbe7d3)', whiteSpace: 'nowrap' }}>สไลด์ {baht(p.amount)} ↗</a>
+                style={{ fontSize: 11.5, color: 'var(--success)', textDecoration: 'none', border: '1px solid var(--success)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--success-soft)', whiteSpace: 'nowrap' }}>สไลด์ {baht(p.amount)} ↗</a>
             ))}
           </span>
         ) : cmp?.fixedUrl ? (
           <span style={{ display: 'flex', gap: 5 }}>
             <a href={cmp.fixedUrl} target="_blank" rel="noreferrer" title={cmp.fixedTitle}
-              style={{ fontSize: 11.5, color: '#3c5c3b', textDecoration: 'none', border: '1px solid var(--profit, #5b8a5a)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--profit-soft, #dbe7d3)', whiteSpace: 'nowrap' }}>สไลด์ที่ใช่ ↗</a>
+              style={{ fontSize: 11.5, color: 'var(--success)', textDecoration: 'none', border: '1px solid var(--success)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--success-soft)', whiteSpace: 'nowrap' }}>สไลด์ที่ใช่ ↗</a>
             {r.evidenceUrl && <a href={r.evidenceUrl} target="_blank" rel="noreferrer"
               style={{ fontSize: 11.5, color: 'var(--ink-3)', textDecoration: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '3px 9px', background: 'var(--surface)', whiteSpace: 'nowrap' }}>ลิงก์เดิม ↗</a>}
           </span>
@@ -1041,19 +1041,19 @@ function ConnectPanel() {
 }
 
 function SheetPanel({ urlInput, setUrlInput, formUrlInput, setFormUrlInput, onSave, busy, canCancel, onCancel }) {
-  const inputStyle = { width: '100%', padding: '9px 10px', fontSize: 12, color: 'var(--ink)', fontFamily: 'var(--f-mono)', background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)' };
+  const inputStyle = { fontSize: 12, fontFamily: 'var(--f-mono)' };
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
       <div>
         <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>1 · ชีทหลัก "Petty Cash" (ต้องมีแท็บรายปี เช่น 2026)</div>
-        <input value={urlInput} onChange={e => setUrlInput(e.target.value)}
+        <input className="input" value={urlInput} onChange={e => setUrlInput(e.target.value)}
           placeholder="https://docs.google.com/spreadsheets/d/..." style={inputStyle} />
       </div>
       <div>
         <div style={{ fontSize: 13, color: 'var(--ink-2)', marginBottom: 6 }}>
           2 · ชีทฟอร์ม "(Responses)" ที่พนักงานกดเบิก <span style={{ color: 'var(--ink-4)' }}>(ไม่ใส่ก็ได้ — ใส่แล้ว Loop เทียบใบเบิกให้อัตโนมัติ)</span>
         </div>
-        <input value={formUrlInput} onChange={e => setFormUrlInput(e.target.value)}
+        <input className="input" value={formUrlInput} onChange={e => setFormUrlInput(e.target.value)}
           placeholder="https://docs.google.com/spreadsheets/d/..." style={inputStyle} />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -1093,7 +1093,7 @@ function HelpTip({ text }) {
           width: 'max-content', maxWidth: 290, padding: '9px 11px',
           background: 'var(--surface)', color: 'var(--ink)',
           border: '1px solid var(--line-2)', borderRadius: 'var(--r-sm)',
-          boxShadow: '0 6px 22px rgba(0,0,0,0.13)',
+          boxShadow: 'var(--shadow-pop)',
           fontSize: 12, lineHeight: 1.65, fontWeight: 400, textAlign: 'left', whiteSpace: 'normal',
         }}>{text}</div>
       )}
@@ -1113,7 +1113,7 @@ function FlagChip({ type, count, tone, label, help }) {
 }
 
 function SectionHead({ icon, text, tone }) {
-  const color = tone === 'warn' ? 'var(--accent-strong)' : tone === 'ok' ? '#3c5c3b' : 'var(--ink-3)';
+  const color = tone === 'warn' ? 'var(--accent-strong)' : tone === 'ok' ? 'var(--success)' : 'var(--ink-3)';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
       <span style={{ ...lbl, color }}>{icon} {text}</span>
@@ -1141,8 +1141,8 @@ function chip(on) {
   };
 }
 const STAT = {
-  ok: { bg: 'var(--profit-soft, #dbe7d3)', fg: '#3c5c3b', bd: 'var(--profit, #5b8a5a)' },
-  bad: { bg: 'var(--danger-soft)', fg: '#8a3a2c', bd: 'var(--danger)' },
+  ok: { bg: 'var(--success-soft)', fg: 'var(--success)', bd: 'var(--success)' },
+  bad: { bg: 'var(--danger-soft)', fg: 'var(--danger)', bd: 'var(--danger)' },
   warn: { bg: 'var(--warning-soft)', fg: 'var(--accent-strong)', bd: 'var(--warning)' },
 };
 function statStyle(tone) {
@@ -1150,7 +1150,7 @@ function statStyle(tone) {
   return { fontSize: 11, padding: '2px 9px', borderRadius: 99, background: s.bg, color: s.fg, border: `1px solid ${s.bd}` };
 }
 function markBtn(on, kind) {
-  const c = kind === 'ok' ? { bg: 'var(--profit-soft, #dbe7d3)', fg: '#3c5c3b', bd: 'var(--profit, #5b8a5a)' } : { bg: 'var(--danger-soft)', fg: '#8a3a2c', bd: 'var(--danger)' };
+  const c = kind === 'ok' ? { bg: 'var(--success-soft)', fg: 'var(--success)', bd: 'var(--success)' } : { bg: 'var(--danger-soft)', fg: 'var(--danger)', bd: 'var(--danger)' };
   return {
     fontSize: 11, padding: '3px 9px', borderRadius: 99, cursor: 'pointer', whiteSpace: 'nowrap',
     border: `1px solid ${on ? c.bd : 'var(--line)'}`, background: on ? c.bg : 'var(--surface)', color: on ? c.fg : 'var(--ink-3)',

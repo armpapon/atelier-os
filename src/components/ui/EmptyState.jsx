@@ -30,10 +30,10 @@ export function EmptyState({
       <div style={{
         width: compact ? 40 : 48, height: compact ? 40 : 48,
         borderRadius: '50%',
-        background: 'var(--accent-soft)', color: 'var(--accent-strong)',
+        background: 'var(--accent-tint)', color: 'var(--accent)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: compact ? 18 : 22,
-        boxShadow: 'inset 0 0 0 1px rgba(138,90,43,0.10)',
+
       }}>{icon}</div>
 
       {title && (

@@ -175,7 +175,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
                     ...(form.side === side ? {
                       background: side === 'long' ? 'var(--profit-bg)' : 'var(--loss-bg)',
                       color: side === 'long' ? 'var(--profit)' : 'var(--loss)',
-                      borderColor: side === 'long' ? '#2e4a37' : '#4a2e2a',
+                      borderColor: side === 'long' ? 'var(--profit)' : 'var(--loss)',
                     } : {})
                   }}>
                   {side.toUpperCase()}
@@ -328,14 +328,14 @@ function Field({ label, hint, children }) {
 const s = {
   overlay: {
     position: 'fixed', inset: 0, zIndex: 1000,
-    background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+    background: 'var(--dim)', backdropFilter: 'blur(4px)',
     display: 'flex', justifyContent: 'flex-end',
   },
   drawer: {
     width: 480, maxWidth: '95vw', height: '100vh',
     background: 'var(--surface)', borderLeft: '1px solid var(--line)',
     display: 'flex', flexDirection: 'column',
-    boxShadow: '-12px 0 40px rgba(0,0,0,0.4)',
+    boxShadow: 'var(--shadow-pop)',
   },
   header: {
     display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -358,8 +358,8 @@ const s = {
   },
   grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
   input: {
-    background: 'var(--bg-2)', border: '1px solid var(--line)',
-    borderRadius: 'var(--r-md)', padding: '9px 11px',
+    background: 'var(--fill)', border: '1px solid transparent',
+    borderRadius: 'var(--radius-field)', padding: '10px 12px',
     color: 'var(--ink)', fontSize: 13.5, outline: 'none',
     fontFamily: 'inherit', width: '100%', boxSizing: 'border-box',
   },
@@ -367,7 +367,7 @@ const s = {
   segBtn: {
     flex: 1, padding: '8px 10px',
     background: 'var(--bg-2)', border: '1px solid var(--line)',
-    borderRadius: 'var(--r-md)', color: 'var(--ink-2)',
+    borderRadius: 'var(--radius-pill)', color: 'var(--ink-2)',
     fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
     cursor: 'pointer', transition: 'all 120ms',
   },
@@ -376,20 +376,20 @@ const s = {
     borderTop: '1px solid var(--line)', background: 'var(--bg-2)',
   },
   btnGhost: {
-    padding: '10px 18px', borderRadius: 'var(--r-md)',
+    padding: '10px 18px', borderRadius: 'var(--radius-btn)',
     background: 'transparent', border: '1px solid var(--line)',
     color: 'var(--ink-2)', cursor: 'pointer', fontSize: 13,
     fontFamily: 'inherit',
   },
   btnPrimary: {
-    flex: 1, padding: '10px 18px', borderRadius: 'var(--r-md)',
-    background: 'var(--amber)', color: '#1a1410',
-    border: 0, fontWeight: 500, cursor: 'pointer', fontSize: 13,
+    flex: 1, padding: '10px 18px', borderRadius: 'var(--radius-btn)',
+    background: 'var(--amber)', color: 'var(--text-inverse)',
+    border: 0, fontWeight: 600, cursor: 'pointer', fontSize: 13,
     fontFamily: 'inherit',
   },
   error: {
     padding: '10px 12px', borderRadius: 'var(--r-md)',
     background: 'var(--loss-bg)', color: 'var(--loss)',
-    border: '1px solid #4a2e2a', fontSize: 12.5,
+    border: '1px solid var(--loss)', fontSize: 12.5,
   },
 };

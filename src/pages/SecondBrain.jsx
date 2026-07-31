@@ -368,11 +368,12 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
           placeholder="เขียนอะไรก็ได้... พิมพ์ [[ชื่อโน้ต]] เพื่อลิงก์ไปโน้ตอื่น"
           style={{
             width: '100%', minHeight: 320, resize: 'vertical',
-            background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)',
+            background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)',
             padding: '14px 16px', fontFamily: 'var(--f-body)', fontSize: 14.5, lineHeight: 1.7,
-            color: 'var(--ink)', outline: 'none',
+            color: 'var(--ink)', outline: 'none', transition: 'box-shadow 120ms',
           }}
-          onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+          onFocus={e => e.currentTarget.style.boxShadow = '0 0 0 3px var(--accent-tint)'}
+          onBlurCapture={e => e.currentTarget.style.boxShadow = 'none'}
         />
 
         {/* [[link]] autocomplete dropdown */}
@@ -495,10 +496,10 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
 function TemplatePicker({ onPick, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
-        position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
-        borderRadius: 'var(--r-xl)', padding: 28, width: 560, maxWidth: '100%',
+        position: 'relative', background: 'var(--surface)', border: 'none',
+        borderRadius: 'var(--radius-card)', padding: 28, width: 560, maxWidth: '100%',
         maxHeight: '85vh', overflowY: 'auto', boxShadow: 'var(--shadow-pop)',
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18 }}>

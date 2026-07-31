@@ -10,7 +10,7 @@ export function CandleChart({ candles }) {
         const x = pad + i * cw + cw / 2;
         const y = (v) => h - pad - ((v - min) / range) * (h - pad * 2);
         const up = c.c >= c.o;
-        const color = up ? '#6cbf83' : '#e07a6e';
+        const color = up ? 'var(--profit)' : 'var(--loss)';
         const bodyTop = y(Math.max(c.o, c.c));
         const bodyBot = y(Math.min(c.o, c.c));
         const bw = Math.max(2, cw * 0.65);

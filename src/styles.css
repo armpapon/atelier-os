@@ -259,9 +259,9 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, #b88a5a, #6b4a2a);
+  background: var(--accent-tint); color: var(--accent);
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--f-display); font-style: italic; font-size: 15px; color: #f5efe4;
+  font-family: var(--f-display); font-size: 15px; font-weight: 700;
 }
 .sidebar__user-name { font-size: 13px; color: var(--ink); }
 .sidebar__user-meta { font-family: var(--f-mono); font-size: 10px; color: var(--ink-3); }
@@ -315,7 +315,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .btn:active { transform: scale(0.97); }
 .btn--ghost { background: transparent; border-color: var(--hairline); color: var(--ink-2); }
 .btn--ghost:hover { color: var(--ink); background: var(--fill); filter: none; }
-.btn--primary { background: var(--accent); color: #fffaf0; border-color: transparent; font-weight: 500; }
+.btn--primary { background: var(--accent); color: var(--text-inverse); border-color: transparent; font-weight: 600; }
 .btn--primary:hover { background: var(--accent); filter: brightness(1.08); }
 .btn--sm { padding: 5px 12px; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
@@ -323,15 +323,15 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .tag {
   display: inline-flex; align-items: center; gap: 5px;
   font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.04em;
-  padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line-2);
-  color: var(--ink-2); background: var(--surface-2); white-space: nowrap;
+  padding: 2.5px 9px; border-radius: var(--radius-btn); border: 1px solid transparent;
+  color: var(--ink-2); background: var(--fill); white-space: nowrap;
 }
-.tag--profit { color: var(--profit); border-color: #2e4a37; background: var(--profit-bg); }
-.tag--loss { color: var(--loss); border-color: #4a2e2a; background: var(--loss-bg); }
-.tag--amber { color: var(--amber); border-color: #4a3a22; background: #2a2014; }
-.tag--blue { color: var(--blue); border-color: #2a3a4a; background: #15202b; }
-.tag--violet { color: var(--violet); border-color: #3a2e4a; background: #1f1a2a; }
-.tag--rose { color: var(--rose); border-color: #4a2e36; background: #2a1a20; }
+.tag--profit { color: var(--profit); border-color: transparent; background: var(--success-soft); }
+.tag--loss   { color: var(--loss);   border-color: transparent; background: var(--danger-soft); }
+.tag--amber  { color: var(--accent); border-color: transparent; background: var(--accent-tint); }
+.tag--blue   { color: var(--blue);   border-color: transparent; background: var(--fill); }
+.tag--violet { color: var(--violet); border-color: transparent; background: var(--fill); }
+.tag--rose   { color: var(--rose);   border-color: transparent; background: var(--fill); }
 
 .mono { font-family: var(--f-mono); }
 .serif { font-family: var(--f-display); }
@@ -383,8 +383,8 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 /* ====== Dashboard ====== */
 .dash-grid { display: grid; grid-template-columns: 2fr 1.1fr; gap: 18px; }
 .dash-hero {
-  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
-  border: 1px solid var(--line); border-radius: var(--r-xl);
+  background: var(--surface);
+  border: none; box-shadow: var(--shadow-card); border-radius: var(--radius-card);
   padding: 28px; position: relative; overflow: hidden;
 }
 .dash-hero::before {
@@ -485,19 +485,20 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 
 /* ====== Learning ====== */
 .course-card {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface); border: none; border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   overflow: hidden; display: flex; flex-direction: column;
 }
 .course-thumb {
-  aspect-ratio: 16/9; background: var(--bg-2); position: relative; overflow: hidden;
-  border-bottom: 1px solid var(--line);
+  aspect-ratio: 16/9; background: var(--fill); position: relative; overflow: hidden;
+  border-bottom: 1px solid var(--hairline);
 }
 .course-thumb__src {
   position: absolute; top: 10px; left: 10px;
   font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.14em;
   text-transform: uppercase; padding: 3px 7px;
-  background: rgba(14,13,11,0.7); border: 1px solid var(--line-2);
-  border-radius: 3px; color: var(--ink-2); backdrop-filter: blur(4px);
+  background: var(--fill-2); border: none;
+  border-radius: 999px; color: var(--ink-2); backdrop-filter: blur(4px);
 }
 .course-thumb__progress {
   position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(0,0,0,0.4);
@@ -734,10 +735,10 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .txn-row__amount--in { color: var(--profit); }
 
 .budget-bar {
-  height: 6px; background: var(--bg-2); border-radius: 4px; overflow: hidden;
+  height: 4px; background: var(--fill); border-radius: 999px; overflow: hidden;
   margin-top: 6px;
 }
-.budget-bar__fill { height: 100%; background: var(--amber); border-radius: 4px; }
+.budget-bar__fill { height: 100%; background: var(--accent); border-radius: 999px; }
 .budget-bar__fill--over { background: var(--loss); }
 
 /* ====== Family ====== */

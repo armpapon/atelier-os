@@ -101,7 +101,7 @@ function AddSourceForm({ onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{
         position: 'relative', width: 460, height: '100%', background: 'var(--surface)',
         borderLeft: '1px solid var(--line)', padding: 32, overflow: 'auto',
@@ -121,7 +121,7 @@ function AddSourceForm({ onSave, onClose }) {
                 style={{
                   padding: '5px 10px', borderRadius: 'var(--r-md)', fontSize: 12,
                   background: form.type === s.id ? 'var(--amber)' : 'var(--surface-2)',
-                  color: form.type === s.id ? '#1a1410' : 'var(--ink-2)',
+                  color: form.type === s.id ? 'var(--text-inverse)' : 'var(--ink-2)',
                   border: `1px solid ${form.type === s.id ? 'var(--amber)' : 'var(--line)'}`,
                 }}>
                 {s.icon} {s.label}
@@ -211,7 +211,7 @@ function AddSourceForm({ onSave, onClose }) {
           </div>
         </div>
 
-        {error && <div style={{ padding: '10px 12px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 12 }}>{error}</div>}
+        {error && <div style={{ padding: '10px 12px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 12 }}>{error}</div>}
 
         <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
           <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
@@ -277,7 +277,7 @@ function NoteCard({ note, onDelete }) {
       {showTranslation && translation && (
         <div style={{
           marginTop: 10, padding: '10px 12px',
-          background: '#2a2014', border: '1px solid #4a3a22',
+          background: 'var(--accent-soft)', border: 'none',
           borderRadius: 'var(--r-sm)', fontSize: 13, lineHeight: 1.6,
         }}>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--amber)', marginBottom: 4, letterSpacing: '0.12em' }}>
@@ -301,7 +301,7 @@ function NoteCard({ note, onDelete }) {
             style={{
               padding: '3px 9px', borderRadius: 4, fontSize: 11,
               background: showTranslation ? 'var(--amber)' : 'var(--surface-3)',
-              color: showTranslation ? '#1a1410' : 'var(--ink-3)',
+              color: showTranslation ? 'var(--text-inverse)' : 'var(--ink-3)',
               border: '1px solid var(--line)', cursor: 'pointer',
               fontFamily: 'var(--f-mono)',
             }}>
@@ -387,6 +387,8 @@ function StudyMode({ source, onBack, onUpdate }) {
 
         {/* YouTube embed */}
         {videoId ? (
+          // Fixed black letterbox behind the iframe while it loads — not a themed
+          // surface, so intentionally left off the token palette.
           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, borderRadius: 'var(--r-lg)', overflow: 'hidden', background: '#000', border: '1px solid var(--line)' }}>
             <iframe
               src={getYouTubeEmbedUrl(videoId)}
@@ -408,7 +410,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         <div style={{ marginTop: 20, padding: '16px 18px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.12em' }}>PROGRESS</div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: progress >= 100 ? 'var(--profit)' : 'var(--amber)' }}>{progress}%</div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: progress >= 100 ? 'var(--profit)' : 'var(--amber)', fontVariantNumeric: 'tabular-nums' }}>{progress}%</div>
           </div>
           <input type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))}
             style={{ width: '100%', accentColor: 'var(--amber)', cursor: 'pointer' }} />
@@ -420,7 +422,7 @@ function StudyMode({ source, onBack, onUpdate }) {
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             {[25, 50, 75, 100].map(v => (
               <button key={v} onClick={() => setProgress(v)}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, fontFamily: 'var(--f-mono)', background: progress === v ? 'var(--amber)' : 'var(--surface-2)', color: progress === v ? '#1a1410' : 'var(--ink-3)', border: '1px solid var(--line)', cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, fontFamily: 'var(--f-mono)', background: progress === v ? 'var(--amber)' : 'var(--surface-2)', color: progress === v ? 'var(--text-inverse)' : 'var(--ink-3)', border: '1px solid var(--line)', cursor: 'pointer' }}>
                 {v}%
               </button>
             ))}
@@ -432,7 +434,7 @@ function StudyMode({ source, onBack, onUpdate }) {
 
         {/* YouTube tips */}
         {videoId && (
-          <div style={{ marginTop: 14, padding: '12px 16px', background: '#1a2014', border: '1px solid #2e4a30', borderRadius: 'var(--r-md)' }}>
+          <div style={{ marginTop: 14, padding: '12px 16px', background: 'var(--success-soft)', border: 'none', borderRadius: 'var(--r-md)' }}>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 6, letterSpacing: '0.12em' }}>💡 เคล็ดลับการเรียน</div>
             <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.7 }}>
               • กด <strong>CC</strong> เพื่อเปิดซับไตเติ้ล · <strong>Settings → Subtitles → Auto-translate → Thai</strong> เพื่อแปลอัตโนมัติ<br/>
@@ -461,7 +463,7 @@ function StudyMode({ source, onBack, onUpdate }) {
           <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
             placeholder="จด Key Insight ขณะดูวิดีโอ..."
             rows={3}
-            style={{ width: '100%', background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 10px', fontSize: 13, color: 'var(--ink)', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }} />
+            style={{ width: '100%', background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '10px 12px', fontSize: 13, color: 'var(--ink)', resize: 'vertical', outline: 'none', fontFamily: 'inherit' }} />
           <button type="submit" disabled={savingNote || !noteText.trim()} className="btn btn--primary btn--sm" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }}>
             {savingNote ? '...' : '+ บันทึกโน้ต'}
           </button>
@@ -507,7 +509,7 @@ function SourceCard({ source, onClick, onDelete }) {
             onMouseEnter={e => e.currentTarget.style.opacity = '1'}
             onMouseLeave={e => e.currentTarget.style.opacity = '0'}
           >
-            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(212,165,116,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>▶</div>
+            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>▶</div>
           </div>
         )}
         <div className="course-thumb__progress">

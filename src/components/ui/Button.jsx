@@ -17,22 +17,22 @@ function variantStyles(variant, disabled) {
   };
   switch (variant) {
     case 'primary':
-      return { ...base, background: 'var(--accent-strong)', color: 'var(--text-inverse)',
-        boxShadow: '0 2px 6px rgba(138,90,43,0.20)', borderColor: 'var(--accent-strong)' };
+      return { ...base, background: 'var(--accent)', color: 'var(--text-inverse)',
+        fontWeight: 600, borderColor: 'transparent' };
     case 'secondary':
-      return { ...base, background: 'var(--accent-soft)', color: 'var(--text-primary)',
-        borderColor: 'var(--accent-soft)' };
+      return { ...base, background: 'var(--fill-2)', color: 'var(--text-primary)',
+        borderColor: 'transparent' };
     case 'outline':
-      return { ...base, background: 'var(--surface)', color: 'var(--text-primary)',
-        borderColor: 'var(--border-strong)' };
+      return { ...base, background: 'transparent', color: 'var(--text-primary)',
+        borderColor: 'var(--hairline)' };
     case 'ghost':
       return { ...base, background: 'transparent', color: 'var(--text-secondary)' };
     case 'danger':
       return { ...base, background: 'transparent', color: 'var(--danger)',
         borderColor: 'transparent' };
     case 'icon':
-      return { ...base, background: 'var(--surface)', color: 'var(--text-primary)',
-        borderColor: 'var(--border)', borderRadius: 'var(--radius-control)' };
+      return { ...base, background: 'var(--fill)', color: 'var(--text-primary)',
+        borderColor: 'transparent', borderRadius: 'var(--radius-field)' };
     default:
       return base;
   }
@@ -54,17 +54,18 @@ export function Button({
       onMouseEnter={(e) => {
         if (disabled) return;
         const el = e.currentTarget;
-        if (variant === 'primary')        el.style.background = 'var(--accent)';
-        else if (variant === 'secondary') el.style.background = '#e4c99f';
-        else if (variant === 'outline')   el.style.background = 'var(--surface-muted)';
-        else if (variant === 'ghost')     { el.style.background = 'var(--surface-muted)'; el.style.color = 'var(--text-primary)'; }
+        if (variant === 'primary')        el.style.filter = 'brightness(1.08)';
+        else if (variant === 'secondary') el.style.background = 'var(--fill-2)';
+        else if (variant === 'outline')   el.style.background = 'var(--fill)';
+        else if (variant === 'ghost')     { el.style.background = 'var(--fill)'; el.style.color = 'var(--text-primary)'; }
         else if (variant === 'danger')    el.style.background = 'var(--danger-soft)';
-        else if (variant === 'icon')      el.style.background = 'var(--surface-muted)';
+        else if (variant === 'icon')      el.style.background = 'var(--fill-2)';
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget;
         const v = variantStyles(variant, disabled);
         el.style.background = v.background;
+        el.style.filter = 'none';
         if (variant === 'ghost') el.style.color = 'var(--text-secondary)';
       }}
       style={{
@@ -72,7 +73,7 @@ export function Button({
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         gap: sz.gap, padding: isIcon ? 0 : sz.padding,
         fontSize: sz.fontSize, fontFamily: 'var(--f-body)', fontWeight: 500,
-        borderRadius: isIcon ? 'var(--radius-control)' : 'var(--radius-pill)',
+        borderRadius: isIcon ? 'var(--radius-field)' : 'var(--radius-btn)',
         minHeight: sz.minHeight, minWidth: isIcon ? sz.minHeight : 'auto',
         width: fullWidth ? '100%' : 'auto',
         letterSpacing: '0.01em', lineHeight: 1,

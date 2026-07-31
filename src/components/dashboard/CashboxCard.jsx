@@ -129,7 +129,7 @@ function Stat({ label, value, color, sub }) {
       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color, fontWeight: 500, lineHeight: 1.2, marginTop: 2 }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color, fontWeight: 500, lineHeight: 1.2, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
       {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}

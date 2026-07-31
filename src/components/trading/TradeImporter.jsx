@@ -58,7 +58,7 @@ export function TradeImporter({ onImported, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
         position: 'relative', width: '90vw', maxWidth: 900, maxHeight: '90vh',
         background: 'var(--background)', border: '1px solid var(--border)',

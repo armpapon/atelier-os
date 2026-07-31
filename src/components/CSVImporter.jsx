@@ -11,15 +11,19 @@ import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 const TYPE_ICONS  = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
 const TYPE_LABELS = { food: 'อาหาร', transport: 'เดินทาง', bills: 'บิล', income: 'รายรับ', shop: 'ช้อปปิ้ง', family: 'ครอบครัว', other: 'อื่น ๆ' };
 
+// Tints derive from the semantic colour var via color-mix so they track the
+// active theme (a fixed rgba literal would stay pinned to the light-mode hue
+// once dark mode ships — no --blue-soft/--rose-soft token exists to reach for).
+const tint = (v, pct = 10) => `color-mix(in srgb, var(${v}) ${pct}%, transparent)`;
 const SCOPE_BADGE = {
-  personal: { label: 'ส่วนตัว',    bg: 'rgba(89,121,159,0.10)',  border: 'rgba(89,121,159,0.35)',  color: 'var(--blue)'   },
-  family:   { label: 'ครอบครัว',   bg: 'rgba(168,109,120,0.10)', border: 'rgba(168,109,120,0.35)', color: 'var(--rose)'   },
+  personal: { label: 'ส่วนตัว',    bg: tint('--blue', 10),  border: tint('--blue', 35),  color: 'var(--blue)'   },
+  family:   { label: 'ครอบครัว',   bg: tint('--rose', 10),  border: tint('--rose', 35),  color: 'var(--rose)'   },
 };
 
 const POCKET_TONE_BG = {
-  amber:  'rgba(178,122,66,0.10)',  profit: 'rgba(93,138,94,0.10)',
-  blue:   'rgba(89,121,159,0.10)',  violet: 'rgba(126,107,156,0.10)',
-  rose:   'rgba(168,109,120,0.10)', brass:  'rgba(156,124,77,0.10)',
+  amber:  tint('--accent', 10),  profit: tint('--success', 10),
+  blue:   tint('--blue', 10),    violet: tint('--violet', 10),
+  rose:   tint('--rose', 10),    brass:  tint('--brass', 10),
 };
 
 export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onImported, onClose }) {
@@ -267,10 +271,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
-        position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
-        borderRadius: 'var(--r-xl)', width: '90vw', maxWidth: 960, maxHeight: '92vh',
+        position: 'relative', background: 'var(--surface)', border: 'none',
+        borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)', width: '90vw', maxWidth: 960, maxHeight: '92vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
 
@@ -294,7 +298,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               <div style={{
                 width: 21, height: 21, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: step === s ? 'var(--amber)' : ['upload','preview','done'].indexOf(step) > i ? 'var(--profit)' : 'var(--surface-2)',
-                color: step === s ? '#1a1410' : ['upload','preview','done'].indexOf(step) > i ? '#1a2a1f' : 'var(--ink-3)',
+                color: step === s || ['upload','preview','done'].indexOf(step) > i ? 'var(--text-inverse)' : 'var(--ink-3)',
                 fontSize: 10, fontFamily: 'var(--f-mono)', fontWeight: 700,
               }}>{i + 1}</div>
               <span style={{ fontSize: 12, color: step === s ? 'var(--ink)' : 'var(--ink-3)' }}>
@@ -325,7 +329,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     background: tab === t.id ? 'var(--surface)' : 'transparent',
                     color: tab === t.id ? 'var(--ink)' : 'var(--ink-3)',
                     fontFamily: 'var(--f-body)', fontSize: 13, cursor: 'pointer',
-                    boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
+                    boxShadow: tab === t.id ? 'var(--shadow-card)' : 'none',
                     transition: 'all 130ms',
                   }}>{t.label}</button>
                 ))}
@@ -357,15 +361,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   <input ref={fileRef} type="file" accept=".csv,.txt" onChange={e => handleCSVFile(e.target.files[0])} style={{ display: 'none' }} />
 
                   {/* Legend */}
-                  <div style={{ width: 420, background: '#1a1f2e', border: '1px solid #2a3550', borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: '#7aa4f0', marginBottom: 10, letterSpacing: '0.12em' }}>
+                  <div style={{ width: 420, background: tint('--blue', 8), border: `1px solid ${tint('--blue', 30)}`, borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--blue)', marginBottom: 10, letterSpacing: '0.12em' }}>
                       การแยก ส่วนตัว / ครอบครัว อัตโนมัติ
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {[
-                        { color: '#c084f5', label: 'กองทุนครอบครัว', scope: 'ครอบครัว' },
-                        { color: '#c084f5', label: 'เงินเพื่อน้องอคิน', scope: 'ครอบครัว' },
-                        { color: '#7aa4f0', label: 'กระเป๋าอื่น ๆ ทั้งหมด', scope: 'ส่วนตัว' },
+                        { color: 'var(--violet)', label: 'กองทุนครอบครัว', scope: 'ครอบครัว' },
+                        { color: 'var(--violet)', label: 'เงินเพื่อน้องอคิน', scope: 'ครอบครัว' },
+                        { color: 'var(--blue)', label: 'กระเป๋าอื่น ๆ ทั้งหมด', scope: 'ส่วนตัว' },
                       ].map(({ color, label, scope }) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ink-2)' }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
@@ -379,7 +383,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     </div>
                   </div>
 
-                  <div style={{ width: 420, background: '#1a2014', border: '1px solid #2e4a30', borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
+                  <div style={{ width: 420, background: tint('--success', 8), border: `1px solid ${tint('--success', 30)}`, borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
                     <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 8, letterSpacing: '0.12em' }}>วิธี Export CSV จาก Make</div>
                     <ol style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12, color: 'var(--ink-3)', lineHeight: 2 }}>
                       <li>เปิด <strong style={{ color: 'var(--ink-2)' }}>Make by KBank</strong> → กด <strong style={{ color: 'var(--ink-2)' }}>บัญชีหลัก</strong></li>
@@ -422,13 +426,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   <div style={{ width: 420 }}>
                     <label style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 6, letterSpacing: '0.1em' }}>รหัสผ่าน PDF (ถ้ามี)</label>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <input type={showPwd ? 'text' : 'password'} value={pdfPassword}
+                      <input type={showPwd ? 'text' : 'password'} className="input" value={pdfPassword}
                         onChange={e => setPdfPassword(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && pdfFile && handlePDFParse()}
                         placeholder="เช่น วันเดือนปีเกิด 8 หลัก"
-                        style={{ flex: 1, background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 12px', color: 'var(--ink)', fontFamily: 'var(--f-mono)', fontSize: 13 }} />
+                        style={{ flex: 1, fontFamily: 'var(--f-mono)', fontSize: 13 }} />
                       <button onClick={() => setShowPwd(p => !p)}
-                        style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '8px 12px', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14 }}>
+                        style={{ background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '8px 12px', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14 }}>
                         {showPwd ? '🙈' : '👁'}
                       </button>
                     </div>
@@ -441,7 +445,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               )}
 
               {error && (
-                <div style={{ width: 420, padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+                <div style={{ width: 420, padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 13 }}>
                   ⚠️ {error}
                 </div>
               )}
@@ -457,11 +461,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 {/* Personal chip */}
                 <button onClick={() => toggleScope('personal')} style={{
                   display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '7px 14px', borderRadius: 'var(--r-md)', border: '1px solid #2a3a60',
-                  background: '#1a2030', color: '#7aa4f0', cursor: 'pointer', fontSize: 12,
+                  padding: '7px 14px', borderRadius: 'var(--r-md)', border: `1px solid ${tint('--blue', 35)}`,
+                  background: tint('--blue', 12), color: 'var(--blue)', cursor: 'pointer', fontSize: 12,
                   fontFamily: 'var(--f-body)',
                 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#7aa4f0', display: 'inline-block' }} />
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--blue)', display: 'inline-block' }} />
                   ส่วนตัว
                   <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, opacity: 0.8 }}>
                     {personalSel}/{personalTot}
@@ -472,11 +476,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 {familyTot > 0 && (
                   <button onClick={() => toggleScope('family')} style={{
                     display: 'flex', alignItems: 'center', gap: 7,
-                    padding: '7px 14px', borderRadius: 'var(--r-md)', border: '1px solid #4a3060',
-                    background: '#1f1a30', color: '#c084f5', cursor: 'pointer', fontSize: 12,
+                    padding: '7px 14px', borderRadius: 'var(--r-md)', border: `1px solid ${tint('--violet', 35)}`,
+                    background: tint('--violet', 12), color: 'var(--violet)', cursor: 'pointer', fontSize: 12,
                     fontFamily: 'var(--f-body)',
                   }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#c084f5', display: 'inline-block' }} />
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--violet)', display: 'inline-block' }} />
                     ครอบครัว
                     <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, opacity: 0.8 }}>
                       {familySel}/{familyTot}
@@ -485,10 +489,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 )}
 
                 {/* Income / Expense totals */}
-                <div style={{ padding: '7px 12px', background: 'var(--profit-bg)', border: '1px solid #2e4a37', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--profit)' }}>
+                <div style={{ padding: '7px 12px', background: 'var(--profit-bg)', border: '1px solid var(--profit)', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--profit)' }}>
                   +฿{totalIncome.toLocaleString('th', { maximumFractionDigits: 0 })}
                 </div>
-                <div style={{ padding: '7px 12px', background: 'var(--loss-bg)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--loss)' }}>
+                <div style={{ padding: '7px 12px', background: 'var(--loss-bg)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--loss)' }}>
                   -฿{totalExpense.toLocaleString('th', { maximumFractionDigits: 0 })}
                 </div>
 
@@ -513,7 +517,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                       <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <span style={{ fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>{label}</span>
                         <select value={colMap[key] || ''} onChange={e => handleColChange(key, e.target.value || null)}
-                          style={{ background: 'var(--bg-2)', border: '1px solid var(--line)', borderRadius: 4, padding: '4px 6px', fontSize: 11, color: 'var(--ink)', fontFamily: 'var(--f-mono)' }}>
+                          style={{ background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '4px 6px', fontSize: 11, color: 'var(--ink)', fontFamily: 'var(--f-mono)' }}>
                           <option value="">(ไม่ใช้)</option>
                           {headers.map(h => <option key={h} value={h}>{h}</option>)}
                         </select>
@@ -632,7 +636,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                               → {sug.debt.name}
                             </span>
                           </div>
-                          <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                          <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)', fontWeight: 600 }}>
                             ฿{sug.amount.toLocaleString('th', { maximumFractionDigits: 0 })}
                           </span>
                           <span style={{
@@ -705,7 +709,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         gridTemplateColumns: makeFmt ? '28px 80px 1fr 120px 90px 70px 70px' : '28px 80px 1fr 100px 90px 70px',
                         gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--line)',
                         alignItems: 'center', fontSize: 12, cursor: 'pointer',
-                        background: chk ? 'transparent' : 'rgba(0,0,0,0.18)',
+                        background: chk ? 'transparent' : 'var(--fill)',
                         opacity: chk ? 1 : 0.4,
                       }}>
                         <div style={{
@@ -729,7 +733,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           </div>
                         )}
 
-                        <div style={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 12, color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 500 }}>
+                        <div style={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 12, color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 600 }}>
                           {isIn ? '+' : ''}฿{Math.abs(row.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
                         </div>
 
@@ -751,7 +755,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               </div>
 
               {error && (
-                <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid #4a2e2a', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+                <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 13 }}>
                   ⚠️ {error}
                 </div>
               )}

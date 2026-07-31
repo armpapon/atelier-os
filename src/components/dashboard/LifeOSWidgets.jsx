@@ -46,22 +46,16 @@ export function ManifestCard({ manifest, onSave }) {
 
       {editing ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <textarea value={statement} onChange={e => setStatement(e.target.value)}
+          <textarea className="input" value={statement} onChange={e => setStatement(e.target.value)}
             rows={2}
             placeholder='เช่น "ค่อย ๆ ทำทีละอย่าง · สมาธิคือทรัพย์สิน · ครอบครัวก่อนเสมอ"'
             style={{
-              background: 'var(--surface)', border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius-control)', padding: '12px 14px',
-              color: 'var(--text-primary)', fontFamily: 'var(--f-display)',
+              fontFamily: 'var(--f-display)',
               fontStyle: 'italic', fontSize: 18, lineHeight: 1.5, resize: 'vertical',
             }} />
-          <input type="text" value={valuesText} onChange={e => setValuesText(e.target.value)}
+          <input className="input" type="text" value={valuesText} onChange={e => setValuesText(e.target.value)}
             placeholder="ค่านิยม คั่นด้วย · (เช่น focus · family · patience)"
-            style={{
-              background: 'var(--surface)', border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius-control)', padding: '10px 14px',
-              color: 'var(--text-secondary)', fontFamily: 'var(--f-mono)', fontSize: 12,
-            }} />
+            style={{ color: 'var(--text-secondary)', fontFamily: 'var(--f-mono)', fontSize: 12 }} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <Button variant="ghost" size="sm" onClick={cancel}>ยกเลิก</Button>
             <Button variant="primary" size="sm" onClick={save}>💾 บันทึก</Button>
@@ -155,12 +149,10 @@ export function ThemesCard({ themes, onSave }) {
               {r.label}
             </div>
             {editing ? (
-              <input type="text" value={form[r.key]} onChange={e => setForm({ ...form, [r.key]: e.target.value })}
+              <input className="input" type="text" value={form[r.key]} onChange={e => setForm({ ...form, [r.key]: e.target.value })}
                 placeholder={r.placeholder}
                 style={{
-                  background: 'var(--background-soft)', border: '1px solid var(--border-strong)',
-                  borderRadius: 'var(--radius-control)', padding: '7px 11px',
-                  color: 'var(--text-primary)', fontFamily: 'var(--f-display)',
+                  padding: '7px 11px', fontFamily: 'var(--f-display)',
                   fontStyle: 'italic', fontSize: 15,
                 }} />
             ) : r.value ? (
@@ -262,8 +254,8 @@ function GoalRow({ goal, onUpdate, onDelete }) {
           </div>
         </div>
       </div>
-      <div style={{ height: 6, background: 'var(--surface-muted)', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: isComplete ? 'var(--success)' : cat.color, transition: 'width 300ms' }} />
+      <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: isComplete ? 'var(--success)' : cat.color, transition: 'width 300ms' }} />
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 5 }}>
         <button onClick={() => setEditing(true)} className="focus-ring"
@@ -301,11 +293,7 @@ function GoalForm({ initial, onSubmit, onCancel }) {
     });
   };
 
-  const inputStyle = {
-    background: 'var(--surface)', border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-control)', padding: '7px 11px',
-    color: 'var(--text-primary)', fontSize: 12.5,
-  };
+  const inputStyle = { padding: '7px 11px', fontSize: 12.5 };
 
   return (
     <form onSubmit={submit} style={{
@@ -313,16 +301,16 @@ function GoalForm({ initial, onSubmit, onCancel }) {
       borderRadius: 'var(--radius-control)', padding: 14,
       display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8,
     }}>
-      <input type="text" value={form.title} onChange={e => set('title', e.target.value)}
+      <input className="input" type="text" value={form.title} onChange={e => set('title', e.target.value)}
         placeholder="ชื่อเป้าหมาย" required style={inputStyle} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 100px 1fr', gap: 6 }}>
-        <input type="number" value={form.current_value} onChange={e => set('current_value', e.target.value)} placeholder="มีอยู่" min="0" step="any"
+        <input className="input" type="number" value={form.current_value} onChange={e => set('current_value', e.target.value)} placeholder="มีอยู่" min="0" step="any"
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11 }} />
-        <input type="number" value={form.target_value} onChange={e => set('target_value', e.target.value)} placeholder="เป้า" min="0" step="any" required
+        <input className="input" type="number" value={form.target_value} onChange={e => set('target_value', e.target.value)} placeholder="เป้า" min="0" step="any" required
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11 }} />
-        <input type="text" value={form.unit} onChange={e => set('unit', e.target.value)} placeholder="หน่วย"
+        <input className="input" type="text" value={form.unit} onChange={e => set('unit', e.target.value)} placeholder="หน่วย"
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11 }} />
-        <input type="date" value={form.deadline} onChange={e => set('deadline', e.target.value)}
+        <input className="input" type="date" value={form.deadline} onChange={e => set('deadline', e.target.value)}
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }} />
       </div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -402,13 +390,9 @@ export function TodayFocus({ items, onAdd, onToggle, onDelete }) {
 
         {canAdd && (
           <form onSubmit={submit} style={{ display: 'flex', gap: 8, marginTop: items.length > 0 ? 4 : 0 }}>
-            <input type="text" value={newTitle} onChange={e => setNewTitle(e.target.value)}
+            <input className="input" type="text" value={newTitle} onChange={e => setNewTitle(e.target.value)}
               placeholder={items.length === 0 ? 'สิ่งที่ต้องโฟกัสที่สุดวันนี้…' : `+ เพิ่ม focus ที่ ${items.length + 1}`}
-              style={{
-                flex: 1, background: 'var(--surface)', border: '1px solid var(--border-strong)',
-                borderRadius: 'var(--radius-control)', padding: '10px 14px',
-                color: 'var(--text-primary)', fontSize: 13.5,
-              }} />
+              style={{ flex: 1, padding: '10px 14px', fontSize: 13.5 }} />
             <Button type="submit" variant="primary" size="md" disabled={!newTitle.trim()}>+</Button>
           </form>
         )}
@@ -572,11 +556,7 @@ function MilestoneForm({ onSubmit, onCancel }) {
     if (!form.title.trim() || !form.target_date) return;
     onSubmit(form);
   };
-  const inputStyle = {
-    background: 'var(--surface)', border: '1px solid var(--border-strong)',
-    borderRadius: 'var(--radius-control)', padding: '8px 11px',
-    color: 'var(--text-primary)', fontSize: 12.5,
-  };
+  const inputStyle = { padding: '8px 11px', fontSize: 12.5 };
   return (
     <form onSubmit={submit} style={{
       background: 'var(--background-soft)', border: '1px solid var(--border-strong)',
@@ -584,9 +564,9 @@ function MilestoneForm({ onSubmit, onCancel }) {
       display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8,
     }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 150px', gap: 6 }}>
-        <input type="text" value={form.title} onChange={e => set('title', e.target.value)}
+        <input className="input" type="text" value={form.title} onChange={e => set('title', e.target.value)}
           placeholder="ชื่อ milestone" required style={inputStyle} />
-        <input type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} required
+        <input className="input" type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} required
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }} />
       </div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -669,7 +649,7 @@ export function LifePulse({ finance, modules, onNav, user }) {
                 {t.label}
               </span>
             </div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: t.accent, lineHeight: 1.1, fontWeight: 500 }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: t.accent, lineHeight: 1.1, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
               {t.main}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>

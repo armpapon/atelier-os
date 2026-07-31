@@ -1,4 +1,4 @@
-export function Sparkline({ data, color = '#d4a574', fill = true, height = 60, strokeWidth = 1.5 }) {
+export function Sparkline({ data, color = 'var(--accent)', fill = true, height = 60, strokeWidth = 1.5 }) {
   const w = 200, h = height;
   const min = Math.min(...data), max = Math.max(...data);
   const range = max - min || 1;
@@ -9,7 +9,8 @@ export function Sparkline({ data, color = '#d4a574', fill = true, height = 60, s
   });
   const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
   const area = `${path} L ${w} ${h} L 0 ${h} Z`;
-  const gid = `sg-${color.replace('#','')}-${height}`;
+  // Strip non-alphanumerics so CSS var()/hex color strings both make a valid id.
+  const gid = `sg-${color.replace(/[^a-zA-Z0-9]/g, '')}-${height}`;
   return (
     <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       {fill && (
