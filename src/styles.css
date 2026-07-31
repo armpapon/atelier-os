@@ -606,7 +606,9 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .check:hover { border-color: var(--accent); }
 .check--on { background: var(--accent); border-color: var(--accent); }
-.check svg { width: 11px; height: 11px; stroke: #fff; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+/* stroke pairs with .check--on's var(--accent) fill — must be the inverse token,
+   not #fff: dark mode's accent is a light gold, so white sat at 2.2:1 on it. */
+.check svg { width: 11px; height: 11px; stroke: var(--text-inverse); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
 .check--on svg { opacity: 1; }
 
 /* Non-checkable bullet glyphs (note / star / migrate / event) */
@@ -631,12 +633,14 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .cal-grid .d:hover { background: var(--fill); }
 .cal-grid .d.sel   { box-shadow: inset 0 0 0 1.6px var(--accent); }
-.cal-grid .d.today { background: var(--accent); color: #fff; font-weight: 700; }
+/* Same pairing as .btn--primary: text on an accent fill is --text-inverse, which
+   flips with the theme. Hardcoded #fff read at 2.2:1 on dark mode's gold accent. */
+.cal-grid .d.today { background: var(--accent); color: var(--text-inverse); font-weight: 700; }
 .cal-grid .d .dot {
   position: absolute; bottom: 2.5px; left: 50%; transform: translateX(-50%);
   width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--ink-3);
 }
-.cal-grid .d.today .dot { background: #fff; }
+.cal-grid .d.today .dot { background: var(--text-inverse); }
 
 /* Mood picker */
 .mood-row { display: flex; justify-content: space-between; padding: 2px 6px; }

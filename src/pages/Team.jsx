@@ -109,46 +109,48 @@ export function Team() {
       <PageHeader eyebrow="งาน · Work" title="ทะเบียนพนักงาน"
         sub="รหัส SIE ↔ ชื่อ จากชีททีม · ตำแหน่ง & Asana จะเพิ่มทีหลัง" actions={actions} />
 
-      {integ === undefined ? null : !connected || !sheetId ? (
-        <div className="card" style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, lineHeight: 1.6 }}>
-          ตั้งค่าชีทที่หน้า <b style={{ color: 'var(--ink-2)' }}>Petty Cash</b> ก่อน — ทะเบียนนี้อ่านจากชีทเดียวกัน
-        </div>
-      ) : busy && !data ? (
-        <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านทะเบียน…</div>
-      ) : data ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-            <Tile v={data.roster.length} l="รายชื่อทั้งหมด" />
-            <Tile v={data.roster.filter(e => e.inMaster).length} l="อยู่ในทะเบียนหลัก" />
-            <Tile v={unregistered} l="⚠ ยังไม่ลงทะเบียน" warn={unregistered > 0} />
+      <div className="page-body">
+        {integ === undefined ? null : !connected || !sheetId ? (
+          <div className="card" style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, lineHeight: 1.6 }}>
+            ตั้งค่าชีทที่หน้า <b style={{ color: 'var(--ink-2)' }}>Petty Cash</b> ก่อน — ทะเบียนนี้อ่านจากชีทเดียวกัน
           </div>
-
-          {unregistered > 0 && (
-            <div style={{ ...mono10, background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 'var(--r-sm)', padding: '8px 11px', color: 'var(--accent-strong)' }}>
-              ⚠ มี {unregistered} รหัสที่เบิกเงินปี {data.year} แต่ยังไม่อยู่ใน Dropdown List — ควรเพิ่มในชีทให้ครบ
+        ) : busy && !data ? (
+          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านทะเบียน…</div>
+        ) : data ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              <Tile v={data.roster.length} l="รายชื่อทั้งหมด" />
+              <Tile v={data.roster.filter(e => e.inMaster).length} l="อยู่ในทะเบียนหลัก" />
+              <Tile v={unregistered} l="⚠ ยังไม่ลงทะเบียน" warn={unregistered > 0} />
             </div>
-          )}
 
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: '1px solid var(--hairline)' }}>
-              <span>รหัส</span><span>ชื่อ</span><span style={{ textAlign: 'right' }}>เบิกปี {data.year ?? '—'}</span>
-            </div>
-            {data.roster.map(e => (
-              <div key={e.code} style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--hairline)' }}>
-                <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink-2)' }}>{e.code}</span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: 13.5, color: 'var(--ink)' }}>{e.fullName}</span>
-                  {e.nick && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}> ({e.nick})</span>}
-                  {!e.inMaster && <span style={{ marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--accent-strong)', background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 99, padding: '1px 7px' }}>ยังไม่ลงทะเบียน</span>}
-                </span>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 12, color: e.claims ? 'var(--ink)' : 'var(--ink-4)' }}>
-                  {e.claims ? `${e.claims} · ${baht(e.total)}` : '—'}
-                </span>
+            {unregistered > 0 && (
+              <div style={{ ...mono10, background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 'var(--r-sm)', padding: '8px 11px', color: 'var(--accent-strong)' }}>
+                ⚠ มี {unregistered} รหัสที่เบิกเงินปี {data.year} แต่ยังไม่อยู่ใน Dropdown List — ควรเพิ่มในชีทให้ครบ
               </div>
-            ))}
+            )}
+
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: '1px solid var(--hairline)' }}>
+                <span>รหัส</span><span>ชื่อ</span><span style={{ textAlign: 'right' }}>เบิกปี {data.year ?? '—'}</span>
+              </div>
+              {data.roster.map(e => (
+                <div key={e.code} style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, alignItems: 'center', padding: '9px 14px', borderTop: '1px solid var(--hairline)' }}>
+                  <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink-2)' }}>{e.code}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: 13.5, color: 'var(--ink)' }}>{e.fullName}</span>
+                    {e.nick && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}> ({e.nick})</span>}
+                    {!e.inMaster && <span style={{ marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--accent-strong)', background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 99, padding: '1px 7px' }}>ยังไม่ลงทะเบียน</span>}
+                  </span>
+                  <span style={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 12, color: e.claims ? 'var(--ink)' : 'var(--ink-4)' }}>
+                    {e.claims ? `${e.claims} · ${baht(e.total)}` : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

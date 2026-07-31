@@ -3,10 +3,21 @@ import { LoopMark } from './LoopMark.jsx';
 
 export const CHANGELOG = [
   {
+    version: 'v4.5',
+    date: '2026-08-01',
+    title: 'เก็บงานหลัง Loop 2.0 — ปฏิทินจิ๋วกะทัดรัด · แก้สีโหมดมืด · จัดขอบหน้างาน',
+    badge: 'Current',
+    changes: [
+      '🗓 ปฏิทินจิ๋วในหน้าไดอารี่กลับมากะทัดรัด — เดิมยืดเต็มครึ่งจอทำให้ช่องวันห่างกันผิดส่วน ตอนนี้เป็นคอลัมน์วิดเจ็ตกว้าง 360px คงที่ ส่วนบนมือถือยังเป็นคอลัมน์เดียวเหมือนเดิม',
+      '🌙 โหมดมืด: ตัวเลข "วันนี้" ในปฏิทิน และเครื่องหมายถูกในวงกลมติ๊ก เคยเป็นสีขาวบนพื้นสีทอง อ่านแทบไม่ออก (คอนทราสต์ 2.2:1) เปลี่ยนไปใช้โทนกลับของธีมแล้ว — ชัดทั้งโหมดสว่างและโหมดมืด',
+      '📐 หน้า Petty Cash และทะเบียนพนักงาน เนื้อหาเคยชิดขอบจอทั้งซ้ายขวา เพราะไม่มีกรอบระยะขอบเหมือนหน้าอื่น ตอนนี้เว้นขอบเท่ากับทุกหน้าในแอปแล้ว',
+      'ℹ️ แก้เรื่องหน้าตาล้วน ๆ ไม่แตะ logic — การอ่านชีท ตรวจสลิป และการบันทึกทุกอย่างทำงานเหมือนเดิม',
+    ],
+  },
+  {
     version: 'v4.4',
     date: '2026-07-31',
     title: 'ปิดจ็อบ Loop 2.0 Cupertino Warm — เก็บทุกหน้าที่เหลือ ครบทั้งแอป',
-    badge: 'Current',
     changes: [
       '🎉 จบโปรเจกต์ Loop 2.0 — ทุกหน้าในแอปใช้ดีไซน์ชุดเดียวกันหมดแล้ว: แดชบอร์ด · Trading · Learning Hub · ครอบครัว · Petty Cash · ทะเบียนพนักงาน · Second Brain · Life Calendar · หน้า login และหน้าต่างประวัติเวอร์ชัน',
       '🌙 โหมดมืดใช้ได้จริงทั้งแอปแล้ว — ไล่เก็บสีที่ hard-code ไว้ (สีขาว/ดำ/เทาแบบตายตัวที่ค้างจากธีมเก่า) ออกจากทุกหน้า เปลี่ยนไปใช้โทนกลางของธีม จุดที่เคยอ่านไม่ออกในโหมดมืดหายไปหมด',
@@ -1440,7 +1451,7 @@ export function VersionHistory({ onClose }) {
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{
         position: 'relative', width: '90vw', maxWidth: 620, maxHeight: '85vh',
-        background: 'var(--surface)', border: 'none', boxShadow: 'var(--shadow-pop)',
+        background: 'var(--surface)', border: 'none',
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>

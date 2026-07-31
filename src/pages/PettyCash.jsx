@@ -385,19 +385,21 @@ export function PettyCash() {
       <PageHeader eyebrow="งาน · Work" title="Petty Cash"
         sub="ตรวจเงินสดย่อยรายคน · Loop ตรวจอย่างเดียว ไม่จ่าย" actions={actions} />
 
-      {integ === undefined ? null : !connected ? (
-        <ConnectPanel />
-      ) : !sheetId || editing ? (
-        <SheetPanel urlInput={urlInput} setUrlInput={setUrlInput}
-          formUrlInput={formUrlInput} setFormUrlInput={setFormUrlInput}
-          onSave={saveSheet} busy={busy} canCancel={editing} onCancel={() => setEditing(false)} />
-      ) : busy && !data ? (
-        <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีท…</div>
-      ) : data ? (
-        <Board data={data} recon={recon} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
-          slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck} sheetId={sheetId}
-          hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
-      ) : null}
+      <div className="page-body">
+        {integ === undefined ? null : !connected ? (
+          <ConnectPanel />
+        ) : !sheetId || editing ? (
+          <SheetPanel urlInput={urlInput} setUrlInput={setUrlInput}
+            formUrlInput={formUrlInput} setFormUrlInput={setFormUrlInput}
+            onSave={saveSheet} busy={busy} canCancel={editing} onCancel={() => setEditing(false)} />
+        ) : busy && !data ? (
+          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '40px 0', fontSize: 13 }}>กำลังอ่านชีท…</div>
+        ) : data ? (
+          <Board data={data} recon={recon} month={month} setMonth={setMonth} openCode={openCode} setOpenCode={setOpenCode}
+            slidesByCode={slidesByCode} comparing={comparing} compareDeck={compareDeck} sheetId={sheetId}
+            hasSlides={hasSlides} marks={marks} setMark={setMark} onConnectSlides={() => startGoogleAuth(ALL_GOOGLE_SCOPES)} />
+        ) : null}
+      </div>
     </div>
   );
 }
