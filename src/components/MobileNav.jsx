@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Icon } from './Icon.jsx';
+import { Icon, IconButton } from './Icon.jsx';
 import { Badge } from './ui/index.js';
 import { signOut } from '../lib/useAuth.js';
 import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
@@ -21,7 +21,7 @@ const BAR_CANDIDATES = [
  * แทนที่ Sidebar ทั้งตัว: แถบล่าง 4 โมดูลหลัก + ปุ่ม "เพิ่มเติม"
  * เปิด sheet รายการเต็ม (ทุกโมดูล + user + ออกจากระบบ + version)
  */
-export function MobileNav({ active, onChange, user }) {
+export function MobileNav({ active, onChange, user, theme = 'light', onToggleTheme }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [showVersion, setShowVersion] = useState(false);
   const currentVersion = CHANGELOG[0]?.version || 'v0.5';
@@ -47,29 +47,24 @@ export function MobileNav({ active, onChange, user }) {
       {/* ── Bottom bar ─────────────────────────────────────────────── */}
       <nav style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 950,
-        background: 'var(--background-soft)',
-        borderTop: '1px solid var(--border)',
+        background: 'var(--sidebar-bg)',
+        WebkitBackdropFilter: 'blur(40px) saturate(1.6)',
+        backdropFilter: 'blur(40px) saturate(1.6)',
+        borderTop: '1px solid var(--hairline)',
         display: 'flex',
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        padding: '8px 6px calc(14px + env(safe-area-inset-bottom))',
       }}>
         {barItems.map(item => (
           <BarButton
             key={item.id}
-            icon={<Icon name={item.icon} size={20} />}
+            icon={<Icon name={item.icon} size={21} />}
             label={item.label}
             active={active === item.id}
             onClick={() => go(item.id)}
           />
         ))}
         <BarButton
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none" />
-              <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" />
-              <circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none" />
-            </svg>
-          }
+          icon={<Icon name="more" size={21} />}
           label="เพิ่มเติม"
           active={moreActive || sheetOpen}
           onClick={() => setSheetOpen(true)}
@@ -82,7 +77,7 @@ export function MobileNav({ active, onChange, user }) {
           onClick={() => setSheetOpen(false)}
           style={{
             position: 'fixed', inset: 0, zIndex: 1200,
-            background: 'rgba(47, 41, 35, 0.4)',
+            background: 'var(--dim)',
             display: 'flex', alignItems: 'flex-end',
           }}>
           <div
@@ -90,32 +85,41 @@ export function MobileNav({ active, onChange, user }) {
             style={{
               width: '100%', maxHeight: '80vh', overflowY: 'auto',
               background: 'var(--surface)',
-              borderRadius: '18px 18px 0 0',
-              border: '1px solid var(--border)', borderBottom: 0,
+              borderRadius: 'var(--radius-card) var(--radius-card) 0 0',
+              borderTop: '1px solid var(--hairline)',
+              boxShadow: 'var(--shadow-pop)',
               padding: '10px 16px',
               paddingBottom: 'calc(16px + env(safe-area-inset-bottom))',
             }}>
             {/* handle */}
             <div style={{
-              width: 36, height: 4, borderRadius: 2, background: 'var(--border-strong)',
+              width: 36, height: 5, borderRadius: 3, background: 'var(--fill-2)',
               margin: '2px auto 12px',
             }} />
 
             {/* brand + version */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              padding: '2px 4px 12px', borderBottom: '1px solid var(--border)', marginBottom: 8,
+              padding: '2px 4px 12px', borderBottom: '1px solid var(--hairline)', marginBottom: 8,
             }}>
               <span style={{ color: 'var(--accent)', display: 'inline-flex' }}><LoopMark size={22} /></span>
-              <span style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 500, color: 'var(--text-primary)' }}>Loop</span>
-              <button onClick={() => { setSheetOpen(false); setShowVersion(true); }}
-                style={{
-                  marginLeft: 'auto', background: 'var(--surface-muted)', border: 0,
-                  fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)',
-                  padding: '4px 10px', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
-                }}>
-                {currentVersion}
-              </button>
+              <span style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>Loop</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <IconButton
+                  icon={theme === 'dark' ? 'sun' : 'moon'}
+                  label={theme === 'dark' ? 'โหมดสว่าง' : 'โหมดมืด'}
+                  onClick={onToggleTheme}
+                  size={34} iconSize={18}
+                />
+                <button onClick={() => { setSheetOpen(false); setShowVersion(true); }}
+                  style={{
+                    background: 'var(--fill-2)', border: 0,
+                    fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)',
+                    padding: '5px 11px', borderRadius: 'var(--radius-btn)', cursor: 'pointer',
+                  }}>
+                  {currentVersion}
+                </button>
+              </div>
             </div>
 
             {/* nav groups — ทุกโมดูล */}
@@ -135,16 +139,16 @@ export function MobileNav({ active, onChange, user }) {
                       style={{
                         display: 'flex', alignItems: 'center', gap: 12,
                         width: '100%', minHeight: 46, padding: '0 10px',
-                        background: isActive ? 'var(--accent-soft)' : 'transparent',
-                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        border: 0, borderRadius: 'var(--radius-control)',
-                        fontFamily: 'var(--f-body)', fontSize: 15, fontWeight: isActive ? 500 : 400,
+                        background: isActive ? 'var(--fill-2)' : 'transparent',
+                        color: 'var(--text-primary)',
+                        border: 0, borderRadius: 10,
+                        fontFamily: 'var(--f-body)', fontSize: 15, fontWeight: isActive ? 600 : 500,
                         cursor: 'pointer', textAlign: 'left',
                       }}>
                       <span style={{
                         width: 20, height: 20, display: 'inline-flex',
                         alignItems: 'center', justifyContent: 'center',
-                        color: isActive ? 'var(--accent-strong)' : 'var(--text-muted)', flexShrink: 0,
+                        color: isActive ? 'var(--accent)' : 'var(--text-secondary)', flexShrink: 0,
                       }}><Icon name={item.icon} size={18} /></span>
                       <span style={{ flex: 1 }}>{item.label}</span>
                       {item.badge && (
@@ -160,7 +164,7 @@ export function MobileNav({ active, onChange, user }) {
 
             {/* user + sign out */}
             <div style={{
-              marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--border)',
+              marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--hairline)',
               display: 'flex', alignItems: 'center', gap: 10,
             }}>
               <div style={{
@@ -182,9 +186,9 @@ export function MobileNav({ active, onChange, user }) {
               {user && (
                 <button onClick={handleSignOut}
                   style={{
-                    background: 'transparent', border: '1px solid var(--border)',
+                    background: 'transparent', border: '1px solid var(--hairline)',
                     color: 'var(--danger)', fontSize: 13, fontFamily: 'inherit',
-                    padding: '8px 14px', borderRadius: 'var(--radius-control)', cursor: 'pointer',
+                    padding: '8px 16px', borderRadius: 'var(--radius-btn)', cursor: 'pointer',
                   }}>
                   ออกจากระบบ
                 </button>
@@ -203,16 +207,15 @@ function BarButton({ icon, label, active, onClick }) {
   return (
     <button onClick={onClick} className="focus-ring"
       style={{
-        flex: 1, minHeight: 56, border: 0, background: 'transparent',
+        flex: 1, border: 0, background: 'transparent',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 3, cursor: 'pointer', padding: '6px 0 5px',
-        color: active ? 'var(--accent-strong)' : 'var(--text-muted)',
+        gap: 4, cursor: 'pointer', padding: 0,
+        color: active ? 'var(--accent)' : 'var(--text-secondary)',
       }}>
       {icon}
       <span style={{
         fontSize: 10, fontFamily: 'var(--f-body)',
-        fontWeight: active ? 600 : 400, lineHeight: 1,
-        color: active ? 'var(--accent-strong)' : 'var(--text-secondary)',
+        fontWeight: 500, lineHeight: 1, color: 'inherit',
       }}>{label}</span>
     </button>
   );

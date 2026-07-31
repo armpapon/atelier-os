@@ -87,6 +87,10 @@
   --shadow-card: 0 1px 1px rgba(74, 61, 43, 0.03), 0 4px 16px rgba(74, 61, 43, 0.06);
   --shadow-pop:  0 2px 4px rgba(74, 61, 43, 0.04), 0 16px 40px rgba(74, 61, 43, 0.10);
   --shadow-soft: var(--shadow-card);
+
+  /* Frosted chrome — sidebar + mobile tab bar */
+  --sidebar-bg: rgba(251, 248, 241, 0.86);
+  --dim:        rgba(47, 41, 35, 0.35);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -138,6 +142,9 @@
   --shadow-card: 0 1px 1px rgba(0, 0, 0, 0.20), 0 4px 16px rgba(0, 0, 0, 0.30);
   --shadow-pop:  0 2px 4px rgba(0, 0, 0, 0.30), 0 16px 40px rgba(0, 0, 0, 0.50);
   --shadow-soft: var(--shadow-card);
+
+  --sidebar-bg: rgba(23, 19, 16, 0.90);
+  --dim:        rgba(0, 0, 0, 0.55);
 }
 
 /* ── Shared utility primitives (used by inline components) ─────────────── */
@@ -159,7 +166,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
-  transition: background 350ms ease, color 350ms ease;
+  /* background-color, not the `background` shorthand — transitioning the
+     shorthand leaves the computed colour stuck mid-interpolation. */
+  transition: background-color 350ms ease, color 350ms ease;
 }
 @media (prefers-reduced-motion: reduce) { body { transition: none; } }
 
@@ -176,21 +185,37 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 ::-webkit-scrollbar-thumb:hover { background: var(--line-2); background-clip: content-box; }
 
 /* ====== App shell ====== */
-.app { display: grid; grid-template-columns: 240px 1fr; height: 100vh; width: 100vw; transition: grid-template-columns 180ms ease; }
-.app[data-sidebar="collapsed"] { grid-template-columns: 64px 1fr; }
-@media (prefers-reduced-motion: reduce) { .app { transition: none; } }
+/* Collapse slides the sidebar out entirely (Cupertino: no icon rail) — the
+   grid column closes to 0 while the aside pulls itself left by its own width,
+   so the main column reflows in step with the slide instead of after it. */
+.app {
+  display: grid; grid-template-columns: 240px 1fr;
+  height: 100vh; width: 100vw; overflow: hidden;
+  transition: grid-template-columns 380ms cubic-bezier(.32, .72, .28, 1);
+}
+.app[data-sidebar="collapsed"] { grid-template-columns: 0 1fr; }
 @supports (height: 100dvh) { .app { height: 100dvh; } } /* mobile Safari dynamic toolbar */
 
 /* Narrow screens: sidebar column disappears — MobileNav (bottom bar) takes over */
 @media (max-width: 1023px) {
   .app, .app[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
-  .main { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .main { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 }
 
 .sidebar {
-  background: var(--bg-2); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; padding: 22px 14px 18px; gap: 4px;
-  overflow-y: auto;
+  width: 240px;
+  background: var(--sidebar-bg);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  backdrop-filter: blur(40px) saturate(1.6);
+  border-right: 1px solid var(--hairline);
+  display: flex; flex-direction: column; padding: 20px 12px 14px; gap: 2px;
+  overflow-y: auto; overflow-x: hidden; white-space: nowrap;
+  transition: margin-left 380ms cubic-bezier(.32, .72, .28, 1), opacity 300ms ease;
+}
+.app[data-sidebar="collapsed"] .sidebar { margin-left: -240px; opacity: 0; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app, .sidebar { transition: none; }
 }
 .sidebar__brand {
   display: flex; align-items: baseline; gap: 8px;

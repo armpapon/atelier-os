@@ -1,10 +1,16 @@
-export function Icon({ name, size = 16 }) {
+export function Icon({ name, size = 16, strokeWidth = 1.7 }) {
   const props = {
     width: size, height: size, viewBox: '0 0 24 24',
-    fill: 'none', stroke: 'currentColor', strokeWidth: 1.6,
+    fill: 'none', stroke: 'currentColor', strokeWidth,
     strokeLinecap: 'round', strokeLinejoin: 'round',
   };
   switch (name) {
+    // ── Shell chrome ──────────────────────────────────────────────────────
+    case 'menu':       return <svg {...props}><path d="M4 6.5h16M4 12h16M4 17.5h16"/></svg>;
+    case 'moon':       return <svg {...props}><path d="M21 13A8.5 8.5 0 1 1 11 3a7 7 0 0 0 10 10z"/></svg>;
+    case 'sun':        return <svg {...props}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>;
+    case 'more':       return <svg {...props}><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>;
+    case 'sign-out':   return <svg {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>;
     case 'home':       return <svg {...props}><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>;
     case 'trade':      return <svg {...props}><path d="M3 18l5-6 4 4 8-10"/><path d="M14 6h6v6"/></svg>;
     case 'book':       return <svg {...props}><path d="M4 4h7a3 3 0 0 1 3 3v13"/><path d="M20 4h-7a3 3 0 0 0-3 3v13"/></svg>;
@@ -29,4 +35,28 @@ export function Icon({ name, size = 16 }) {
     case 'work':       return <svg {...props}><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18"/></svg>;
     default: return null;
   }
+}
+
+/**
+ * Square icon button for shell chrome (sidebar header, mobile sheet, the
+ * floating cluster shown when the sidebar is collapsed). Ghost by default,
+ * fills with --fill-2 on hover.
+ */
+export function IconButton({ icon, label, onClick, size = 30, iconSize = 17 }) {
+  return (
+    <button
+      onClick={onClick} title={label} aria-label={label}
+      className="focus-ring"
+      style={{
+        width: size, height: size, flexShrink: 0,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        background: 'transparent', border: 0, borderRadius: 9,
+        color: 'var(--text-secondary)', cursor: 'pointer',
+        transition: 'background 150ms, color 150ms',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
+      <Icon name={icon} size={iconSize} strokeWidth={1.8} />
+    </button>
+  );
 }

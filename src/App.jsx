@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Sidebar, canSeePage } from './components/Sidebar.jsx';
 import { MobileNav } from './components/MobileNav.jsx';
-import { Icon } from './components/Icon.jsx';
+import { Icon, IconButton } from './components/Icon.jsx';
 import { TweaksPanel } from './components/TweaksPanel.jsx';
 import { ComingSoon } from './components/ComingSoon.jsx';
 import { LoginScreen } from './components/LoginScreen.jsx';
@@ -40,13 +40,23 @@ function isPreviewMode() {
   return new URLSearchParams(window.location.search).get('preview') === '1';
 }
 
+// The accent Tweak used to write --amber unconditionally, which meant this
+// legacy default silently overrode the palette token for every var(--amber)
+// consumer — including the dark theme's gold. Treat it as "not customised".
+const LEGACY_ACCENT = '#b27a42';
+
 export default function App() {
   const { user, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
   const [active, setActive]   = useState(() => localStorage.getItem('atelier:active') || 'dashboard');
   const [accent, setAccent]   = useState(() => localStorage.getItem('atelier:accent') || '#b27a42');
   const [density, setDensity] = useState(() => localStorage.getItem('atelier:density') || 'comfortable');
   const [tweaksOpen, setTweaksOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('loop:sidebar') === 'collapsed');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const v = localStorage.getItem('loop:sidebar-collapsed');
+    if (v !== null) return v === '1';
+    return localStorage.getItem('loop:sidebar') === 'collapsed';  // migrate pre-v4.1 key
+  });
+  const [theme, setTheme] = useState(() => localStorage.getItem('loop:theme') || 'light');
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const previewMode = isPreviewMode();
@@ -71,10 +81,21 @@ export default function App() {
   }, [user, active]);
   useEffect(() => {
     localStorage.setItem('atelier:accent', accent);
-    document.documentElement.style.setProperty('--amber', accent);
+    // Only override the palette token when the user actually picked a colour —
+    // otherwise styles.css owns --amber, so the warm accent and the dark
+    // theme's gold both apply instead of being pinned to one hex.
+    if (accent && accent !== LEGACY_ACCENT) {
+      document.documentElement.style.setProperty('--amber', accent);
+    } else {
+      document.documentElement.style.removeProperty('--amber');
+    }
   }, [accent]);
   useEffect(() => { localStorage.setItem('atelier:density', density); }, [density]);
-  useEffect(() => { localStorage.setItem('loop:sidebar', sidebarCollapsed ? 'collapsed' : 'expanded'); }, [sidebarCollapsed]);
+  useEffect(() => { localStorage.setItem('loop:sidebar-collapsed', sidebarCollapsed ? '1' : '0'); }, [sidebarCollapsed]);
+  useEffect(() => {
+    localStorage.setItem('loop:theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   // ── Loading state ────────────────────────────────────────────────────────
   if (loading && !previewMode) {
@@ -100,6 +121,7 @@ export default function App() {
   }
 
   const demoMode = !isSupabaseConfigured;
+  const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'));
 
   const render = () => {
     switch (active) {
@@ -123,13 +145,42 @@ export default function App() {
   return (
     <div className="app" data-density={density} data-sidebar={sidebarCollapsed ? 'collapsed' : 'expanded'}>
       {isMobile ? (
-        <MobileNav active={active} onChange={setActive} user={user} />
+        <MobileNav
+          active={active} onChange={setActive} user={user}
+          theme={theme} onToggleTheme={toggleTheme}
+        />
       ) : (
         <Sidebar
           active={active} onChange={setActive} user={user}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+          theme={theme} onToggleTheme={toggleTheme}
         />
+      )}
+
+      {/* Collapsed sidebar leaves no chrome to reopen from — this floating
+          cluster is the way back in, and keeps the theme toggle reachable. */}
+      {!isMobile && sidebarCollapsed && (
+        <div style={{
+          position: 'fixed', top: 14, left: 14, zIndex: 900,
+          display: 'flex', gap: 4, padding: 4,
+          background: 'var(--sidebar-bg)',
+          WebkitBackdropFilter: 'blur(40px) saturate(1.6)',
+          backdropFilter: 'blur(40px) saturate(1.6)',
+          border: '1px solid var(--hairline)',
+          borderRadius: 'var(--radius-field)',
+          boxShadow: 'var(--shadow-card)',
+        }}>
+          <IconButton
+            label="แสดงเมนู" icon="menu"
+            onClick={() => setSidebarCollapsed(false)}
+          />
+          <IconButton
+            label={theme === 'dark' ? 'โหมดสว่าง' : 'โหมดมืด'}
+            icon={theme === 'dark' ? 'sun' : 'moon'}
+            onClick={toggleTheme}
+          />
+        </div>
       )}
       <main className="main" key={active}>
         {previewMode && (
