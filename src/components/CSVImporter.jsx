@@ -5,6 +5,7 @@ import {
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
   getExistingTxnKeys, txnKey, deleteTransactionsInMonth,
   suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments,
+  getMonthBounds, bangkokMonth,
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
@@ -169,7 +170,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       // Detect month range of selected rows (for dedup / wipe)
       const months = new Set();
       for (const r of selectedRows) {
-        const ym = (r.occurred_at || '').substring(0, 7);
+        const ym = bangkokMonth(r.occurred_at);
         if (ym) months.add(ym);
       }
       const monthArr = [...months].sort();
@@ -194,10 +195,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       let toImport = selectedRows;
       let skipped = 0;
       if (dedup && !wipeMonth && monthArr.length) {
-        const first = monthArr[0] + '-01';
-        const lastMonth = monthArr[monthArr.length - 1];
-        const [ly, lm] = lastMonth.split('-').map(Number);
-        const lastEnd = `${lm === 12 ? ly + 1 : ly}-${String(lm === 12 ? 1 : lm + 1).padStart(2, '0')}-01`;
+        const { startTs: first } = getMonthBounds(monthArr[0]);
+        const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
         const scopesNeeded = [...new Set(selectedRows.map(r => r.scope))];
         const allKeys = new Set();
         for (const sc of scopesNeeded) {

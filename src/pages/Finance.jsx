@@ -22,6 +22,7 @@ import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../co
 import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
 import { MoneyLeaks } from '../components/dashboard/MoneyLeaks.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
+import { todayStr } from '../lib/dates.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = [
@@ -215,12 +216,12 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
         type:        initialTxn.type || 'food',
         account_id:  initialTxn.account_id || '',
         note:        initialTxn.note || '',
-        occurred_at: (initialTxn.occurred_at || '').split('T')[0] || new Date().toISOString().split('T')[0],
+        occurred_at: (initialTxn.occurred_at || '').split('T')[0] || todayStr(),
       };
     }
     return {
       title: '', amount: '', type: 'food', account_id: accounts[0]?.id || '',
-      note: '', occurred_at: new Date().toISOString().split('T')[0],
+      note: '', occurred_at: todayStr(),
     };
   });
   const [saving, setSaving] = useState(false);
@@ -600,8 +601,8 @@ export function FinanceView({ scope }) {
     try {
       const prev = previousMonth(yearMonth);
       const months12 = lastNMonths(12, yearMonth);
-      const { start: startTrend } = getMonthBounds(months12[0]);
-      const { end:   endTrend   } = getMonthBounds(months12[months12.length - 1]);
+      const { startTs: startTrend } = getMonthBounds(months12[0]);
+      const { endTs:   endTrend   } = getMonthBounds(months12[months12.length - 1]);
 
       // Date range for debt payments (12 months of history + future for forecast)
       const { start: paymentStart } = getMonthBounds(months12[0]);

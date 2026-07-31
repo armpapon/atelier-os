@@ -14,12 +14,9 @@ import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dism
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { AsanaHours } from '../components/AsanaHours.jsx';
 import { SheetTimeline } from '../components/SheetTimeline.jsx';
+import { todayStr } from '../lib/dates.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function todayStr() {
-  return new Date().toISOString().split('T')[0];
-}
-
 function formatDateThai(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });

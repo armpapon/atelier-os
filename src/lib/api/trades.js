@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { toLocalYMD } from '../dates.js';
 
 /**
  * Trades API — wrapper รอบ supabase.from('trades')
@@ -57,13 +58,24 @@ export async function bulkCreateTrades(rows) {
 export async function getExistingTradeKeys() {
   if (!supabase) return new Set();
   const { data, error } = await supabase
-    .from('trades').select('trade_date, symbol, entry_price, pnl');
+    .from('trades').select('id, trade_date, symbol, entry_price, pnl');
   if (error) throw error;
-  return new Set((data || []).map(tradeKey));
+  return new Set((data || []).map(t => tradeKey(t)));
 }
 
-export function tradeKey(t) {
-  return `${(t.trade_date || '').substring(0, 10)}|${(t.symbol || '').toUpperCase()}|${Math.round(Number(t.entry_price) * 100)}|${Math.round(Number(t.pnl) * 100)}`;
+export function tradeKey(t, rowIdx) {
+  const date   = (t.trade_date || '').substring(0, 10);
+  const symbol = (t.symbol || '').toUpperCase();
+  const entry  = t.entry_price;
+  const pnl    = t.pnl;
+  // Without a price AND a P&L there is nothing distinguishing about the row —
+  // Number(null) collapsed every such trade onto '…|0|0' and the importer threw
+  // away genuinely different trades. Fall back to the row position instead.
+  if ((entry == null || entry === '') && (pnl == null || pnl === '')) {
+    return `${date}|${symbol}|row:${rowIdx != null ? `i${rowIdx}` : `db${t.id ?? ''}`}`;
+  }
+  const n = (v) => (v == null || v === '' ? 'x' : Math.round(Number(v) * 100));
+  return `${date}|${symbol}|${n(entry)}|${n(pnl)}`;
 }
 
 // ── Excel Trade Log parser ──────────────────────────────────────────────────
@@ -78,7 +90,10 @@ export function tradeKey(t) {
  */
 export async function parseTradeExcel(arrayBuffer, sheetName) {
   const XLSX = await import('xlsx');
-  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  // cellDates:false on purpose. With cellDates:true SheetJS hands back Date
+  // objects built in local time; `.toISOString()` then rolls every Bangkok date
+  // back one day (serial 46218 = 2026-07-15 came out as 2026-07-14).
+  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: false });
   const sn = sheetName || wb.SheetNames.find(n => /trade.?log/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[sn];
   if (!ws) throw new Error(`ไม่พบ sheet ชื่อ "${sn}"`);
@@ -127,10 +142,27 @@ export async function parseTradeExcel(arrayBuffer, sheetName) {
   const RESULT_MAP = { 'Win': 'WIN', 'Loss': 'LOSS', 'BE': 'BREAKEVEN', 'Breakeven': 'BREAKEVEN', 'Partial': 'WIN', 'Open': 'OPEN' };
   const DIR_MAP    = { 'Long': 'long', 'Short': 'short', 'Buy': 'long', 'Sell': 'short' };
 
+  /** Excel serial → 'YYYY-MM-DD' (epoch 1899-12-30, computed in UTC). */
+  const serialToYMD = (n) => {
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(n) * 864e5);
+    return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  };
+
   const toDate = (v) => {
-    if (!v) return null;
-    if (v instanceof Date) return v.toISOString().split('T')[0];
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return serialToYMD(v);
+    if (v instanceof Date) return toLocalYMD(v);
     const s = String(v).trim();
+    // A numeric string is still a serial.
+    if (/^\d+(\.\d+)?$/.test(s)) return serialToYMD(Number(s));
+    // ISO already
+    const isoM = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoM) {
+      let iy = Number(isoM[1]);
+      if (iy > 2400) iy -= 543;
+      return `${iy}-${isoM[2]}-${isoM[3]}`;
+    }
     // DD/MM/YYYY
     const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
     if (m) {
@@ -140,7 +172,7 @@ export async function parseTradeExcel(arrayBuffer, sheetName) {
       return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     }
     const dt = new Date(s);
-    return isNaN(dt) ? null : dt.toISOString().split('T')[0];
+    return isNaN(dt) ? null : toLocalYMD(dt);
   };
 
   const num = (v) => {

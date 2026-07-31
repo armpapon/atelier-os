@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { toLocalYMD } from '../dates.js';
 
 // ── YouTube Helpers ───────────────────────────────────────────────────────────
 export function extractVideoId(url) {
@@ -362,7 +363,7 @@ export function computeStreak(sessions) {
   if (!sessions?.length) return 0;
   const days = new Set(sessions.map(s => (s.session_date || '').slice(0, 10)));
   const dayMs = 86400000;
-  const toKey = (d) => d.toISOString().slice(0, 10);
+  const toKey = (d) => toLocalYMD(d);
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   // Anchor: today if read today, else yesterday if read yesterday, else broken.

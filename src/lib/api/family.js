@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { todayStr } from '../dates.js';
 
 // ── Family Members ────────────────────────────────────────────────────────────
 export async function listMembers() {
@@ -50,7 +51,7 @@ export async function listEvents({ limit = 50, upcoming = false } = {}) {
     .select('*, member:family_members(name, color, initial)')
     .order('event_date', { ascending: true })
     .limit(limit);
-  if (upcoming) q = q.gte('event_date', new Date().toISOString().split('T')[0]);
+  if (upcoming) q = q.gte('event_date', todayStr());
   const { data, error } = await q;
   if (error) throw error;
   return data;

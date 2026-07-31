@@ -2,6 +2,7 @@
 //  Daily Trading Plans API
 // ════════════════════════════════════════════════════════════════════════════
 import { supabase } from '../supabase.js';
+import { todayStr, toLocalYMD } from '../dates.js';
 
 async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -135,11 +136,11 @@ export async function removeChartImageUrl(planId, url) {
 // ── Helpers ──────────────────────────────────────────────────────────────
 /** Get Monday of the week for a given date */
 export function getWeekStart(dateStr) {
-  const d = new Date(dateStr || new Date().toISOString().split('T')[0]);
+  const d = new Date(`${dateStr || todayStr()}T00:00:00`);
   const dow = d.getDay();
   const diff = dow === 0 ? -6 : 1 - dow; // Sunday = 0 → go back 6, else go back to Monday
   d.setDate(d.getDate() + diff);
-  return d.toISOString().split('T')[0];
+  return toLocalYMD(d);
 }
 
 /** Format date as "วันจันทร์ 3 มิ.ย. 2569" */

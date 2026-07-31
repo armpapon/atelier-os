@@ -6,6 +6,7 @@ import {
   listGrowthRecords, createGrowthRecord, deleteGrowthRecord,
   listMilestones, createMilestone, deleteMilestone,
 } from '../../lib/api/family.js';
+import { todayStr } from '../../lib/dates.js';
 
 // ─── Avatar helper (small inline copy to keep this file self-contained) ──────
 function Avatar({ member, size = 56 }) {
@@ -489,7 +490,7 @@ function StatTile({ label, value, unit, delta }) {
 
 function GrowthForm({ memberId, onSubmit, onCancel }) {
   const [form, setForm] = useState({
-    recorded_at: new Date().toISOString().split('T')[0],
+    recorded_at: todayStr(),
     height_cm: '', weight_kg: '', head_cm: '', notes: '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -696,7 +697,7 @@ function MilestonesTab({ member }) {
 
 function MilestoneForm({ memberId, onSubmit, onCancel }) {
   const [form, setForm] = useState({
-    milestone_date: new Date().toISOString().split('T')[0],
+    milestone_date: todayStr(),
     title: '', category: 'general', notes: '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));

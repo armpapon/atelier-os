@@ -12,7 +12,30 @@ export function getMonthBounds(yearMonth) {
   const nextY = m === 12 ? y + 1 : y;
   const nextM = m === 12 ? 1 : m + 1;
   const end = `${nextY}-${String(nextM).padStart(2, '0')}-01`;
-  return { start, end };
+  // `occurred_at` is timestamptz. A bare 'YYYY-MM-01' is read as UTC midnight
+  // = 07:00 Bangkok, which drops the first 7 hours of the month and steals the
+  // last 7 hours of the previous one. startTs/endTs pin the real local bounds.
+  // start/end stay bare for plain DATE columns (e.g. debt_payments.pay_month).
+  return {
+    start, end,
+    startTs: `${start}T00:00:00+07:00`,
+    endTs:   `${end}T00:00:00+07:00`,
+  };
+}
+
+const BANGKOK = 'Asia/Bangkok';
+
+/** A timestamp → its Bangkok calendar date, `YYYY-MM-DD`. */
+export function bangkokDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return String(ts).substring(0, 10);
+  return d.toLocaleDateString('sv-SE', { timeZone: BANGKOK });
+}
+
+/** A timestamp → its Bangkok calendar month, `YYYY-MM`. */
+export function bangkokMonth(ts) {
+  return bangkokDate(ts).substring(0, 7);
 }
 
 // ── CSV Parser (KBank Make + generic Thai bank CSV) ──────────────────────────
@@ -127,7 +150,15 @@ export function isMakeFormat(colMap) {
  */
 export function parseThaiDate(str) {
   if (!str) return null;
-  const datePart = str.split(' ')[0].split('T')[0];
+  const datePart = String(str).split(' ')[0].split('T')[0].trim();
+  // ISO first: the d/m/y regex below matches MID-string, so '2026-07-15' would
+  // be read as 15/07/26 → '2015-07-26'.
+  const iso = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    let iy = parseInt(iso[1], 10);
+    if (iy > 2400) iy -= 543;   // Buddhist Era → CE
+    return `${iy}-${iso[2]}-${iso[3]}`;
+  }
   const match = datePart.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   if (!match) return datePart;
   let [, d, mo, y] = match;
@@ -141,11 +172,23 @@ export function parseThaiDate(str) {
  * Parse amount string → number (handles commas, parentheses for negative).
  */
 export function parseAmount(str) {
-  if (!str && str !== 0) return null;
-  const s = String(str).replace(/,/g, '').trim();
+  if (str == null || str === '') return null;
+  let s = String(str)
+    .replace(/THB/gi, '')
+    .replace(/[฿,]/g, '')
+    .replace(/[\s\u00a0]/g, '');
   if (!s || s === '-') return null;
-  if (s.startsWith('(') && s.endsWith(')')) return -Math.abs(parseFloat(s.slice(1, -1)));
-  return parseFloat(s) || null;
+
+  let neg = false;
+  if (s.startsWith('(') && s.endsWith(')')) { neg = true; s = s.slice(1, -1); }
+  if (s.endsWith('-'))   { neg = true; s = s.slice(0, -1); }   // '1,234.50-' = negative
+  if (s.startsWith('-')) { neg = true; s = s.slice(1); }
+  if (s.startsWith('+')) { s = s.slice(1); }
+
+  if (!/^\d+(\.\d+)?$|^\.\d+$/.test(s)) return null;        // reject garbage
+  const n = parseFloat(s);
+  if (!Number.isFinite(n)) return null;
+  return neg ? -n : n;
 }
 
 /**
@@ -192,7 +235,12 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       if (amount === null || amount === 0) return [];
 
       const dateStr  = parseThaiDate(row[dateCol] || '');
-      const timePart = timeCol && row[timeCol] ? row[timeCol].substring(0, 5) : '00:00';
+      // A single "DateTime" header matches BOTH find('time') and find('date'),
+      // so timeCol would point at the date column and slice '2026-' as a clock.
+      const timeKey  = (timeCol && timeCol !== dateCol) ? timeCol : null;
+      const timeHit  = timeKey ? String(row[timeKey] || '').match(/(\d{1,2}):(\d{2})/) : null;
+      // Midday fallback so a missing clock can never straddle a day boundary.
+      const timePart = timeHit ? `${timeHit[1].padStart(2, '0')}:${timeHit[2]}` : '12:00';
       const occurred_at = dateStr
         ? `${dateStr}T${timePart}:00+07:00`
         : new Date().toISOString();
@@ -244,6 +292,9 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       if (credit && credit > 0) amount = credit;
       else if (debit && debit > 0) amount = -Math.abs(debit);
     }
+    // Reject unreadable amounts. These used to fall through as ฿0 and land in
+    // the ledger silently.
+    if (amount === null || !Number.isFinite(amount)) return [];
 
     const { category, type } = autoCategory(desc);
     return [{
@@ -252,7 +303,7 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       _txtype:    null,
       title:      desc || '(ไม่มีชื่อ)',
       occurred_at: dateStr ? `${dateStr}T12:00:00+07:00` : new Date().toISOString(),
-      amount:     amount ?? 0,
+      amount,
       category,
       type,
       scope:      defaultScope,
@@ -271,8 +322,8 @@ export async function listTransactions({ limit = 200, yearMonth, scope } = {}) {
     .order('occurred_at', { ascending: false })
     .limit(limit);
   if (yearMonth) {
-    const { start, end } = getMonthBounds(yearMonth);
-    q = q.gte('occurred_at', start).lt('occurred_at', end);
+    const { startTs, endTs } = getMonthBounds(yearMonth);
+    q = q.gte('occurred_at', startTs).lt('occurred_at', endTs);
   }
   if (scope) q = q.eq('scope', scope);
   const { data, error } = await q;
@@ -406,7 +457,7 @@ export function summarize(txns) {
 export function aggregateByMonth(txns) {
   const m = {};
   for (const t of txns) {
-    const ym = (t.occurred_at || '').substring(0, 7);
+    const ym = bangkokMonth(t.occurred_at);
     if (!ym) continue;
     if (!m[ym]) m[ym] = { ym, income: 0, expense: 0, count: 0 };
     if (t.amount > 0) m[ym].income += t.amount;
@@ -436,7 +487,7 @@ export function aggregateByDay(txns, yearMonth) {
   const m = {};
   for (const t of txns) {
     if (t.amount >= 0) continue;
-    const date = (t.occurred_at || '').substring(0, 10);
+    const date = bangkokDate(t.occurred_at);
     if (!date.startsWith(yearMonth)) continue;
     const day = date.substring(8, 10);
     m[day] = (m[day] || 0) + Math.abs(t.amount);
@@ -629,7 +680,12 @@ export async function bulkUpsertAccountsByPocket(pockets) {
  * so the importer can skip duplicates.
  */
 function txnKey(t) {
-  const date = (t.occurred_at || '').substring(0, 16);   // include HH:mm
+  // Normalise to UTC before slicing: rows we build for insert carry a
+  // '+07:00' offset while Supabase hands them back as UTC, so the raw strings
+  // never matched and dedup let every re-import through.
+  const raw = t.occurred_at || '';
+  const d = new Date(raw);
+  const date = isNaN(d) ? raw.substring(0, 16) : d.toISOString().substring(0, 16);
   const amt  = Math.round(Number(t.amount) * 100);
   const title = (t.title || '').trim().substring(0, 40);
   return `${date}|${amt}|${title}`;
@@ -653,8 +709,8 @@ export { txnKey };
 /** Delete all transactions in a month (used for clean re-import). */
 export async function deleteTransactionsInMonth(yearMonth, scope) {
   if (!supabase) throw new Error('Supabase not configured');
-  const { start, end } = getMonthBounds(yearMonth);
-  let q = supabase.from('transactions').delete().gte('occurred_at', start).lt('occurred_at', end);
+  const { startTs, endTs } = getMonthBounds(yearMonth);
+  let q = supabase.from('transactions').delete().gte('occurred_at', startTs).lt('occurred_at', endTs);
   if (scope) q = q.eq('scope', scope);
   const { error } = await q;
   if (error) throw error;
@@ -987,7 +1043,7 @@ export function suggestDebtPaymentLinks(transactions, debts, existingPayments = 
     const amt = Number(txn.amount);
     if (amt >= 0) continue;                                    // expenses only
     const absAmt = Math.abs(amt);
-    const ym = (txn.occurred_at || '').substring(0, 7);
+    const ym = bangkokMonth(txn.occurred_at);
     if (!ym) continue;
 
     for (const debt of debts) {
@@ -1190,7 +1246,7 @@ export function detectRecurringFromTransactions(transactions) {
   const recurring = [];
   for (const k in groups) {
     const g = groups[k];
-    const months = new Set(g.txns.map(t => (t.occurred_at || '').substring(0, 7)));
+    const months = new Set(g.txns.map(t => bangkokMonth(t.occurred_at)));
     if (months.size < 2) continue;
     const amounts = g.txns.map(t => Math.abs(Number(t.amount)));
     const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
@@ -1219,7 +1275,7 @@ function normalizeTitle(t) {
 /** Check whether a recurring expense has been paid for a given month. */
 export function checkRecurringStatus(recurring, transactions, yearMonth) {
   const ym = yearMonth || currentYearMonth();
-  const inMonth = (t) => (t.occurred_at || '').substring(0, 7) === ym && Number(t.amount) < 0;
+  const inMonth = (t) => bangkokMonth(t.occurred_at) === ym && Number(t.amount) < 0;
 
   // 1) Explicit link wins — a transaction tagged with this bill's id.
   const linked = (transactions || []).find(t => t.recurring_id === recurring.id && inMonth(t));

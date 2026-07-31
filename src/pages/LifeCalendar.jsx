@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { Icon } from '../components/Icon.jsx';
 import { PageHeader } from '../components/PageHeader.jsx';
 import { EmptyState } from '../components/ui/index.js';
+import { todayStr } from '../lib/dates.js';
 
 const LS_BIRTH = 'loop:life-birthdate';
 const LS_SPAN  = 'loop:life-lifespan';
@@ -68,7 +69,7 @@ function SetupCard({ initialBirth, initialSpan, onSave, onCancel }) {
       </div>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันเกิด</span>
-        <input type="date" className="input" value={birth} onChange={e => setBirth(e.target.value)} required autoFocus max={new Date().toISOString().split('T')[0]} />
+        <input type="date" className="input" value={birth} onChange={e => setBirth(e.target.value)} required autoFocus max={todayStr()} />
       </label>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>อายุที่คาดหวัง (ปี)</span>

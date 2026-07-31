@@ -6,6 +6,7 @@ import {
   listInsights, createInsight, toggleInsightDone, deleteInsight,
   extractVideoId, getYouTubeEmbedUrl,
 } from '../../lib/api/learning.js';
+import { todayStr } from '../../lib/dates.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  StudyDrawer — premium study/reading companion (open via source card)
@@ -277,6 +278,7 @@ function BookStudy({ source, onSaved }) {
     try {
       await createSession({
         source_id: source.id,
+        session_date: todayStr(),
         duration_min: Math.max(1, Math.round(timerSec / 60)),
         from_page: Number(fromPage), to_page: Number(toPage),
         pages_read: pagesRead,
@@ -577,6 +579,7 @@ function VideoStudy({ source, onSaved }) {
     try {
       await createSession({
         source_id: source.id,
+        session_date: todayStr(),
         duration_min: Math.max(1, Math.round(timerSec / 60)),
         video_from_sec: source.video_position_sec || 0,
         video_to_sec: Number(videoSec) || 0,
@@ -681,6 +684,7 @@ function GenericStudy({ source, onSaved }) {
     try {
       await createSession({
         source_id: source.id,
+        session_date: todayStr(),
         duration_min: Math.max(1, Math.round(timerSec / 60)),
         understanding_score: score,
         summary: summary.trim() || null,

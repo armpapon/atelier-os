@@ -16,12 +16,11 @@ import {
 import {
   ManifestCard, ThemesCard, GoalsList, RoadmapTimeline, LifePulse,
 } from '../components/dashboard/LifeOSWidgets.jsx';
+import { todayStr } from '../lib/dates.js';
 
 const THAI_DAYS   = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
 const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 const MOOD_EMOJI  = { 1: '😞', 2: '🙁', 3: '😐', 4: '🙂', 5: '😄' };
-
-function todayStr() { return new Date().toISOString().split('T')[0]; }
 
 function formatToday() {
   const now = new Date();

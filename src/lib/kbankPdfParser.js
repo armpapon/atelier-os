@@ -15,11 +15,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function parseKBankDate(str) {
-  // DD-MM-YY (CE, YY = last 2 digits of year e.g. 26 = 2026)
+  // DD-MM-YY. Make statements mix CE ('26' = 2026) and B.E. ('69' = 2569).
+  // Blindly prefixing '20' turned Buddhist years into 2069.
   const m = str.match(/^(\d{2})-(\d{2})-(\d{2})$/);
   if (!m) return null;
   const [, d, mo, y] = m;
-  return `20${y}-${mo}-${d}`;
+  const yy = Number(y);
+  // No CE year in the 2050s+ can appear in a bank statement, so YY >= 50 is B.E.
+  const year = yy >= 50 ? 2500 + yy - 543 : 2000 + yy;
+  return `${year}-${mo}-${d}`;
 }
 
 function parseNum(s) {

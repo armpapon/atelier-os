@@ -2,6 +2,7 @@
 //  Life OS API — Manifest, Themes, Goals, Today's Focus, Roadmap
 // ════════════════════════════════════════════════════════════════════════════
 import { supabase } from '../supabase.js';
+import { todayStr, toLocalYMD } from '../dates.js';
 
 async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -91,7 +92,7 @@ export async function deleteGoal(id) {
 
 // ── FOCUS_TODAY ──────────────────────────────────────────────────────────────
 function todayDate() {
-  return new Date().toISOString().split('T')[0];
+  return todayStr();
 }
 
 export async function listFocusToday(date) {
@@ -134,8 +135,8 @@ export async function deleteFocus(id) {
 export async function listRoadmap({ monthsAhead = 6 } = {}) {
   if (!supabase) return [];
   const now = new Date();
-  const start = now.toISOString().split('T')[0];
-  const end = new Date(now.getFullYear(), now.getMonth() + monthsAhead + 1, 0).toISOString().split('T')[0];
+  const start = toLocalYMD(now);
+  const end = toLocalYMD(new Date(now.getFullYear(), now.getMonth() + monthsAhead + 1, 0));
   const { data, error } = await supabase
     .from('roadmap_milestones').select('*')
     .gte('target_date', start)
@@ -200,7 +201,7 @@ export async function getModulePulse() {
   const results = await Promise.allSettled([
     supabase.from('learning_sources').select('id', { count: 'exact', head: true }),
     supabase.from('family_events').select('id', { count: 'exact', head: true })
-      .gte('event_date', new Date().toISOString().split('T')[0]),
+      .gte('event_date', todayStr()),
     supabase.from('trades').select('id', { count: 'exact', head: true }).eq('status', 'open'),
   ]);
   return {

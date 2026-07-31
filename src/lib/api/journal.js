@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { toLocalYMD } from '../dates.js';
 
 // Linked partner's user id (for "ด้วยกัน" shared appointments), or null if the
 // accounts aren't linked yet / the partners table doesn't exist.
@@ -47,16 +48,16 @@ export async function listRecentDates(limit = 14) {
 export async function listUpcomingEvents({ days = 14, limit = 10 } = {}) {
   if (!supabase) return [];
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const startStr = toLocalYMD(today);
   const end = new Date(today);
   end.setDate(end.getDate() + days);
-  const endStr = end.toISOString().split('T')[0];
+  const endStr = toLocalYMD(end);
   const { data, error } = await supabase
     .from('journal_entries')
     .select('*')
     .eq('bullet_type', 'event')
     .not('event_time', 'is', null)
-    .gte('entry_date', todayStr)
+    .gte('entry_date', startStr)
     .lte('entry_date', endStr)
     .order('entry_date', { ascending: true })
     .order('event_time', { ascending: true })

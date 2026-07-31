@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, CardHeader, Button, Badge } from '../ui/index.js';
 import { createScopeTransfer } from '../../lib/api/finance.js';
+import { todayStr } from '../../lib/dates.js';
 
 const SCOPE_META = {
   personal: { label: 'ส่วนตัว',  icon: '👤', color: 'var(--accent)' },
@@ -11,7 +12,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
   const [fromScope, setFromScope] = useState(defaultFromScope);
   const [toScope,   setToScope]   = useState(defaultFromScope === 'personal' ? 'family' : 'personal');
   const [amount,    setAmount]    = useState('');
-  const [date,      setDate]      = useState(new Date().toISOString().split('T')[0]);
+  const [date,      setDate]      = useState(todayStr());
   const [title,     setTitle]     = useState('');
   const [note,      setNote]      = useState('');
   const [saving,    setSaving]    = useState(false);

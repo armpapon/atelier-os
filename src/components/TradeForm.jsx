@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Icon } from './Icon.jsx';
 import { createTrade, updateTrade } from '../lib/api/trades.js';
+import { todayStr } from '../lib/dates.js';
 
 // HA-50 setups ขึ้นก่อน — ของเดิม (ICT) เก็บไว้ให้แก้ trade ประวัติเก่าได้
 const SETUPS = [
@@ -15,9 +16,8 @@ const STATUSES = [
   { value: 'OPEN', label: 'OPEN', color: 'var(--amber)' },
 ];
 
-const today = () => new Date().toISOString().split('T')[0];
-const emptyTrade = {
-  trade_date: today(),
+const emptyTrade = () => ({
+  trade_date: todayStr(),
   symbol: 'XAUUSD',
   side: 'long',
   setup: '',
@@ -40,7 +40,7 @@ const emptyTrade = {
   emotion: '',
   lesson_learned: '',
   reason: '',
-};
+});
 
 /**
  * R ที่ได้จริง — long: (exit−entry)/(entry−SL) · short: (entry−exit)/(SL−entry)
@@ -71,9 +71,9 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
   useEffect(() => {
     if (open) {
       setForm(initialTrade ? {
-        ...emptyTrade,
+        ...emptyTrade(),
         ...initialTrade,
-        trade_date:     initialTrade.trade_date || today(),
+        trade_date:     initialTrade.trade_date || todayStr(),
         setup:          str(initialTrade.setup),
         rr:             str(initialTrade.rr),
         pnl:            str(initialTrade.pnl),
@@ -87,7 +87,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
         rule_broken:    str(initialTrade.rule_broken),
         reason:         str(initialTrade.reason),
         emotion:        str(initialTrade.emotion),
-      } : emptyTrade);
+      } : emptyTrade());
       setRManual(initialTrade?.r_multiple != null);
       setError(null);
     }

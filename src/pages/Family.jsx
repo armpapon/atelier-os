@@ -9,6 +9,7 @@ import {
 } from '../lib/api/family.js';
 import { uploadFamilyAvatar, removeFamilyAvatar, uploadFamilyEventPhoto, deleteEventPhotoByUrl } from '../lib/storage.js';
 import { MemberDetail } from '../components/family/MemberDetail.jsx';
+import { todayStr } from '../lib/dates.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 // Colour DATA the user picks a member's avatar fallback from — not a token, keep literal.
@@ -654,7 +655,7 @@ function OnThisDayCard({ events, onOpen }) {
 // ── Kid Quotes ─────────────────────────────────────────────────────────────────
 function KidQuotesCard({ quotes, members, onChange }) {
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ quote: '', member_id: '', said_on: new Date().toISOString().split('T')[0] });
+  const [form, setForm] = useState({ quote: '', member_id: '', said_on: todayStr() });
   const [saving, setSaving] = useState(false);
 
   const submit = async (e) => {
@@ -663,7 +664,7 @@ function KidQuotesCard({ quotes, members, onChange }) {
     setSaving(true);
     try {
       await createQuote({ quote: form.quote.trim(), member_id: form.member_id || null, said_on: form.said_on });
-      setForm({ quote: '', member_id: '', said_on: new Date().toISOString().split('T')[0] });
+      setForm({ quote: '', member_id: '', said_on: todayStr() });
       setAdding(false); onChange();
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
@@ -687,7 +688,7 @@ function KidQuotesCard({ quotes, members, onChange }) {
               <option value="">ใครพูด</option>
               {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
-            <input type="date" className="input" value={form.said_on} max={new Date().toISOString().split('T')[0]}
+            <input type="date" className="input" value={form.said_on} max={todayStr()}
               onChange={e => setForm(f => ({ ...f, said_on: e.target.value }))} style={{ flex: 1, minWidth: 140 }} />
             <button type="submit" disabled={saving} className="btn btn--primary" style={{ flexShrink: 0 }}>{saving ? '...' : 'บันทึก'}</button>
           </div>
@@ -757,7 +758,7 @@ export function Family() {
   useEffect(() => { refresh(); }, [refresh]);
 
   // Separate upcoming and past events
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayStr();
   const upcomingEvents = events.filter(e => e.event_date >= today).sort((a, b) => a.event_date.localeCompare(b.event_date));
   const pastEvents = events.filter(e => e.event_date < today).sort((a, b) => b.event_date.localeCompare(a.event_date));
 

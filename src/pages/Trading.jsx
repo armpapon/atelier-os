@@ -8,6 +8,7 @@ import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/in
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
 import { useAuth } from '../lib/useAuth.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
+import { todayStr } from '../lib/dates.js';
 
 const SESSION_COLOR = {
   // HA-50 (ปัจจุบัน)
@@ -82,8 +83,8 @@ export function Trading() {
   const latestBalance = equityPoints.length > 0 ? equityPoints[equityPoints.length - 1].equity : 0;
 
   // Today's stats for Playbook
-  const todayStr = new Date().toISOString().split('T')[0];
-  const tradesToday  = trades.filter(t => t.trade_date === todayStr).length;
+  const today = todayStr();
+  const tradesToday  = trades.filter(t => t.trade_date === today).length;
   // Recent losing streak (last N trades by date desc)
   const lossesInRow  = useMemo(() => {
     const sorted = [...trades].sort((a, b) => (b.trade_date || '').localeCompare(a.trade_date || ''));

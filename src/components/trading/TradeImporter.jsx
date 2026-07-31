@@ -37,7 +37,7 @@ export function TradeImporter({ onImported, onClose }) {
       let skipped = 0;
       if (dedup) {
         const existing = await getExistingTradeKeys();
-        toInsert = rows.filter(r => !existing.has(tradeKey(r)));
+        toInsert = rows.filter((r, i) => !existing.has(tradeKey(r, i)));
         skipped = rows.length - toInsert.length;
       }
       const inserted = toInsert.length ? await bulkCreateTrades(toInsert) : [];
