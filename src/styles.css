@@ -371,10 +371,11 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .tab:hover { color: var(--ink-2); }
 .tab--active { color: var(--ink); border-bottom-color: var(--amber); }
 
+/* Cupertino field: filled, borderless, accent ring on focus */
 .input {
-  width: 100%; background: var(--surface); border: 1px solid var(--hairline);
-  border-radius: var(--radius-field); padding: 9px 12px; color: var(--ink);
-  transition: border-color 120ms, box-shadow 120ms;
+  width: 100%; background: var(--fill); border: 1px solid transparent;
+  border-radius: var(--radius-field); padding: 10px 12px; color: var(--ink);
+  transition: background 120ms, border-color 120ms, box-shadow 120ms;
 }
 .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .input::placeholder { color: var(--ink-4); }

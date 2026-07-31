@@ -124,8 +124,7 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
             return (
               <div key={r.id} style={{
                 padding: '10px 12px',
-                background: st.tone === 'danger' ? 'var(--danger-soft)' : 'var(--surface)',
-                border: '1px solid ' + (st.tone === 'danger' ? 'var(--danger)' : 'var(--border)'),
+                background: st.tone === 'danger' ? 'var(--danger-soft)' : 'var(--fill)',
                 borderRadius: 'var(--radius-control)',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
               }}>
@@ -139,7 +138,7 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                     {Number(r.amount) > 0 ? fmt(r.amount) : 'ผันแปร'}
                   </div>
                   <Badge tone={st.tone} size="sm">{st.icon} {st.label}</Badge>
@@ -177,7 +176,7 @@ function SuggestionsList({ suggestions, scope, onAdd }) {
           <div key={i} style={{
             display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 10,
             padding: '8px 12px', alignItems: 'center', fontSize: 12,
-            background: 'var(--surface)', border: '1px solid var(--border)',
+            background: 'var(--fill)',
             borderRadius: 'var(--radius-control)',
           }}>
             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
@@ -302,7 +301,7 @@ export function CashFlowForecastCard({ forecast }) {
 
       {/* Projection table */}
       <div style={{
-        background: 'var(--background-soft)', border: '1px solid var(--border)',
+        background: 'var(--background-soft)', border: '1px solid var(--hairline)',
         borderRadius: 'var(--radius-control)', overflow: 'hidden',
       }}>
         <div style={{
@@ -310,7 +309,7 @@ export function CashFlowForecastCard({ forecast }) {
           padding: '8px 12px', background: 'var(--surface-muted)',
           fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)',
           letterSpacing: '0.12em', textTransform: 'uppercase',
-          borderBottom: '1px solid var(--border)',
+          borderBottom: '1px solid var(--hairline)',
         }}>
           <div>เดือน</div><div>หนี้ที่ active</div>
           <div style={{ textAlign: 'right' }}>Net</div>
@@ -322,7 +321,7 @@ export function CashFlowForecastCard({ forecast }) {
             <div key={p.ym} style={{
               display: 'grid', gridTemplateColumns: '90px 1fr 90px 100px', gap: 10,
               padding: '10px 12px', alignItems: 'center', fontSize: 12.5,
-              borderBottom: i < projection.length - 1 ? '1px solid var(--border)' : 0,
+              borderBottom: i < projection.length - 1 ? '1px solid var(--hairline)' : 0,
             }}>
               <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
                 {THAI_MONTHS[m - 1]} {(y + 543).toString().slice(-2)}
@@ -331,13 +330,13 @@ export function CashFlowForecastCard({ forecast }) {
                 {p.activeDebtsCount} หนี้ · {fmt(p.debt)}
               </span>
               <span style={{
-                textAlign: 'right', fontFamily: 'var(--f-mono)', fontWeight: 500,
+                textAlign: 'right', fontFamily: 'var(--f-mono)', fontWeight: 600,
                 color: p.net >= 0 ? 'var(--success)' : 'var(--danger)',
               }}>
                 {p.net >= 0 ? '+' : '-'}{fmt(Math.abs(p.net))}
               </span>
               <span style={{
-                textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 500,
+                textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 600,
                 color: p.cumulative >= 0 ? 'var(--text-primary)' : 'var(--danger)',
               }}>
                 {p.cumulative >= 0 ? '+' : '-'}{fmt(Math.abs(p.cumulative))}
@@ -396,7 +395,7 @@ export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
       {/* Picker: toggle accounts as emergency_fund */}
       {picking && (
         <div style={{
-          background: 'var(--background-soft)', border: '1px solid var(--border-strong)',
+          background: 'var(--background-soft)', border: '1px solid var(--hairline)',
           borderRadius: 'var(--radius-control)', padding: 12, marginBottom: 12,
         }}>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: 8 }}>
@@ -417,7 +416,7 @@ export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
                   }}
                   style={{ accentColor: 'var(--accent)' }} />
                 <span style={{ flex: 1, color: 'var(--text-primary)' }}>{a.name}</span>
-                <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+                <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>
                   ฿{Number(a.balance || 0).toLocaleString('th', { maximumFractionDigits: 0 })}
                 </span>
               </label>
@@ -437,9 +436,9 @@ export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
           <div style={{
             width: 78, height: 78, borderRadius: '50%', background: 'var(--surface)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            border: '1px solid var(--border)',
+            border: '1px solid var(--hairline)',
           }}>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: ringColor, fontWeight: 500, lineHeight: 1 }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: ringColor, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
               {coverage.months.toFixed(1)}
             </div>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', marginTop: 2 }}>
@@ -449,7 +448,7 @@ export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: 'var(--text-primary)', fontWeight: 500, marginBottom: 4 }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4, fontVariantNumeric: 'tabular-nums' }}>
             {fmt(coverage.total)}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
@@ -489,12 +488,12 @@ function Stat({ label, value, color = 'var(--text-primary)' }) {
   return (
     <div style={{
       padding: '8px 10px', background: 'var(--background-soft)',
-      border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+      border: '1px solid var(--hairline)', borderRadius: 'var(--radius-control)',
     }}>
       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 15, color, fontWeight: 500, marginTop: 2, lineHeight: 1.1 }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 15, color, fontWeight: 600, marginTop: 2, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
     </div>

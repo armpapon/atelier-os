@@ -2,13 +2,13 @@ import { formatBaht } from './KPICard.jsx';
 import { Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
 
 const CATEGORY_COLORS = {
-  food:      '#c98558',
-  transport: '#5e91ad',
-  bills:     '#c99a42',
+  food:      'var(--accent)',
+  transport: 'var(--blue)',
+  bills:     'var(--warning)',
   income:    'var(--success)',
-  shop:      '#9a6db5',
-  family:    '#b96d7f',
-  other:     '#8a8580',
+  shop:      'var(--violet)',
+  family:    'var(--rose)',
+  other:     'var(--text-muted)',
 };
 
 const CATEGORY_ICONS = {
@@ -54,19 +54,19 @@ export function CategoryBreakdown({ data, totalExpense }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12.5 }}>
                 <span style={{ color: 'var(--text-primary)' }}>
                   <span style={{ marginRight: 8 }}>{icon}</span>{row.category}
-                  <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', fontSize: 10.5 }}>
+                  <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', fontSize: 10.5, fontVariantNumeric: 'tabular-nums' }}>
                     {row.count} ครั้ง
                   </span>
                 </span>
-                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                   ฿{Math.round(row.amount).toLocaleString('th')}
                   <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 10.5, fontWeight: 400 }}>
                     {ofTotal.toFixed(0)}%
                   </span>
                 </span>
               </div>
-              <div style={{ height: 6, background: 'var(--surface-muted)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 300ms' }} />
+              <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width 300ms' }} />
               </div>
             </div>
           );
@@ -105,12 +105,12 @@ export function TopExpenses({ data }) {
           <div key={t.id || i} style={{
             display: 'grid', gridTemplateColumns: '22px 56px 1fr auto', gap: 10,
             padding: '9px 0', alignItems: 'center', fontSize: 12.5,
-            borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+            borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
           }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
               {String(i + 1).padStart(2, '0')}
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-secondary)' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
               {(t.occurred_at || '').substring(5, 10).replace('-', '/')}
             </div>
             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
@@ -119,7 +119,7 @@ export function TopExpenses({ data }) {
                 {t.category}
               </span>
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--danger)', fontWeight: 500 }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--danger)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
               -฿{Math.abs(t.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
             </div>
           </div>
@@ -177,19 +177,19 @@ export function BudgetProgress({ budgets, categoryActuals, onAddBudget }) {
                   {b.category}
                   {tone === 'danger' && <Badge tone="danger" size="sm" style={{ marginLeft: 8 }}>เกินงบ</Badge>}
                 </span>
-                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)' }}>
+                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                   ฿{Math.round(actual).toLocaleString('th')}
-                  <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
+                  <span style={{ color: 'var(--text-muted)', margin: '0 4px', fontWeight: 400 }}>/</span>
                   ฿{Math.round(limit).toLocaleString('th')}
                   <span style={{ color: colors.text, marginLeft: 8, fontSize: 11, fontWeight: 500 }}>
                     {pct.toFixed(0)}%
                   </span>
                 </span>
               </div>
-              <div style={{ height: 8, background: 'var(--surface-muted)', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+              <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden', position: 'relative' }}>
                 <div style={{
                   width: `${Math.min(100, pct)}%`, height: '100%',
-                  background: colors.bg, transition: 'width 300ms',
+                  background: colors.bg, borderRadius: 999, transition: 'width 300ms',
                 }} />
               </div>
             </div>
@@ -234,9 +234,9 @@ export function NetWorthCard({ accounts }) {
       />
 
       <div style={{
-        fontFamily: 'var(--f-display)', fontSize: 34, fontWeight: 500,
+        fontFamily: 'var(--f-display)', fontSize: 34, fontWeight: 600,
         color: net >= 0 ? 'var(--text-primary)' : 'var(--danger)',
-        marginBottom: 16, letterSpacing: '-0.01em',
+        marginBottom: 16, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums',
       }}>
         ฿{net.toLocaleString('th', { maximumFractionDigits: 0 })}
       </div>
@@ -244,7 +244,7 @@ export function NetWorthCard({ accounts }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <NWRow label="สินทรัพย์" value={assets} color="var(--success)" />
         <NWRow label="หนี้สิน"    value={liabilities} color="var(--danger)" sign="-" />
-        <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+        <div style={{ height: 1, background: 'var(--hairline)', margin: '4px 0' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
           <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>DEBT RATIO</span>
           <Badge tone={debtRatio > 50 ? 'danger' : debtRatio > 30 ? 'warning' : 'success'} size="sm">
@@ -253,7 +253,7 @@ export function NetWorthCard({ accounts }) {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--hairline)', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {accounts.slice(0, 4).map(a => {
           const bal = Number(a.current_balance ?? a.balance) || 0;
           const isDebt = a.type === 'debt' || bal < 0;
@@ -265,6 +265,7 @@ export function NetWorthCard({ accounts }) {
               <span style={{
                 fontFamily: 'var(--f-mono)',
                 color: isDebt ? 'var(--danger)' : 'var(--text-primary)',
+                fontVariantNumeric: 'tabular-nums',
               }}>
                 {isDebt ? '-' : ''}฿{Math.abs(bal).toLocaleString('th', { maximumFractionDigits: 0 })}
               </span>
@@ -285,7 +286,7 @@ function NWRow({ label, value, color, sign = '' }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
       <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--f-mono)', color, fontWeight: 500 }}>
+      <span style={{ fontFamily: 'var(--f-mono)', color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
         {sign}฿{value.toLocaleString('th', { maximumFractionDigits: 0 })}
       </span>
     </div>
@@ -321,12 +322,12 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
     return 4;
   };
 
-  // Warm earth shades — light tints → deeper clay
+  // Warm earth shades — light tints → deeper clay, all token-driven so dark mode inverts cleanly
   const SHADES = [
     'var(--surface-muted)',
-    '#f0e0c8',
-    '#e8c896',
-    '#d9a464',
+    'var(--accent-tint)',
+    'var(--accent-soft)',
+    'var(--accent)',
     'var(--accent-strong)',
   ];
 
@@ -357,10 +358,11 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
               style={{
                 aspectRatio: '1', borderRadius: 6,
                 background: SHADES[lvl],
-                border: '1px solid ' + (lvl > 0 ? 'transparent' : 'var(--border)'),
+                border: '1px solid ' + (lvl > 0 ? 'transparent' : 'var(--hairline)'),
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, color: lvl >= 3 ? 'var(--text-inverse)' : 'var(--text-secondary)',
                 fontFamily: 'var(--f-mono)', cursor: 'default',
+                fontVariantNumeric: 'tabular-nums',
                 transition: 'transform 100ms',
               }}>
               {c.day}
@@ -374,7 +376,7 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
         {SHADES.map((c, i) => (
           <div key={i} style={{
             width: 14, height: 14, borderRadius: 3, background: c,
-            border: '1px solid ' + (i > 0 ? 'transparent' : 'var(--border)'),
+            border: '1px solid ' + (i > 0 ? 'transparent' : 'var(--hairline)'),
           }} />
         ))}
         <span>มาก</span>

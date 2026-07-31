@@ -49,10 +49,10 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(40,30,15,0.5)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{
         position: 'relative', width: '90vw', maxWidth: 520,
-        background: 'var(--background)', border: '1px solid var(--border)',
+        background: 'var(--surface)',
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
         padding: 28, display: 'flex', flexDirection: 'column', gap: 16,
       }}>
@@ -61,7 +61,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em' }}>
               💸 SCOPE TRANSFER
             </div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4, fontWeight: 600, letterSpacing: '-0.01em' }}>
               โอนเงินระหว่าง scope
             </div>
             <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 4 }}>
@@ -76,13 +76,13 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12,
           padding: '14px 16px', background: 'var(--background-soft)',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+          border: '1px solid var(--hairline)', borderRadius: 'var(--radius-control)',
         }}>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>จาก</div>
             <div style={{ fontSize: 22, marginTop: 4 }}>{fromMeta.icon}</div>
             <Badge tone="danger" size="sm" style={{ marginTop: 4 }}>
-              -{fmt(amt)}
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>-{fmt(amt)}</span>
             </Badge>
             <div style={{ fontSize: 11, color: fromMeta.color, fontWeight: 500, marginTop: 4, fontFamily: 'var(--f-mono)' }}>
               {fromMeta.label}
@@ -106,7 +106,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>ไป</div>
             <div style={{ fontSize: 22, marginTop: 4 }}>{toMeta.icon}</div>
             <Badge tone="success" size="sm" style={{ marginTop: 4 }}>
-              +{fmt(amt)}
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>+{fmt(amt)}</span>
             </Badge>
             <div style={{ fontSize: 11, color: toMeta.color, fontWeight: 500, marginTop: 4, fontFamily: 'var(--f-mono)' }}>
               {toMeta.label}
@@ -119,12 +119,14 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
           <input type="number" min="0" step="0.01" value={amount}
             onChange={e => setAmount(e.target.value)} placeholder="80000"
             autoFocus required
+            onFocus={focusRing} onBlur={blurRing}
             style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 16 }} />
         </Field>
 
         {/* Date */}
         <Field label="วันที่">
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            onFocus={focusRing} onBlur={blurRing}
             style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
         </Field>
 
@@ -132,6 +134,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
         <Field label='ชื่อรายการ (ปล่อยว่างก็ได้ — auto: "โอนไปครอบครัว" / "รับจากส่วนตัว")'>
           <input type="text" value={title} onChange={e => setTitle(e.target.value)}
             placeholder='เช่น "โอนงบครอบครัว มิ.ย."'
+            onFocus={focusRing} onBlur={blurRing}
             style={inputStyle} />
         </Field>
 
@@ -139,6 +142,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
         <Field label="โน้ต (ถ้ามี)">
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
             placeholder="หมายเหตุเพิ่มเติม"
+            onFocus={focusRing} onBlur={blurRing}
             style={inputStyle} />
         </Field>
 
@@ -185,10 +189,13 @@ function Field({ label, children }) {
 }
 
 const inputStyle = {
-  background: 'var(--surface)', border: '1px solid var(--border-strong)',
-  borderRadius: 'var(--radius-control)', padding: '9px 12px',
+  background: 'var(--fill)', border: 'none',
+  borderRadius: 'var(--radius-field)', padding: '10px 12px',
   color: 'var(--text-primary)', fontSize: 13, width: '100%',
 };
+
+const focusRing = (e) => { e.target.style.boxShadow = '0 0 0 3px var(--accent-tint)'; };
+const blurRing = (e) => { e.target.style.boxShadow = 'none'; };
 
 function fmt(n) {
   if (!n) return '฿0';

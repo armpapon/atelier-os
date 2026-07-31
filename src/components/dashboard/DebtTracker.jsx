@@ -91,7 +91,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
           display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10,
           padding: 12, marginBottom: 14,
           background: 'var(--background-soft)', borderRadius: 'var(--radius-control)',
-          border: '1px solid var(--border)',
+          border: '1px solid var(--hairline)',
         }}>
           <StatTile label="จ่ายแล้ว"   value={summary.paidCount}    color="var(--success)" sub={fmt(summary.paidThisMonth)} />
           <StatTile label="รอจ่าย"     value={summary.pendingCount} color="var(--warning)" sub={fmt(summary.pending)} />
@@ -146,7 +146,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
       {/* Forecast — 12 months */}
       {showForecast && debts.length > 0 && (
         <div style={{
-          marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)',
+          marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
         }}>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', marginBottom: 8 }}>
             📊 FORECAST · 12 เดือนข้างหน้า
@@ -181,11 +181,7 @@ function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDele
     <div style={{
       padding: '12px 14px',
       background: status.status === 'overdue' ? 'var(--danger-soft)' :
-                  status.status === 'paid'    ? 'var(--success-soft)' : 'var(--surface)',
-      border: '1px solid ' + (
-        status.status === 'overdue' ? 'var(--danger)' :
-        status.status === 'paid'    ? 'var(--success)' : 'var(--border)'
-      ),
+                  status.status === 'paid'    ? 'var(--success-soft)' : 'var(--fill)',
       borderRadius: 'var(--radius-control)',
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
@@ -205,7 +201,7 @@ function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDele
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
             {fmt(debt.monthly_payment)}<span style={{ fontSize: 10, color: 'var(--text-muted)' }}>/เดือน</span>
           </div>
           <Badge tone={statusMeta.tone} size="sm">
@@ -225,10 +221,11 @@ function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDele
               {monthsRemaining === 0 && ' · ปลอดหนี้!'}
             </span>
           </div>
-          <div style={{ height: 5, background: 'var(--surface-muted)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
             <div style={{
               width: `${progressPct}%`, height: '100%',
               background: progressPct >= 100 ? 'var(--success)' : 'var(--accent)',
+              borderRadius: 999,
               transition: 'width 300ms',
             }} />
           </div>
@@ -240,7 +237,7 @@ function DebtRow({ debt, status, isEditing, onMarkPaid, onUnmark, onEdit, onDele
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
           padding: '8px 10px', background: 'var(--background-soft)',
-          borderRadius: 'var(--radius-control)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-control)', border: '1px solid var(--hairline)',
           fontSize: 10.5, fontFamily: 'var(--f-mono)',
         }}>
           <MiniStat label="เงินต้น" value={fmt(math.principal)} color="var(--text-primary)" />
@@ -444,8 +441,8 @@ function StatTile({ label, value, color, sub, small }) {
         letterSpacing: '0.14em', textTransform: 'uppercase',
       }}>{label}</div>
       <div style={{
-        fontFamily: 'var(--f-display)', fontSize: small ? 17 : 22, fontWeight: 500,
-        color, lineHeight: 1.1,
+        fontFamily: 'var(--f-display)', fontSize: small ? 17 : 22, fontWeight: 600,
+        color, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums',
       }}>{value}</div>
       {sub && (
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
@@ -508,7 +505,7 @@ function MiniStat({ label, value, color, sub }) {
       <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontSize: 12, color, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{ fontSize: 12, color, fontWeight: 600, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {value}
       </div>
       {sub && (
@@ -535,7 +532,7 @@ function DebtStrategyCard({ debts }) {
   if (!result.debts.length) {
     return (
       <div style={{
-        marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)',
+        marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
         fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', textAlign: 'center',
       }}>
         ต้องการ "งวดทั้งหมด" ในหนี้อย่างน้อย 1 รายการ เพื่อจำลองการโปะหนี้
@@ -558,7 +555,7 @@ function DebtStrategyCard({ debts }) {
 
   return (
     <div style={{
-      marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)',
+      marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
       display: 'flex', flexDirection: 'column', gap: 12,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
@@ -571,7 +568,7 @@ function DebtStrategyCard({ debts }) {
           </div>
         </div>
         {/* Strategy toggle */}
-        <div style={{ display: 'flex', gap: 4, background: 'var(--background-soft)', padding: 3, borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--background-soft)', padding: 3, borderRadius: 'var(--radius-pill)', border: '1px solid var(--hairline)' }}>
           {[
             { id: 'snowball',  label: '⛄ Snowball'  },
             { id: 'avalanche', label: '⛰ Avalanche' },
@@ -582,7 +579,7 @@ function DebtStrategyCard({ debts }) {
                 background: strategy === s.id ? 'var(--surface)' : 'transparent',
                 color: strategy === s.id ? 'var(--accent-strong)' : 'var(--text-muted)',
                 fontSize: 11, fontFamily: 'var(--f-mono)', cursor: 'pointer',
-                boxShadow: strategy === s.id ? '0 1px 3px rgba(80,60,30,.12)' : 'none',
+                boxShadow: strategy === s.id ? 'var(--shadow-card)' : 'none',
                 fontWeight: strategy === s.id ? 600 : 400,
               }}>{s.label}</button>
           ))}
@@ -592,7 +589,7 @@ function DebtStrategyCard({ debts }) {
       {/* Extra payment slider */}
       <div style={{
         padding: '12px 14px', background: 'var(--background-soft)',
-        border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+        border: '1px solid var(--hairline)', borderRadius: 'var(--radius-control)',
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -643,7 +640,7 @@ function DebtStrategyCard({ debts }) {
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10,
         padding: 12, background: result.cashSaved > 0 ? 'var(--success-soft)' : 'var(--surface-muted)',
-        border: '1px solid ' + (result.cashSaved > 0 ? 'var(--success)' : 'var(--border)'),
+        border: '1px solid ' + (result.cashSaved > 0 ? 'var(--success)' : 'var(--hairline)'),
         borderRadius: 'var(--radius-control)',
       }}>
         <MiniStat label="ปลอดหนี้ใน" value={`${result.totalMonthsWithExtra} เดือน`} color="var(--text-primary)"
@@ -665,8 +662,8 @@ function DebtStrategyCard({ debts }) {
           {result.debts.map((d) => (
             <div key={d.id} style={{
               display: 'grid', gridTemplateColumns: '28px 1fr auto auto', gap: 10,
-              padding: '8px 12px', background: 'var(--surface)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+              padding: '8px 12px', background: 'var(--fill)',
+              borderRadius: 'var(--radius-control)',
               alignItems: 'center', fontSize: 12,
             }}>
               <div style={{

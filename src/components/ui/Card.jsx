@@ -8,17 +8,20 @@
  *   - 'flat'    — no shadow (for nested cards)
  */
 
+// Cupertino Warm: surfaces are borderless and separated by shadow, not by a
+// hairline box. 'flat' keeps a hairline since nested cards have no shadow to
+// separate them from the parent surface.
 const VARIANTS = {
   default: {
-    background: 'var(--surface)', border: '1px solid var(--border)',
+    background: 'var(--surface)', border: 'none',
     boxShadow: 'var(--shadow-card)',
   },
   paper: {
-    background: 'var(--surface-warm)', border: '1px solid var(--paper-2)',
+    background: 'var(--surface-warm)', border: 'none',
     boxShadow: 'var(--shadow-soft)',
   },
   flat: {
-    background: 'var(--surface)', border: '1px solid var(--border)',
+    background: 'var(--surface)', border: '1px solid var(--hairline)',
     boxShadow: 'none',
   },
 };
@@ -53,7 +56,8 @@ export function CardHeader({ eyebrow, title, meta, action, accent = 'var(--text-
         )}
         {title && (
           <div style={{
-            fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 500,
+            fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600,
+            letterSpacing: '-0.01em',
             color: 'var(--text-primary)', lineHeight: 1.3,
           }}>{title}</div>
         )}

@@ -3,18 +3,22 @@ import {
   summarize, aggregateByCategory, detectRecurringFromTransactions, calculateDebtMath,
 } from '../../lib/api/finance.js';
 import { formatBaht } from './KPICard.jsx';
+import { Card, CardHeader } from '../ui/index.js';
 
 // ── Small UI bits ─────────────────────────────────────────────────────────────
-function LeakRow({ icon, title, detail, value, tone = 'var(--ink)' }) {
+function LeakRow({ icon, title, detail, value, tone = 'var(--text-primary)' }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--line)' }}>
-      <span style={{ fontSize: 18, flexShrink: 0, width: 24, textAlign: 'center' }}>{icon}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--hairline)' }}>
+      <span style={{
+        fontSize: 15, flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
+        background: 'var(--fill)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 500 }}>{title}</div>
-        {detail && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 }}>{detail}</div>}
+        <div style={{ fontSize: 13.5, color: 'var(--text-primary)', fontWeight: 500 }}>{title}</div>
+        {detail && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{detail}</div>}
       </div>
       {value != null && (
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 600, color: tone, flexShrink: 0 }}>{value}</div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 600, color: tone, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       )}
     </div>
   );
@@ -77,33 +81,38 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
 
   if (!txns.length) {
     return (
-      <div className="card">
-        <div className="card__head"><div className="card__title">เงินรั่ว · Insights</div></div>
-        <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '24px 0', fontSize: 13 }}>
+      <Card>
+        <CardHeader title="เงินรั่ว · Insights" />
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0', fontSize: 13 }}>
           ยังไม่มีรายการเดือนนี้ — พอมีข้อมูลแล้วระบบจะชี้ให้เห็นว่าเงินรั่วตรงไหน
         </div>
-      </div>
+      </Card>
     );
   }
 
-  const srColor = thisSum.savingsRate >= 20 ? 'var(--profit)' : thisSum.savingsRate >= 0 ? 'var(--amber)' : 'var(--loss)';
+  const srColor = thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--accent)' : 'var(--danger)';
 
   return (
-    <div className="card">
-      <div className="card__head">
-        <div className="card__title">เงินรั่ว · Insights</div>
-        <span className="card__label">เดือนนี้</span>
-      </div>
+    <Card>
+      <CardHeader
+        title="เงินรั่ว · Insights"
+        action={
+          <span style={{
+            fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.14em',
+            textTransform: 'uppercase', color: 'var(--text-muted)',
+          }}>เดือนนี้</span>
+        }
+      />
 
       {/* Savings rate hero */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>อัตราการออม</div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: srColor, lineHeight: 1.1 }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>อัตราการออม</div>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: srColor, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
             {thisSum.savingsRate.toFixed(0)}%
           </div>
         </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
           {srDelta >= 0 ? '▲' : '▼'} {Math.abs(srDelta).toFixed(0)}% จากเดือนก่อน
           <div style={{ marginTop: 2 }}>
             เข้า {formatBaht(thisSum.income)} · ออก {formatBaht(thisSum.expense)} · เหลือ {formatBaht(thisSum.net)}
@@ -117,7 +126,7 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
           <LeakRow key={'creep-' + c.category} icon={icon(c.category)}
             title={`${label(c.category)} — โตขึ้นจากเดือนก่อน`}
             detail={`เดือนนี้ ${formatBaht(c.amount)} · ${c.count} รายการ`}
-            value={`+${formatBaht(c.delta)}`} tone="var(--loss)" />
+            value={`+${formatBaht(c.delta)}`} tone="var(--danger)" />
         ))}
 
         {/* Subscriptions */}
@@ -125,7 +134,7 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
           <LeakRow icon="🔁"
             title={`บิล/subscription ซ้ำ ${recurring.length} รายการ`}
             detail={recurring.map(r => r.title).slice(0, 3).join(' · ')}
-            value={`${formatBaht(recurringTotal)}/ด`} tone="var(--amber-deep)" />
+            value={`${formatBaht(recurringTotal)}/ด`} tone="var(--accent-strong)" />
         )}
 
         {/* Small but frequent */}
@@ -141,13 +150,13 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
           <LeakRow icon="🏦"
             title="ดอกเบี้ยหนี้ที่ยังต้องจ่าย"
             detail={worst ? `ถล่มก้อนดอกสูงสุดก่อน: ${worst.name} (${Number(worst.interest_rate).toFixed(1)}%)` : 'รวมทุกก้อน'}
-            value={formatBaht(remainingInterest)} tone="var(--loss)" />
+            value={formatBaht(remainingInterest)} tone="var(--danger)" />
         )}
 
         {/* Fallback: top categories if nothing flagged */}
         {creep.length === 0 && frequent.length === 0 && recurring.length === 0 && remainingInterest === 0 && (
           <>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)', margin: '4px 0 6px' }}>หมวดที่ใช้มากสุดเดือนนี้</div>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', margin: '4px 0 6px' }}>หมวดที่ใช้มากสุดเดือนนี้</div>
             {topCats.map(c => (
               <LeakRow key={'top-' + c.category} icon={icon(c.category)} title={label(c.category)}
                 detail={`${c.count} รายการ`} value={formatBaht(c.amount)} />
@@ -156,13 +165,13 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
         )}
       </div>
 
-      <div style={{ marginTop: 12, fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 13, color: 'var(--ink-3)' }}>
+      <div style={{ marginTop: 12, fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 13, color: 'var(--text-muted)' }}>
         {thisSum.savingsRate >= 20
           ? 'ออมได้ดีมาก — รักษาระดับนี้ไว้ 💪'
           : thisSum.savingsRate >= 0
             ? 'เริ่มจากอุดรูที่ใหญ่สุดด้านบนก่อน แล้วค่อยไล่ลงมา'
             : 'เดือนนี้ใช้เกินรายรับ — ดูหมวดที่โตขึ้นด้านบนเป็นอันดับแรก'}
       </div>
-    </div>
+    </Card>
   );
 }

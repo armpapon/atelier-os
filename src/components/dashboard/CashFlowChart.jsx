@@ -113,7 +113,7 @@ export function CashFlowChart({ data, currentYm, onMonthClick }) {
                 style={{ cursor: onMonthClick ? 'pointer' : 'default' }}>
                 {/* invisible hover area */}
                 <rect x={x} y={padT} width={groupW} height={innerH}
-                  fill={isCur ? 'rgba(212, 165, 116, 0.06)' : isHover ? 'rgba(255,255,255,0.03)' : 'transparent'} />
+                  fill={isCur ? 'var(--accent-tint)' : isHover ? 'var(--fill)' : 'transparent'} />
                 {/* income bar */}
                 <rect x={x + groupW/2 - barW - 1} y={padT + innerH - ih}
                   width={barW} height={ih}
@@ -151,15 +151,15 @@ export function CashFlowChart({ data, currentYm, onMonthClick }) {
             position: 'absolute',
             top: 0,
             left: `${(padL + hoverIdx * groupW + groupW + 8) / W * 100}%`,
-            background: '#0c0908', border: '1px solid var(--line)',
-            borderRadius: 'var(--r-sm)', padding: '8px 10px',
-            fontSize: 11, color: 'var(--ink)', fontFamily: 'var(--f-mono)',
-            minWidth: 130, pointerEvents: 'none', zIndex: 10,
+            background: 'var(--surface)', border: '1px solid var(--hairline)',
+            borderRadius: 'var(--r-sm)', padding: '8px 10px', boxShadow: 'var(--shadow-pop)',
+            fontSize: 11, color: 'var(--text-primary)', fontFamily: 'var(--f-mono)',
+            minWidth: 130, pointerEvents: 'none', zIndex: 10, fontVariantNumeric: 'tabular-nums',
           }}>
-            <div style={{ color: 'var(--ink-3)', marginBottom: 4, letterSpacing: '0.1em' }}>{fmtYM(hover.ym)}</div>
-            <div style={{ color: 'var(--profit)' }}>+{formatBaht(hover.income, { compact: true })}</div>
-            <div style={{ color: 'var(--loss)' }}>-{formatBaht(hover.expense, { compact: true })}</div>
-            <div style={{ color: 'var(--amber)', marginTop: 3, paddingTop: 3, borderTop: '1px solid var(--line)' }}>
+            <div style={{ color: 'var(--text-muted)', marginBottom: 4, letterSpacing: '0.1em' }}>{fmtYM(hover.ym)}</div>
+            <div style={{ color: 'var(--success)' }}>+{formatBaht(hover.income, { compact: true })}</div>
+            <div style={{ color: 'var(--danger)' }}>-{formatBaht(hover.expense, { compact: true })}</div>
+            <div style={{ color: 'var(--accent)', marginTop: 3, paddingTop: 3, borderTop: '1px solid var(--hairline)' }}>
               ออม {hover.savingsRate.toFixed(0)}%
             </div>
           </div>
@@ -185,10 +185,10 @@ function Legend({ color, label, dashed }) {
 export function EmptyChart({ label, height = 200 }) {
   return (
     <div style={{
-      background: 'var(--surface)', border: '1px dashed var(--line)',
-      borderRadius: 'var(--r-lg)', padding: 20, height,
+      background: 'var(--surface)', border: '1px dashed var(--hairline)',
+      borderRadius: 'var(--radius-card)', padding: 20, height,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'var(--ink-3)', fontFamily: 'var(--f-mono)', fontSize: 11,
+      color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', fontSize: 11,
     }}>{label}</div>
   );
 }

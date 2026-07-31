@@ -35,32 +35,35 @@ export function MonthNav({ value, onChange }) {
         onClick={() => onChange(previousMonth(value))}
         title="เดือนก่อน"
         style={{
-          width: 32, height: 32, borderRadius: 'var(--r-sm)',
-          background: 'var(--surface-2)', border: '1px solid var(--line)',
-          color: 'var(--ink-2)', cursor: 'pointer', fontSize: 14,
+          width: 30, height: 30, borderRadius: '50%',
+          background: 'transparent', border: 'none',
+          color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 15,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>‹</button>
+          transition: 'background 150ms, color 150ms',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>‹</button>
 
       {/* Picker button */}
       <div ref={dropRef} style={{ position: 'relative' }}>
         <button
           onClick={() => setOpen(o => !o)}
           style={{
-            minWidth: 140, padding: '8px 14px', borderRadius: 'var(--r-sm)',
-            background: 'var(--surface-2)', border: '1px solid var(--line)',
-            color: 'var(--ink)', cursor: 'pointer',
+            minWidth: 140, padding: '7px 14px', borderRadius: 'var(--radius-btn)',
+            background: 'var(--fill-2)', border: 'none',
+            color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 500,
             display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
             fontFamily: 'var(--f-body)', fontSize: 13,
           }}>
           <span>{formatThaiMonth(value)}</span>
-          <span style={{ fontSize: 10, color: 'var(--ink-3)' }}>▾</span>
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>▾</span>
         </button>
 
         {open && (
           <div style={{
             position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 50,
-            background: 'var(--surface)', border: '1px solid var(--line)',
-            borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            background: 'var(--surface)', border: 'none',
+            borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)',
             padding: 12, minWidth: 280,
           }}>
             {/* Year row */}
@@ -69,12 +72,12 @@ export function MonthNav({ value, onChange }) {
                 <button key={yr}
                   onClick={() => onChange(`${yr}-${String(m).padStart(2, '0')}`)}
                   style={{
-                    padding: '5px 10px', borderRadius: 4,
-                    background: yr === y ? 'var(--amber)' : 'transparent',
-                    color: yr === y ? '#1a1410' : 'var(--ink-2)',
-                    border: '1px solid ' + (yr === y ? 'var(--amber)' : 'var(--line)'),
+                    padding: '5px 10px', borderRadius: 'var(--radius-btn)',
+                    background: yr === y ? 'var(--accent)' : 'var(--fill)',
+                    color: yr === y ? 'var(--text-inverse)' : 'var(--text-secondary)',
+                    border: 'none', fontWeight: yr === y ? 600 : 500,
                     cursor: 'pointer', fontSize: 11, fontFamily: 'var(--f-mono)',
-                    minWidth: 56,
+                    fontVariantNumeric: 'tabular-nums', minWidth: 56,
                   }}>{yr + 543}</button>
               ))}
             </div>
@@ -89,10 +92,10 @@ export function MonthNav({ value, onChange }) {
                   <button key={mi}
                     onClick={() => { onChange(ymStr); setOpen(false); }}
                     style={{
-                      padding: '8px 0', borderRadius: 4,
-                      background: sel ? 'var(--amber)' : isToday ? 'var(--surface-2)' : 'transparent',
-                      color: sel ? '#1a1410' : isToday ? 'var(--amber)' : 'var(--ink-2)',
-                      border: '1px solid ' + (sel ? 'var(--amber)' : 'var(--line)'),
+                      padding: '8px 0', borderRadius: 8,
+                      background: sel ? 'var(--accent)' : isToday ? 'var(--accent-tint)' : 'transparent',
+                      color: sel ? 'var(--text-inverse)' : isToday ? 'var(--accent)' : 'var(--text-secondary)',
+                      border: 'none', fontWeight: sel ? 600 : 500,
                       cursor: 'pointer', fontSize: 12,
                     }}>{mn}</button>
                 );
@@ -107,20 +110,23 @@ export function MonthNav({ value, onChange }) {
         onClick={() => onChange(nextMonth(value))}
         title="เดือนหน้า"
         style={{
-          width: 32, height: 32, borderRadius: 'var(--r-sm)',
-          background: 'var(--surface-2)', border: '1px solid var(--line)',
-          color: 'var(--ink-2)', cursor: 'pointer', fontSize: 14,
+          width: 30, height: 30, borderRadius: '50%',
+          background: 'transparent', border: 'none',
+          color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 15,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>›</button>
+          transition: 'background 150ms, color 150ms',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>›</button>
 
       {/* Today button */}
       {!isCurrent && (
         <button
           onClick={() => onChange(today)}
           style={{
-            padding: '7px 12px', borderRadius: 'var(--r-sm)',
-            background: 'transparent', border: '1px solid var(--amber)',
-            color: 'var(--amber)', cursor: 'pointer', fontSize: 11,
+            padding: '6px 13px', borderRadius: 'var(--radius-btn)',
+            background: 'var(--accent-tint)', border: 'none',
+            color: 'var(--accent)', cursor: 'pointer', fontSize: 11, fontWeight: 600,
             fontFamily: 'var(--f-mono)', letterSpacing: '0.08em',
           }}>วันนี้</button>
       )}
