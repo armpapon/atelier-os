@@ -126,13 +126,16 @@ Types: `feat`, `fix`, `docs`, `refactor`. Scopes are loose: `finance`, `learning
 ### Open SQL migrations user must run in Supabase
 Each is idempotent — safe to re-run.
 
+All of these have now been run (user confirmed 2026-08-01). Nothing is pending.
+
 | Status | Migration | Reason |
 |---|---|---|
 | ✅ run | `migration_drop_txn_type_check.sql` | unblock custom categories |
-| ⚠️ pending? | `migration_add_recurring_forecast.sql` | adds `recurring_expenses` table + `accounts.is_emergency_fund` (errored "table not found" at one point — confirm with user) |
-| ⚠️ pending | `migration_add_source_cover.sql` | adds `learning_sources.cover_url`. Run before book cover upload works |
-| ⚠️ pending | `migration_add_learning_insights.sql` | v1.1 — adds `learning_insights` table + `learning_sources.reading_goal_min`. Insights Bank tab needs this |
-| ⚠️ pending | `migration_add_trades_ha50.sql` | v3.78 — adds `trades.exit_price / r_multiple / followed_rules / rule_broken / system`. HA-50 demo mission card + trade form need this |
+| ✅ run | `migration_add_recurring_forecast.sql` | adds `recurring_expenses` table + `accounts.is_emergency_fund` |
+| ✅ run | `migration_add_source_cover.sql` | adds `learning_sources.cover_url` — book cover upload works |
+| ✅ run | `migration_add_learning_insights.sql` | v1.1 — adds `learning_insights` table + `learning_sources.reading_goal_min`. Insights Bank tab |
+| ✅ run | `migration_add_trades_ha50.sql` | v3.78 — adds `trades.exit_price / r_multiple / followed_rules / rule_broken / system`. HA-50 mission card + trade form |
+| ✅ run | `migration_add_trades_ict.sql` | adds the ICT trade columns — evidenced by daily use of the trade log |
 
 ### Pending product ideas (user said "เดี๋ยวจะกลับมาคุย")
 - **Income vs Expense separation**: user wants to model finance as two separate buckets/accounts instead of in-and-out from one. Currently exploring by entering May manually. Will return with a model proposal.

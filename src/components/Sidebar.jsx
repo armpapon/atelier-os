@@ -42,6 +42,9 @@ const PAGE_ACCESS = {
   'learning':         [ARM],
   'personal-finance': [ARM],
   'family-finance':   [ARM],
+  // App.jsx still routes the legacy 'finance' id to PersonalFinance, so it has
+  // to carry the same access rule or it becomes a back door into that page.
+  'finance':          [ARM],
 };
 
 const KNOWN_ACCOUNTS = [ARM, PAT];

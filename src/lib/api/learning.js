@@ -201,17 +201,23 @@ export async function createSession(input) {
   // Auto-update source's current_page / progress / video_position / status
   if (input.source_id) {
     const patch = {};
-    if (payload.to_page != null)     patch.current_page = payload.to_page;
     if (payload.video_to_sec != null) patch.video_position_sec = payload.video_to_sec;
 
-    const { data: src } = await supabase
+    const { data: src, error: srcErr } = await supabase
       .from('learning_sources')
-      .select('total_pages, duration_min, status').eq('id', input.source_id).single();
+      .select('total_pages, duration_min, status, current_page').eq('id', input.source_id).single();
+    if (srcErr) throw srcErr;
+
+    // Logging an older passage (re-reading chapter 2) must not drag the
+    // bookmark backwards — current_page only ever moves forward.
+    if (payload.to_page != null) {
+      patch.current_page = Math.max(Number(src?.current_page) || 0, Number(payload.to_page));
+    }
 
     if (src) {
       // Progress %: pages take priority, then video position.
-      if (src.total_pages && payload.to_page != null) {
-        patch.progress = Math.min(100, Math.round((payload.to_page / src.total_pages) * 100));
+      if (src.total_pages && patch.current_page != null) {
+        patch.progress = Math.min(100, Math.round((patch.current_page / src.total_pages) * 100));
       } else if (src.duration_min && payload.video_to_sec != null) {
         patch.progress = Math.min(100, Math.round((payload.video_to_sec / (src.duration_min * 60)) * 100));
       }
@@ -222,7 +228,9 @@ export async function createSession(input) {
       }
     }
     if (Object.keys(patch).length > 0) {
-      await supabase.from('learning_sources').update(patch).eq('id', input.source_id);
+      const { error: updErr } = await supabase
+        .from('learning_sources').update(patch).eq('id', input.source_id);
+      if (updErr) throw updErr;
     }
   }
 
@@ -235,16 +243,35 @@ export async function deleteSession(id) {
   if (error) throw error;
 }
 
+// Sources with a completeBookPass in flight. It is a read-modify-write, so two
+// fast clicks both read the same reading_count and the second overwrote the
+// first — the counter never moved.
+const passInFlight = new Set();
+
 /** Mark book as "read 1 more time" — increments reading_count + resets current_page */
 export async function completeBookPass(sourceId) {
   if (!supabase) throw new Error('Supabase not configured');
-  const { data: src } = await supabase
-    .from('learning_sources').select('reading_count').eq('id', sourceId).single();
-  const next = (src?.reading_count || 0) + 1;
-  await supabase.from('learning_sources').update({
-    reading_count: next, current_page: 0, progress: 0,
-  }).eq('id', sourceId);
-  return next;
+  if (passInFlight.has(sourceId)) throw new Error('กำลังบันทึกอยู่ — รอสักครู่');
+  passInFlight.add(sourceId);
+  try {
+    const { data: src, error: readErr } = await supabase
+      .from('learning_sources').select('reading_count').eq('id', sourceId).single();
+    // The discarded error made a failed read look like reading_count 0, which
+    // reset the user's count to 1 on the next write.
+    if (readErr) throw readErr;
+
+    const next = (src?.reading_count || 0) + 1;
+    const { error: writeErr } = await supabase.from('learning_sources').update({
+      reading_count: next, current_page: 0, progress: 0,
+      // Without this the book stayed 'completed' at 0% — visible in the
+      // library as finished, but with an empty progress bar and no way back.
+      status: 'active',
+    }).eq('id', sourceId);
+    if (writeErr) throw writeErr;
+    return next;
+  } finally {
+    passInFlight.delete(sourceId);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

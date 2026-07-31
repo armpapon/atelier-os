@@ -1,4 +1,6 @@
-export function TweaksPanel({ open, onClose, accent, setAccent, density, setDensity, active, setActive }) {
+import { canSeePage } from './Sidebar.jsx';
+
+export function TweaksPanel({ open, onClose, accent, setAccent, density, setDensity, active, setActive, user }) {
   if (!open) return null;
   // Colour DATA the user picks an accent from — not a token, keep literal.
   const accentOptions = ['#d4a574', '#6cbf83', '#7ba7d4', '#a78fcc', '#d49aa5', '#e07a6e'];
@@ -7,6 +9,8 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
     { value: 'comfortable', label: 'พอดี' },
     { value: 'spacious', label: 'โปร่ง' },
   ];
+  // Same access rules as the sidebar — this shortcut list used to offer pages
+  // the signed-in account can't see in its own menu.
   const modules = [
     { id: 'dashboard', label: 'แดชบอร์ด' },
     { id: 'trading',   label: 'Trading Journal' },
@@ -14,7 +18,7 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
     { id: 'journal',   label: 'Daily Journal' },
     { id: 'finance',   label: 'Finance' },
     { id: 'family',    label: 'ครอบครัว' },
-  ];
+  ].filter(m => canSeePage(user, m.id));
   return (
     <div style={{
       position: 'fixed', right: 16, bottom: 16, zIndex: 1000, width: 280,

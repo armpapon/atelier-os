@@ -499,6 +499,7 @@ export function aggregateByCategory(txns) {
 export function aggregateByDay(txns, yearMonth) {
   const m = {};
   for (const t of txns) {
+    if (isTransfer(t)) continue;
     if (t.amount >= 0) continue;
     const date = bangkokDate(t.occurred_at);
     if (!date.startsWith(yearMonth)) continue;
@@ -511,7 +512,7 @@ export function aggregateByDay(txns, yearMonth) {
 /** Top N largest expenses */
 export function topExpenses(txns, n = 10) {
   return txns
-    .filter(t => t.amount < 0)
+    .filter(t => t.amount < 0 && !isTransfer(t))
     .sort((a, b) => a.amount - b.amount)
     .slice(0, n);
 }

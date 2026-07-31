@@ -176,21 +176,25 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
 
   const flashSaved = () => { setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1200); };
 
+  // "✓ บันทึกแล้ว" used to appear the instant the request was fired, so a
+  // rejected save still flashed success and the note silently lost the edit.
+  const patch = async (fields) => {
+    try { await onPatch(note.id, fields); flashSaved(); }
+    catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err?.message || err)); }
+  };
+
   const saveTitle = () => {
     const t = title.trim() || 'ไม่มีชื่อ';
-    if (t !== note.title) { onPatch(note.id, { title: t }); flashSaved(); }
+    if (t !== note.title) patch({ title: t });
   };
   const saveBody = () => {
-    if (body !== note.body) { onPatch(note.id, { body }); flashSaved(); }
+    if (body !== note.body) patch({ body });
   };
 
   const addTag = () => {
     const t = tagInput.trim().replace(/^#/, '');
     if (!t) return;
-    if (!(note.tags || []).includes(t)) {
-      onPatch(note.id, { tags: [...(note.tags || []), t] });
-      flashSaved();
-    }
+    if (!(note.tags || []).includes(t)) patch({ tags: [...(note.tags || []), t] });
     setTagInput('');
   };
   const removeTag = (t) => {
@@ -547,24 +551,39 @@ export function SecondBrain() {
 
   const selected = notes.find(n => n.id === selectedId) || null;
 
+  // Every keystroke fired a full query pair, and slow replies landed out of
+  // order — the list would flick back to results for a prefix already typed
+  // past. Debounce, then discard anything a newer run has superseded.
+  const searchSeq = useRef(0);
+
   const refresh = useCallback(async () => {
+    const myReq = ++searchSeq.current;
     try {
       const [list, tags] = await Promise.all([
         listNotes({ search, tag: activeTag }),
         listAllTags(),
       ]);
+      if (myReq !== searchSeq.current) return;
       setNotes(list);
       setAllTags(tags);
       // Title index for resolving [[wiki links]] (always the full set).
       // Keyed by lowercase title → { id, title } so we keep the original case.
       const idx = new Map();
       const source = (search.trim() || activeTag) ? await listNotes({}) : list;
+      if (myReq !== searchSeq.current) return;
       for (const n of source) idx.set(n.title.toLowerCase(), { id: n.id, title: n.title });
       setTitleIndex(idx);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) {
+      if (myReq === searchSeq.current) console.error(err);
+    } finally {
+      if (myReq === searchSeq.current) setLoading(false);
+    }
   }, [search, activeTag]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    const t = setTimeout(refresh, 250);
+    return () => clearTimeout(t);
+  }, [refresh]);
 
   // Load backlinks whenever the selected note (or its title) changes.
   useEffect(() => {

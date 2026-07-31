@@ -44,34 +44,55 @@ export function startGoogleAuth(scopes = ['https://www.googleapis.com/auth/calen
 export async function handleOAuthRedirect() {
   const q = new URLSearchParams(window.location.search);
   if (q.get('oauth') !== 'google' || !q.get('code')) return null;
+  if (!supabase) return null;
   const code = q.get('code');
-  try {
-    const { data, error } = await supabase.functions.invoke('oauth-exchange', {
-      body: { provider: 'google', code, redirectUri: googleRedirectUri() },
-    });
-    if (error || data?.error) throw new Error(error?.message || data?.error);
-    return 'google';
-  } catch (e) {
-    alert('เชื่อม Google ไม่สำเร็จ: ' + e.message);
-    return null;
-  } finally {
-    // Strip the oauth params from the URL regardless.
+
+  const stripParams = () => {
     const url = new URL(window.location.href);
     url.searchParams.delete('oauth');
     url.searchParams.delete('code');
     url.searchParams.delete('scope');
     window.history.replaceState({}, '', url.pathname + url.search);
+  };
+
+  // The Edge Function needs an authenticated caller. On a cold load the auth
+  // session isn't restored yet, so invoking immediately failed — and the old
+  // `finally` then stripped ?code= anyway, making the failure unrecoverable
+  // without redoing the whole consent flow.
+  try {
+    await supabase.auth.getSession();
+  } catch { /* fall through — the invoke below will report the real problem */ }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('oauth-exchange', {
+      body: { provider: 'google', code, redirectUri: googleRedirectUri() },
+    });
+    if (error || data?.error) throw new Error(error?.message || data?.error || 'exchange failed');
+    stripParams();
+    return 'google';
+  } catch (e) {
+    const msg = String(e?.message || e);
+    // An auth code is single-use: once Google has rejected/consumed it there is
+    // nothing to retry, so clear the URL. Anything else (network, cold session)
+    // is worth a reload, so leave ?code= in place.
+    const nonRetryable = /invalid_grant|expired|already|redirect_uri|invalid_request|unauthorized_client/i.test(msg);
+    if (nonRetryable) stripParams();
+    alert('เชื่อม Google ไม่สำเร็จ: ' + msg + (nonRetryable ? '' : ' — ลองรีเฟรชหน้าอีกครั้ง'));
+    return null;
   }
 }
 
 // Read connection status (never returns raw tokens for display — just presence).
 export async function getIntegration(provider) {
   if (!supabase) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('integrations')
     .select('provider, scope, expires_at, meta, updated_at')
     .eq('provider', provider)
     .maybeSingle();
+  // A failed read used to look identical to "not connected", so a transient
+  // error silently downgraded the UI to a Connect button.
+  if (error) throw error;
   return data;
 }
 
@@ -118,7 +139,8 @@ export async function disconnect(provider) {
 // timestamp at dismissal, so a newer client message resurfaces the thread.
 export async function listGmailDismissed() {
   if (!supabase) return [];
-  const { data } = await supabase.from('gmail_dismissed').select('thread_id, dismissed_ts');
+  const { data, error } = await supabase.from('gmail_dismissed').select('thread_id, dismissed_ts');
+  if (error) throw error;
   return data || [];
 }
 

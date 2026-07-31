@@ -45,18 +45,31 @@ function isPreviewMode() {
 // consumer — including the dark theme's gold. Treat it as "not customised".
 const LEGACY_ACCENT = '#b27a42';
 
+// localStorage throws in private-browsing / storage-blocked contexts, and a
+// throw inside a useState initialiser takes the entire app down before the
+// first paint. Preferences are never worth a white screen.
+const safeLS = {
+  get(key, fallback = null) {
+    try { const v = localStorage.getItem(key); return v === null ? fallback : v; }
+    catch { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem(key, value); } catch { /* preferences are optional */ }
+  },
+};
+
 export default function App() {
   const { user, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
-  const [active, setActive]   = useState(() => localStorage.getItem('atelier:active') || 'dashboard');
-  const [accent, setAccent]   = useState(() => localStorage.getItem('atelier:accent') || '#b27a42');
-  const [density, setDensity] = useState(() => localStorage.getItem('atelier:density') || 'comfortable');
+  const [active, setActive]   = useState(() => safeLS.get('atelier:active', 'dashboard'));
+  const [accent, setAccent]   = useState(() => safeLS.get('atelier:accent', '#b27a42'));
+  const [density, setDensity] = useState(() => safeLS.get('atelier:density', 'comfortable'));
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const v = localStorage.getItem('loop:sidebar-collapsed');
+    const v = safeLS.get('loop:sidebar-collapsed');
     if (v !== null) return v === '1';
-    return localStorage.getItem('loop:sidebar') === 'collapsed';  // migrate pre-v4.1 key
+    return safeLS.get('loop:sidebar') === 'collapsed';  // migrate pre-v4.1 key
   });
-  const [theme, setTheme] = useState(() => localStorage.getItem('loop:theme') || 'light');
+  const [theme, setTheme] = useState(() => safeLS.get('loop:theme', 'light'));
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const previewMode = isPreviewMode();
@@ -73,14 +86,14 @@ export default function App() {
     });
   }, []);
 
-  useEffect(() => { localStorage.setItem('atelier:active', active); }, [active]);
+  useEffect(() => { safeLS.set('atelier:active', active); }, [active]);
   // 'atelier:active' outlives a sign-in, so it can point at a page this account
   // no longer has in its menu. Send those back to the dashboard.
   useEffect(() => {
     if (user && !canSeePage(user, active)) setActive('dashboard');
   }, [user, active]);
   useEffect(() => {
-    localStorage.setItem('atelier:accent', accent);
+    safeLS.set('atelier:accent', accent);
     // Only override the palette token when the user actually picked a colour —
     // otherwise styles.css owns --amber, so the warm accent and the dark
     // theme's gold both apply instead of being pinned to one hex.
@@ -90,10 +103,10 @@ export default function App() {
       document.documentElement.style.removeProperty('--amber');
     }
   }, [accent]);
-  useEffect(() => { localStorage.setItem('atelier:density', density); }, [density]);
-  useEffect(() => { localStorage.setItem('loop:sidebar-collapsed', sidebarCollapsed ? '1' : '0'); }, [sidebarCollapsed]);
+  useEffect(() => { safeLS.set('atelier:density', density); }, [density]);
+  useEffect(() => { safeLS.set('loop:sidebar-collapsed', sidebarCollapsed ? '1' : '0'); }, [sidebarCollapsed]);
   useEffect(() => {
-    localStorage.setItem('loop:theme', theme);
+    safeLS.set('loop:theme', theme);
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
@@ -116,7 +129,16 @@ export default function App() {
   }
 
   // ── Auth gate: skip in preview mode ──────────────────────────────────────
-  if (isSupabaseConfigured && !user && !previewMode) {
+  // Unconfigured Supabase splits two ways, both deliberate:
+  //   prod → LoginScreen's "ยังไม่ได้ตั้งค่า Supabase" diagnostic card. Gating
+  //          the whole branch on isSupabaseConfigured made that card
+  //          unreachable, so a real misconfiguration served a dataless shell
+  //          with no explanation.
+  //   dev  → fall through to demo mode (shell + mock data + Demo Mode banner).
+  //          That's the local playground for checking the UI with no env vars,
+  //          so the diagnostic must not take it over.
+  const needsLogin = isSupabaseConfigured ? !user : import.meta.env.PROD;
+  if (needsLogin && !previewMode) {
     return <LoginScreen />;
   }
 
@@ -254,6 +276,7 @@ export default function App() {
         accent={accent} setAccent={setAccent}
         density={density} setDensity={setDensity}
         active={active} setActive={setActive}
+        user={user}
       />
     </div>
   );

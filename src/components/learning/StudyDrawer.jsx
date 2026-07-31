@@ -279,7 +279,9 @@ function BookStudy({ source, onSaved }) {
       await createSession({
         source_id: source.id,
         session_date: todayStr(),
-        duration_min: Math.max(1, Math.round(timerSec / 60)),
+        // A timer that was never started recorded 1 minute, which turned a
+        // 30-page session into "1,800 หน้า/ชม.".
+        duration_min: timerSec >= 30 ? Math.round(timerSec / 60) : null,
         from_page: Number(fromPage), to_page: Number(toPage),
         pages_read: pagesRead,
         understanding_score: score,
@@ -580,7 +582,9 @@ function VideoStudy({ source, onSaved }) {
       await createSession({
         source_id: source.id,
         session_date: todayStr(),
-        duration_min: Math.max(1, Math.round(timerSec / 60)),
+        // A timer that was never started recorded 1 minute, which turned a
+        // 30-page session into "1,800 หน้า/ชม.".
+        duration_min: timerSec >= 30 ? Math.round(timerSec / 60) : null,
         video_from_sec: source.video_position_sec || 0,
         video_to_sec: Number(videoSec) || 0,
         understanding_score: score,
@@ -685,7 +689,9 @@ function GenericStudy({ source, onSaved }) {
       await createSession({
         source_id: source.id,
         session_date: todayStr(),
-        duration_min: Math.max(1, Math.round(timerSec / 60)),
+        // A timer that was never started recorded 1 minute, which turned a
+        // 30-page session into "1,800 หน้า/ชม.".
+        duration_min: timerSec >= 30 ? Math.round(timerSec / 60) : null,
         understanding_score: score,
         summary: summary.trim() || null,
         notes: notes.trim() || null,

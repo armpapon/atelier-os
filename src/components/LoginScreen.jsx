@@ -3,6 +3,25 @@ import { signIn, signUp, resetPassword } from '../lib/useAuth.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { LoopMark } from './LoopMark.jsx';
 
+/** Supabase auth errors are English and terse — say it in Thai instead. */
+function thaiAuthError(err) {
+  const raw = String(err?.message || err || '');
+  const m = raw.toLowerCase();
+  if (m.includes('invalid login credentials'))  return 'อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+  if (m.includes('email not confirmed'))        return 'ยังไม่ได้ยืนยันอีเมล — เปิดลิงก์ยืนยันในเมลก่อน';
+  if (m.includes('user already registered') ||
+      m.includes('already been registered'))    return 'อีเมลนี้สมัครไว้แล้ว — ลองเข้าสู่ระบบแทน';
+  if (m.includes('password should be at least')) return 'รหัสผ่านสั้นเกินไป — ต้องอย่างน้อย 6 ตัวอักษร';
+  if (m.includes('unable to validate email') ||
+      m.includes('invalid email'))              return 'รูปแบบอีเมลไม่ถูกต้อง';
+  if (m.includes('for security purposes') ||
+      m.includes('rate limit') ||
+      m.includes('too many'))                   return 'ลองบ่อยเกินไป — รอสักครู่แล้วลองใหม่';
+  if (m.includes('failed to fetch') ||
+      m.includes('network'))                    return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — เช็คอินเทอร์เน็ตแล้วลองใหม่';
+  return raw || 'เกิดข้อผิดพลาด';
+}
+
 export function LoginScreen() {
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'forgot'
   const [email, setEmail] = useState('');
@@ -15,15 +34,18 @@ export function LoginScreen() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true); setError(null); setInfo(null);
+    // A stray space or a capital letter from autofill is not a different
+    // account — Supabase treats the address case-sensitively on the way in.
+    const addr = (email || '').trim().toLowerCase();
     try {
       if (mode === 'signin') {
-        await signIn(email, password);
+        await signIn(addr, password);
         // onAuthStateChange จะ trigger App ให้ render หน้าหลักเอง
       } else if (mode === 'forgot') {
-        await resetPassword(email);
+        await resetPassword(addr);
         setInfo('ส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่อีเมลแล้ว — เปิดลิงก์ในเมลเพื่อตั้งรหัสใหม่ (เช็ค Junk/Spam ด้วยถ้าไม่เจอ)');
       } else {
-        const { user, session } = await signUp(email, password, name);
+        const { user, session } = await signUp(addr, password, name);
         if (session) {
           // signup สำเร็จและได้ session เลย (email confirmation ปิดอยู่)
         } else {
@@ -31,7 +53,7 @@ export function LoginScreen() {
         }
       }
     } catch (err) {
-      setError(err.message || 'เกิดข้อผิดพลาด');
+      setError(thaiAuthError(err));
     } finally {
       setLoading(false);
     }

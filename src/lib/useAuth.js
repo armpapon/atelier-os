@@ -19,11 +19,14 @@ export function useAuth() {
       return;
     }
 
-    // เช็ค session ปัจจุบันตอน mount
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
+    // เช็ค session ปัจจุบันตอน mount.
+    // A corrupt/expired token in localStorage rejects here; without the catch
+    // the promise never settled `loading` and the app sat on the splash screen
+    // forever with no way out.
+    supabase.auth.getSession()
+      .then(({ data }) => setSession(data?.session ?? null))
+      .catch(() => setSession(null))
+      .finally(() => setLoading(false));
 
     // listen การเปลี่ยนแปลง auth state (login/logout/refresh/password recovery)
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {

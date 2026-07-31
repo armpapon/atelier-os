@@ -78,13 +78,23 @@ export async function listEntriesInRange({ start, end }) {
   return data || [];
 }
 
+/**
+ * Mobile keyboards (Thai IME + autocorrect) sometimes commit the same phrase
+ * twice back-to-back — "ประชุมทีมประชุมทีม". Collapse an exact AABB doubling.
+ * Minimum 6 chars so genuine short repeats ("ๆ ๆ", "5 5") survive.
+ */
+function undouble(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(/^(.{6,}?)\1(?=\S|$)/u, '$1');
+}
+
 export async function createEntry(input) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
   const { data, error } = await supabase
     .from('journal_entries')
-    .insert({ ...input, user_id: user.id })
+    .insert({ ...input, text: undouble(input?.text), user_id: user.id })
     .select()
     .single();
   if (error) throw error;
@@ -95,7 +105,7 @@ export async function bulkCreateEntries(rows) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
-  const withUser = rows.map(r => ({ ...r, user_id: user.id }));
+  const withUser = rows.map(r => ({ ...r, text: undouble(r.text), user_id: user.id }));
   const { data, error } = await supabase
     .from('journal_entries')
     .insert(withUser)
@@ -154,8 +164,13 @@ export async function deleteEntriesByIds(ids) {
 
 export async function deleteEntry(id) {
   if (!supabase) throw new Error('Supabase not configured');
-  const { error } = await supabase.from('journal_entries').delete().eq('id', id);
+  // `.select()` so we can tell "deleted" from "RLS matched nothing". A row a
+  // partner shared to me is visible but not deletable — that used to be a
+  // silent no-op click.
+  const { data, error } = await supabase
+    .from('journal_entries').delete().eq('id', id).select('id');
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error('ลบไม่ได้ — รายการนี้ไม่ใช่ของคุณ');
 }
 
 // ── Moods ─────────────────────────────────────────────────────────────────────

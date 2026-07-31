@@ -16,6 +16,7 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 import { AsanaHours } from '../components/AsanaHours.jsx';
 import { SheetTimeline } from '../components/SheetTimeline.jsx';
 import { todayStr, toLocalYMD } from '../lib/dates.js';
+import { useAuth } from '../lib/useAuth.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDateThai(dateStr) {
@@ -248,8 +249,12 @@ function isOfficeMarker(text = '') {
 
 // Leave / out-of-office entries are informational (who's away) — not tasks for
 // the day. Kept conservative so real meetings never get hidden by mistake.
-function isLeaveEntry(text = '') {
-  const t = text.trim();
+function isLeaveEntry(entry) {
+  // Only calendar imports can be someone's leave. A hand-typed line like
+  // "Leave for airport 14:00" is the user's own task and used to vanish into
+  // the FYI box.
+  if (!entry || entry.gcal_event_id == null) return false;
+  const t = (entry.text || '').trim();
   if (!t) return false;
   // Explicit leave phrases (Thai + English).
   if (/ลาพักร้อน|ลาป่วย|ลากิจ|ลาคลอด|ลาบวช|ลาพัก|ลาหยุด|วันลา/.test(t)) return true;
@@ -730,7 +735,13 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
         <input
           autoFocus value={text} onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }}
+          // isComposing: the Thai IME fires Enter to COMMIT the candidate, so
+          // submitting there ate the composition and posted it twice.
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault(); handleSubmit(e);
+            }
+          }}
           placeholder="บันทึกอะไรก็ได้..."
           style={{
             flex: 1, background: 'transparent', border: 'none',
@@ -815,6 +826,13 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
     setLocation(entry.location || '');
   }, [entry.id, entry.note, entry.event_time, entry.event_end_time, entry.location]);
 
+  // Blur handlers fire-and-forget; without this every failed save was an
+  // unhandled rejection and the field kept showing text that was never stored.
+  const save = (patch) => {
+    Promise.resolve(onUpdate(entry.id, patch))
+      .catch(err => alert('บันทึกไม่สำเร็จ: ' + (err?.message || err)));
+  };
+
   const isEvent = entry.bullet_type === 'event';
   const fieldStyle = {
     fontFamily: 'var(--f-mono)', fontSize: 12, padding: '6px 9px',
@@ -834,19 +852,19 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
             <span>เวลาเริ่ม</span>
             <input type="time" value={time} style={fieldStyle}
               onChange={e => setTime(e.target.value)}
-              onBlur={() => onUpdate(entry.id, { event_time: time || null })} />
+              onBlur={() => save({ event_time: time || null })} />
           </label>
           <label style={labelStyle}>
             <span>เวลาจบ</span>
             <input type="time" value={endTime} style={fieldStyle}
               onChange={e => setEndTime(e.target.value)}
-              onBlur={() => onUpdate(entry.id, { event_end_time: endTime || null })} />
+              onBlur={() => save({ event_end_time: endTime || null })} />
           </label>
           <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
             <span>สถานที่</span>
             <input type="text" value={location} placeholder="ที่ไหน?" style={fieldStyle}
               onChange={e => setLocation(e.target.value)}
-              onBlur={() => onUpdate(entry.id, { location: location.trim() || null })} />
+              onBlur={() => save({ location: location.trim() || null })} />
           </label>
         </div>
       )}
@@ -855,7 +873,7 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
       {isEvent && partnerId && (!entry.shared_with || entry.shared_with === partnerId) && (
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
           <input type="checkbox" checked={entry.shared_with === partnerId}
-            onChange={e => onUpdate(entry.id, { shared_with: e.target.checked ? partnerId : null })}
+            onChange={e => save({ shared_with: e.target.checked ? partnerId : null })}
             style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
           👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
         </label>
@@ -863,7 +881,7 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
       <textarea
         value={note} rows={3} placeholder="รายละเอียดเพิ่มเติม..."
         onChange={e => setNote(e.target.value)}
-        onBlur={() => onUpdate(entry.id, { note: note.trim() || null })}
+        onBlur={() => save({ note: note.trim() || null })}
         style={{
           fontFamily: 'var(--f-body)', fontSize: 13, padding: '10px 12px', resize: 'vertical',
           border: '1px solid transparent', borderRadius: 'var(--radius-field)',
@@ -889,6 +907,8 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export function Journal() {
+  const { user } = useAuth();
+  const myUserId = user?.id || null;
   const [date, setDate] = useState(todayStr());
   const [entries, setEntries] = useState([]);
   const [recentDates, setRecentDates] = useState([]);
@@ -951,32 +971,46 @@ export function Journal() {
     }
   }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Every write below used to reject into an unhandled promise: the row stayed
+  // as-is on screen and the user was never told the save failed.
   const handleToggle = async (id, done) => {
-    await toggleEntry(id, !done);
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, done: !done } : e));
+    try {
+      await toggleEntry(id, !done);
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, done: !done } : e));
+    } catch (err) { alert('อัปเดตไม่สำเร็จ: ' + (err.message || err)); }
   };
 
   const handleDelete = async (id) => {
     if (!confirm('ลบรายการนี้?')) return;
-    await deleteEntry(id);
-    setEntries(prev => prev.filter(e => e.id !== id));
+    try {
+      await deleteEntry(id);
+      setEntries(prev => prev.filter(e => e.id !== id));
+    } catch (err) { alert('ลบไม่สำเร็จ: ' + (err.message || err)); }
   };
 
   const handleEntryUpdate = async (id, patch) => {
-    const updated = await updateEntry(id, patch);
-    setEntries(prev => prev.map(e => e.id === id ? updated : e));
+    try {
+      await updateEntry(id, patch);
+      // Merge the patch instead of swapping in the whole response: two fields
+      // blurred in quick succession returned out of order, and the slower
+      // response overwrote the faster one's field with a stale value.
+      setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
+    } catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err.message || err)); }
   };
 
   const handleMood = async (value) => {
-    const updated = await upsertMood({ mood_date: date, value, note: null });
-    setMood(updated);
+    try {
+      const updated = await upsertMood({ mood_date: date, value, note: null });
+      setMood(updated);
+    } catch (err) { alert('บันทึกอารมณ์ไม่สำเร็จ: ' + (err.message || err)); }
   };
 
   const handleHabitToggle = async (habitId) => {
     const isLogged = habitLogs.some(l => l.habit_id === habitId && l.completed);
-    await toggleHabitLog(habitId, date, !isLogged);
-    const updated = await getHabitLogsForDate(date);
-    setHabitLogs(updated);
+    try {
+      await toggleHabitLog(habitId, date, !isLogged);
+      setHabitLogs(await getHabitLogsForDate(date));
+    } catch (err) { alert('บันทึกนิสัยไม่สำเร็จ: ' + (err.message || err)); }
   };
 
   const dateLabel = formatDateThai(date);
@@ -985,9 +1019,9 @@ export function Journal() {
 
 
   // Split off "leave" entries — shown as FYI, not part of the day's checklist.
-  const leaveEntries = entries.filter(e => isLeaveEntry(e.text));
+  const leaveEntries = entries.filter(e => isLeaveEntry(e));
   const dayEntries   = entries
-    .filter(e => !isLeaveEntry(e.text))
+    .filter(e => !isLeaveEntry(e))
     // Sort by start time (earliest first); entries with no time sink to the bottom.
     .sort((a, b) => (a.event_time || '99:99:99').localeCompare(b.event_time || '99:99:99'));
   // "นัดที่จะถึง" = future days only — today's meetings already show in the day list.
@@ -1185,9 +1219,13 @@ export function Journal() {
                               <Icon name="chevron" size={12} />
                             </span>
                           </button>
-                          <button onClick={() => handleDelete(entry.id)}
-                            aria-label="ลบรายการ"
-                            style={{ opacity: 0.45, fontSize: 14, padding: '0 4px', color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                          {/* A partner-shared row is visible but RLS blocks the
+                              delete — the × just did nothing. Don't offer it. */}
+                          {(!myUserId || entry.user_id === myUserId) && (
+                            <button onClick={() => handleDelete(entry.id)}
+                              aria-label="ลบรายการ"
+                              style={{ opacity: 0.45, fontSize: 14, padding: '0 4px', color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                          )}
                         </div>
                       </div>
                       {isExpanded && <EntryDetails entry={entry} date={date} partnerId={partnerId} onUpdate={handleEntryUpdate} />}

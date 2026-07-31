@@ -93,16 +93,24 @@ export function Dashboard({ onNav, user }) {
   const habitsDone  = habitLogs.length;
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleManifestSave = async (input) => { await upsertManifest(input); refresh(); };
-  const handleThemesSave   = async (input) => { await upsertThemes(input);  refresh(); };
-  const handleGoalAdd      = async (g) => { await createGoal(g);   refresh(); };
-  const handleGoalUpdate   = async (id, p) => { await updateGoal(id, p); refresh(); };
-  const handleGoalDelete   = async (id) => { await deleteGoal(id); refresh(); };
-  const handleFocusAdd     = async (f) => { await addFocus(f);    refresh(); };
-  const handleFocusToggle  = async (id, d) => { await toggleFocus(id, d); refresh(); };
-  const handleFocusDelete  = async (id) => { await deleteFocus(id); refresh(); };
-  const handleMilestoneAdd = async (m) => { await createMilestone(m); refresh(); };
-  const handleMilestoneDel = async (id) => { await deleteMilestone(id); refresh(); };
+  // Every one of these used to reject into nothing: the widget snapped back to
+  // its old value and the page stayed silent. Route failures to the banner
+  // that's already rendered above.
+  const guarded = (fn, msg) => async (...args) => {
+    try { setError(null); await fn(...args); refresh(); }
+    catch (err) { setError(`${msg}: ${err.message || err}`); }
+  };
+
+  const handleManifestSave = guarded(upsertManifest,  'บันทึก Manifest ไม่สำเร็จ');
+  const handleThemesSave   = guarded(upsertThemes,    'บันทึกธีมปีนี้ไม่สำเร็จ');
+  const handleGoalAdd      = guarded(createGoal,      'เพิ่มเป้าหมายไม่สำเร็จ');
+  const handleGoalUpdate   = guarded(updateGoal,      'อัปเดตเป้าหมายไม่สำเร็จ');
+  const handleGoalDelete   = guarded(deleteGoal,      'ลบเป้าหมายไม่สำเร็จ');
+  const handleFocusAdd     = guarded(addFocus,        'เพิ่มงานวันนี้ไม่สำเร็จ');
+  const handleFocusToggle  = guarded(toggleFocus,     'อัปเดตงานวันนี้ไม่สำเร็จ');
+  const handleFocusDelete  = guarded(deleteFocus,     'ลบงานวันนี้ไม่สำเร็จ');
+  const handleMilestoneAdd = guarded(createMilestone, 'เพิ่มหมุดหมายไม่สำเร็จ');
+  const handleMilestoneDel = guarded(deleteMilestone, 'ลบหมุดหมายไม่สำเร็จ');
 
   return (
     <div className="page-body" style={{ padding: isMobile ? '16px 14px 40px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
