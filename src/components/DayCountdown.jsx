@@ -33,23 +33,24 @@ export function DayCountdown() {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18,
-      padding: '14px 18px', borderRadius: 'var(--r-lg)',
-      background: 'var(--surface)', border: '1px solid var(--line)',
+      flexWrap: 'wrap',
+      padding: '14px 18px', borderRadius: 'var(--radius-card)',
+      background: 'var(--surface)', border: 'none', boxShadow: 'var(--shadow-card)',
     }}>
       {/* Clock ring */}
       <svg width="66" height="66" viewBox="0 0 66 66" style={{ flexShrink: 0 }}>
-        <circle cx="33" cy="33" r={R} fill="none" stroke="var(--surface-2)" strokeWidth="5" />
-        <circle cx="33" cy="33" r={R} fill="none" stroke="var(--amber)" strokeWidth="5" strokeLinecap="round"
+        <circle cx="33" cy="33" r={R} fill="none" stroke="var(--fill)" strokeWidth="5" />
+        <circle cx="33" cy="33" r={R} fill="none" stroke="var(--accent)" strokeWidth="5" strokeLinecap="round"
           strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - remainFrac)}
           transform="rotate(-90 33 33)"
           style={{ transition: 'stroke-dashoffset 950ms linear' }} />
-        <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--amber-deep)' }}>{minLeft}</text>
-        <text x="33" y="44" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-4)', letterSpacing: '0.1em' }}>นาที</text>
+        <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--accent)' }}>{minLeft}</text>
+        <text x="33" y="44" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-3)', letterSpacing: '0.1em' }}>นาที</text>
       </svg>
 
       {/* Time text */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+      <div style={{ flex: 1, minWidth: 130 }}>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
           เหลือเวลาวันนี้
         </div>
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>
@@ -62,8 +63,8 @@ export function DayCountdown() {
 
       {/* Nudge */}
       <div style={{
-        flexShrink: 0, maxWidth: 220, textAlign: 'right',
-        fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 13, color: 'var(--ink-3)',
+        flex: '1 1 200px', minWidth: 0, textAlign: 'right',
+        fontSize: 13, fontWeight: 500, color: 'var(--ink-2)',
       }}>
         {line}
       </div>

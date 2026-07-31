@@ -79,19 +79,15 @@ function MiniCalendar({ monthDate, selected, activity, onPick, onPrev, onNext })
 
   return (
     <div className="card">
-      <div className="card__head" style={{ marginBottom: 10 }}>
+      <div className="cal-head">
         <button onClick={onPrev} aria-label="เดือนก่อน"
-          style={{ color: 'var(--ink-3)', fontSize: 16, padding: '2px 8px', cursor: 'pointer' }}>‹</button>
-        <div className="card__title" style={{ fontSize: 14 }}>{monthLabel}</div>
+          style={{ color: 'var(--ink-2)', fontSize: 16, padding: '2px 8px', cursor: 'pointer', background: 'none', border: 0 }}>‹</button>
+        <b style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{monthLabel}</b>
         <button onClick={onNext} aria-label="เดือนถัดไป"
-          style={{ color: 'var(--ink-3)', fontSize: 16, padding: '2px 8px', cursor: 'pointer' }}>›</button>
+          style={{ color: 'var(--ink-2)', fontSize: 16, padding: '2px 8px', cursor: 'pointer', background: 'none', border: 0 }}>›</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
-        {CAL_WEEKDAYS.map((w, i) => (
-          <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', padding: '2px 0' }}>{w}</div>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+      <div className="cal-grid">
+        {CAL_WEEKDAYS.map((w, i) => <div key={`wd${i}`} className="wd">{w}</div>)}
         {cells.map((d, i) => {
           if (d == null) return <div key={i} />;
           const ds = ymd(y, m, d);
@@ -100,23 +96,9 @@ function MiniCalendar({ monthDate, selected, activity, onPick, onPrev, onNext })
           const isToday = ds === today;
           return (
             <button key={i} onClick={() => onPick(ds)}
-              style={{
-                position: 'relative', aspectRatio: '1', borderRadius: 'var(--r-sm)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontFamily: 'var(--f-mono)', fontSize: 11.5, cursor: 'pointer',
-                background: isSel ? 'var(--amber)' : 'transparent',
-                color: isSel ? '#1a1410' : (isToday ? 'var(--amber-deep)' : 'var(--ink-2)'),
-                fontWeight: isToday || isSel ? 600 : 400,
-                border: isToday && !isSel ? '1px solid var(--amber)' : '1px solid transparent',
-              }}>
+              className={`d${isToday ? ' today' : ''}${isSel && !isToday ? ' sel' : ''}`}>
               {d}
-              {act && (
-                <span style={{
-                  position: 'absolute', bottom: 3, left: '50%', transform: 'translateX(-50%)',
-                  width: 4, height: 4, borderRadius: '50%',
-                  background: isSel ? '#1a1410' : (act.hasEvent ? 'var(--amber-deep)' : 'var(--ink-4)'),
-                }} />
-              )}
+              {act && <span className="dot" />}
             </button>
           );
         })}
@@ -192,7 +174,7 @@ function PasteScheduleModal({ date, onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <div style={{ position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-xl)', padding: 26, width: 520, maxWidth: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, fontWeight: 500 }}>วางตารางจาก Calendar</div>
@@ -616,12 +598,14 @@ const BULLET_TYPES = [
   { id: 'migrate', label: 'โยก',     symbol: '›' },
 ];
 
+// Selection is shown with an accent ring, so the old per-mood colours are gone.
+// value / label / emoji are unchanged — `value` is what gets persisted.
 const MOODS = [
-  { value: 1, label: 'แย่มาก',  emoji: '😞', color: '#4a3a2e' },
-  { value: 2, label: 'แย่',     emoji: '😕', color: '#6b5036' },
-  { value: 3, label: 'เฉย ๆ',   emoji: '😐', color: '#9a7344' },
-  { value: 4, label: 'ดี',      emoji: '😊', color: 'var(--amber)' },
-  { value: 5, label: 'ดีมาก',  emoji: '😄', color: '#e8c08a' },
+  { value: 1, label: 'แย่มาก',  emoji: '😞' },
+  { value: 2, label: 'แย่',     emoji: '😕' },
+  { value: 3, label: 'เฉย ๆ',   emoji: '😐' },
+  { value: 4, label: 'ดี',      emoji: '😊' },
+  { value: 5, label: 'ดีมาก',  emoji: '😄' },
 ];
 
 const TAGS = ['TRADE', 'LEARN', 'FAMILY', 'HEALTH', 'WORK', 'FINANCE'];
@@ -657,8 +641,8 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
 
   return (
     <form onSubmit={handleSubmit} style={{
-      background: 'rgba(138,100,56,0.08)', border: '1px solid rgba(138,100,56,0.25)',
-      borderRadius: 'var(--r-md)', padding: '14px 18px',
+      background: 'var(--fill)', border: 'none',
+      borderRadius: 'var(--radius-field)', padding: '14px 18px',
       display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16,
     }}>
       {/* Bullet type */}
@@ -666,11 +650,10 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
         {BULLET_TYPES.map(b => (
           <button key={b.id} type="button" onClick={() => setType(b.id)}
             style={{
-              padding: '3px 10px', borderRadius: 'var(--r-sm)', fontSize: 11,
-              background: type === b.id ? 'var(--amber)' : 'transparent',
-              color: type === b.id ? '#1a1410' : 'var(--paper-ink)',
-              border: `1px solid ${type === b.id ? 'var(--amber)' : 'rgba(90,70,50,0.3)'}`,
-              fontFamily: 'var(--f-mono)',
+              padding: '4px 11px', borderRadius: 'var(--radius-btn)', fontSize: 11.5, fontWeight: 500,
+              background: type === b.id ? 'var(--accent)' : 'var(--fill-2)',
+              color: type === b.id ? 'var(--text-inverse)' : 'var(--ink-2)',
+              border: 'none', cursor: 'pointer',
             }}>
             {b.symbol} {b.label}
           </button>
@@ -683,7 +666,7 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
           <input
             type="time" value={time} onChange={e => setTime(e.target.value)}
             style={{
-              background: 'transparent', border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)',
+              background: 'var(--fill-2)', border: 'none', borderRadius: 'var(--radius-field)',
               padding: '4px 8px', fontSize: 12, fontFamily: 'var(--f-mono)', color: 'var(--paper-ink)',
             }}
           />
@@ -691,7 +674,7 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
             type="text" value={location} onChange={e => setLocation(e.target.value)}
             placeholder="สถานที่ (ถ้ามี)"
             style={{
-              flex: 1, background: 'transparent', border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)',
+              flex: 1, background: 'var(--fill-2)', border: 'none', borderRadius: 'var(--radius-field)',
               padding: '4px 8px', fontSize: 12, fontFamily: 'var(--f-display)', color: 'var(--paper-ink)',
             }}
           />
@@ -700,9 +683,9 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
 
       {/* Shared appointment — only when accounts are linked */}
       {type === 'event' && partnerId && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--paper-ink)', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ink-2)', cursor: 'pointer' }}>
           <input type="checkbox" checked={shareWith} onChange={e => setShareWith(e.target.checked)}
-            style={{ width: 15, height: 15, accentColor: 'var(--amber)', cursor: 'pointer' }} />
+            style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
           👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
         </label>
       )}
@@ -715,13 +698,13 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
           placeholder="บันทึกอะไรก็ได้..."
           style={{
             flex: 1, background: 'transparent', border: 'none',
-            borderBottom: '1px solid rgba(90,70,50,0.4)',
-            padding: '4px 0', fontSize: 14, fontFamily: 'var(--f-display)',
-            color: 'var(--paper-ink)', outline: 'none',
+            borderBottom: '1px solid var(--hairline)',
+            padding: '5px 0', fontSize: 14.5,
+            color: 'var(--ink)', outline: 'none',
           }}
         />
         <select value={tag} onChange={e => setTag(e.target.value)}
-          style={{ background: 'transparent', border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)', padding: '3px 6px', fontSize: 11, color: 'var(--paper-ink)', fontFamily: 'var(--f-mono)' }}>
+          style={{ background: 'var(--fill-2)', border: 'none', borderRadius: 'var(--radius-field)', padding: '4px 8px', fontSize: 11.5, color: 'var(--ink-2)' }}>
           <option value="">แท็ก</option>
           {TAGS.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -729,9 +712,9 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         {onClose && <button type="button" onClick={onClose}
-          style={{ fontSize: 12, color: '#8a6438', padding: '3px 8px' }}>ยกเลิก</button>}
+          style={{ fontSize: 12.5, color: 'var(--ink-2)', padding: '4px 10px', background: 'none', border: 0, cursor: 'pointer' }}>ยกเลิก</button>}
         <button type="submit" disabled={saving || !text.trim()}
-          style={{ background: 'var(--amber-deep)', color: 'var(--paper)', border: 'none', borderRadius: 'var(--r-sm)', padding: '5px 14px', fontSize: 12, fontWeight: 500 }}>
+          style={{ background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', borderRadius: 'var(--radius-btn)', padding: '6px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
           {saving ? '...' : '+ เพิ่ม'}
         </button>
       </div>
@@ -757,7 +740,7 @@ function HabitModal({ onSave, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
+      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{
         position: 'relative', background: 'var(--surface)', border: '1px solid var(--line)',
         borderRadius: 'var(--r-xl)', padding: 32, width: 340, display: 'flex', flexDirection: 'column', gap: 16,
@@ -798,13 +781,13 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
 
   const isEvent = entry.bullet_type === 'event';
   const fieldStyle = {
-    fontFamily: 'var(--f-mono)', fontSize: 12, padding: '4px 8px',
-    border: '1px solid rgba(90,70,50,0.3)', borderRadius: 'var(--r-sm)',
-    background: 'rgba(255,255,255,0.4)', color: 'var(--paper-ink)', outline: 'none',
+    fontFamily: 'var(--f-mono)', fontSize: 12, padding: '6px 9px',
+    border: '1px solid transparent', borderRadius: 'var(--radius-field)',
+    background: 'var(--fill)', color: 'var(--ink)', outline: 'none',
   };
   const labelStyle = {
     display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10,
-    letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8a7060', fontFamily: 'var(--f-mono)',
+    letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-2)', fontFamily: 'var(--f-mono)',
   };
 
   return (
@@ -834,10 +817,10 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
       {/* Shared appointment toggle — only on my own events (hidden on ones a
           partner shared to me: shared_with then points at me, not at partnerId) */}
       {isEvent && partnerId && (!entry.shared_with || entry.shared_with === partnerId) && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--paper-ink)', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ink-2)', cursor: 'pointer' }}>
           <input type="checkbox" checked={entry.shared_with === partnerId}
             onChange={e => onUpdate(entry.id, { shared_with: e.target.checked ? partnerId : null })}
-            style={{ width: 15, height: 15, accentColor: 'var(--amber)', cursor: 'pointer' }} />
+            style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
           👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
         </label>
       )}
@@ -846,9 +829,9 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
         onChange={e => setNote(e.target.value)}
         onBlur={() => onUpdate(entry.id, { note: note.trim() || null })}
         style={{
-          fontFamily: 'var(--f-body)', fontSize: 13, padding: '8px 10px', resize: 'vertical',
-          border: '1px solid rgba(90,70,50,0.25)', borderRadius: 'var(--r-sm)',
-          background: 'rgba(255,255,255,0.35)', color: 'var(--paper-ink)', outline: 'none',
+          fontFamily: 'var(--f-body)', fontSize: 13, padding: '10px 12px', resize: 'vertical',
+          border: '1px solid transparent', borderRadius: 'var(--radius-field)',
+          background: 'var(--fill)', color: 'var(--ink)', outline: 'none',
         }}
       />
       {isEvent && (
@@ -857,9 +840,9 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
             fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
-            color: 'var(--amber-deep)', textDecoration: 'none',
-            border: '1px solid rgba(138,100,56,0.35)', borderRadius: 'var(--r-sm)',
-            padding: '5px 10px', background: 'rgba(138,100,56,0.08)',
+            color: 'var(--accent)', textDecoration: 'none', fontWeight: 600,
+            border: 'none', borderRadius: 'var(--radius-btn)',
+            padding: '6px 12px', background: 'var(--accent-tint)',
           }}>
           <Icon name="calendar" size={13} /> เพิ่มลง Google Calendar
         </a>
@@ -974,6 +957,21 @@ export function Journal() {
   // "นัดที่จะถึง" = future days only — today's meetings already show in the day list.
   const futureEvents = upcoming.filter(ev => ev.entry_date > today);
 
+  // Day progress + "next up" highlight are derived from what's already on screen —
+  // display only, nothing is written back.
+  const checkableEntries = dayEntries.filter(isCheckable);
+  const checkableCount   = checkableEntries.length;
+  const doneCount        = checkableEntries.filter(e => e.done).length;
+
+  // On today's page, tint the time of the next event that hasn't started yet.
+  const nowHm = new Date().toTimeString().slice(0, 5);
+  const nextUpHm = isToday
+    ? dayEntries
+        .filter(e => e.event_time && e.event_time.slice(0, 5) >= nowHm)
+        .map(e => e.event_time.slice(0, 5))
+        .sort()[0] || null
+    : null;
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'var(--ink-3)' }}>
       กำลังโหลด...
@@ -1010,34 +1008,42 @@ export function Journal() {
         <div style={{ display: 'flex', gap: 6, marginBottom: 22, alignItems: 'center' }}>
           <button onClick={() => setDate(today)}
             style={{
-              flexShrink: 0, padding: '6px 12px', borderRadius: 'var(--r-md)',
-              background: date === today ? 'var(--amber)' : 'var(--surface)',
-              color: date === today ? '#1a1410' : 'var(--ink-2)',
-              border: `1px solid ${date === today ? 'var(--amber)' : 'var(--line)'}`,
-              fontFamily: 'var(--f-mono)', fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer',
+              flexShrink: 0, padding: '7px 14px', borderRadius: 'var(--radius-btn)',
+              background: date === today ? 'var(--accent)' : 'var(--fill-2)',
+              color: date === today ? 'var(--text-inverse)' : 'var(--ink)',
+              border: 'none', fontWeight: 500,
+              fontSize: 12.5, whiteSpace: 'nowrap', cursor: 'pointer',
             }}>
             วันนี้
           </button>
           {/* Jump to date */}
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             style={{
-              padding: '6px 10px', borderRadius: 'var(--r-md)', background: 'var(--surface)',
-              border: '1px solid var(--line)', color: 'var(--ink-2)', fontFamily: 'var(--f-mono)', fontSize: 11,
+              padding: '7px 12px', borderRadius: 'var(--radius-field)', background: 'var(--fill)',
+              border: 'none', color: 'var(--ink)', fontSize: 12.5,
             }} />
         </div>
 
-        <div className="bujo-grid">
-          {/* Left: Bullet journal page */}
-          <div className="bujo-page">
-            <div className="bujo-page__date">
+        <div className="journal-grid">
+          {/* Left: the day's timeline */}
+          <div className="journal-day">
+            <div className="journal-day__head">
               <div>
-                <div className="bujo-page__day">{dateLabel.split(' ')[0]} {new Date(date + 'T00:00:00').getDate()} {dateLabel.split(' ').slice(2).join(' ')}</div>
-                <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 16, color: '#5a4632', marginTop: 2 }}>
-                  {dateLabel}
-                </div>
+                <div className="journal-day__title">{dateLabel}</div>
+                <div className="journal-day__sub">{relativeDayLabel(date)}</div>
               </div>
-              <div className="bujo-page__day-of-week">{weekday(date)}</div>
+              <div className="journal-day__dow">{weekday(date)}</div>
             </div>
+
+            {/* Day progress — derived from the checkable entries already on screen */}
+            {checkableCount > 0 && (
+              <div className="day-progress">
+                <div className="day-progress__track">
+                  <div className="day-progress__fill" style={{ width: `${Math.round((doneCount / checkableCount) * 100)}%` }} />
+                </div>
+                <span>เสร็จแล้ว {doneCount} จาก {checkableCount}</span>
+              </div>
+            )}
 
             {/* Add entry form */}
             {showAddEntry && (
@@ -1051,18 +1057,18 @@ export function Journal() {
 
             {/* FYI — who's on leave today (informational, not tasks) */}
             {leaveEntries.length > 0 && (
-              <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(90,70,50,0.05)', border: '1px dashed rgba(90,70,50,0.28)', borderRadius: 'var(--r-md)' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: '#8a7060', marginBottom: 8 }}>
+              <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--fill)', border: 'none', borderRadius: 'var(--radius-field)' }}>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-2)', marginBottom: 8 }}>
                   วันนี้ใครลา · FYI
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {leaveEntries.map(entry => (
-                    <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#6b5544' }}>
-                      <span style={{ color: '#b09070' }}>—</span>
+                    <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink-2)' }}>
+                      <span style={{ color: 'var(--ink-3)' }}>—</span>
                       <span style={{ flex: 1 }}>{entry.text}</span>
-                      {entry.event_time && <span className="bujo-line__tag">{fmtEventRange(entry)}</span>}
+                      {entry.event_time && <span className="chip">{fmtEventRange(entry)}</span>}
                       <button onClick={() => handleDelete(entry.id)}
-                        style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                        style={{ opacity: 0.45, fontSize: 14, padding: '0 4px', color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
                     </div>
                   ))}
                 </div>
@@ -1071,11 +1077,11 @@ export function Journal() {
 
             {/* Entries (checklist — leave items are surfaced in FYI above) */}
             {dayEntries.length === 0 && !showAddEntry ? (
-              <div style={{ textAlign: 'center', color: '#8a7060', padding: '32px 0', fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 15 }}>
+              <div style={{ textAlign: 'center', color: 'var(--ink-2)', padding: '32px 0', fontSize: 14.5 }}>
                 {isToday ? 'วันนี้ยังว่างอยู่ — เริ่มบันทึกได้เลย' : 'ไม่มีรายการในวันนี้'}
                 <br />
                 <button onClick={() => setShowAddEntry(true)}
-                  style={{ marginTop: 12, background: 'rgba(138,100,56,0.15)', border: '1px solid rgba(138,100,56,0.3)', borderRadius: 'var(--r-md)', padding: '7px 16px', color: 'var(--amber-deep)', cursor: 'pointer', fontSize: 13 }}>
+                  style={{ marginTop: 12, background: 'var(--accent-tint)', border: 'none', borderRadius: 'var(--radius-btn)', padding: '8px 18px', color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
                   + เพิ่มรายการ
                 </button>
               </div>
@@ -1084,33 +1090,68 @@ export function Journal() {
                 {dayEntries.map(entry => {
                   const isExpanded = expandedId === entry.id;
                   const hasDetails = !!(entry.note || entry.location || entry.event_time);
+                  const checkable  = isCheckable(entry);
+                  const isEvent    = entry.bullet_type === 'event';
+                  const startHm    = entry.event_time ? entry.event_time.slice(0, 5) : null;
                   return (
                     <div key={entry.id}>
-                      <div className={`bujo-line ${entry.done ? 'bujo-line--done' : ''}`}
+                      <div className={`tl-item ${entry.done ? 'tl-item--done' : ''}`}
                         style={{ cursor: 'pointer' }}
-                        onDoubleClick={() => isCheckable(entry) && handleToggle(entry.id, entry.done)}>
-                        <span className={`bujo-line__bullet bujo-line__bullet--${entry.done ? 'done' : entry.bullet_type}`} />
-                        <span className="bujo-line__text">{entry.text}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {entry.shared_with && <span className="bujo-line__tag" title="นัดด้วยกัน">👥</span>}
-                          {entry.event_time && <span className="bujo-line__tag">{fmtEventRange(entry)}</span>}
-                          {entry.tag && <span className="bujo-line__tag">{entry.tag}</span>}
-                          {isCheckable(entry) && (
-                            <button onClick={() => handleToggle(entry.id, entry.done)}
-                              title={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}
-                              style={{ opacity: 0.5, fontSize: 12, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>
-                              {entry.done ? '↩' : '✓'}
-                            </button>
+                        onDoubleClick={() => checkable && handleToggle(entry.id, entry.done)}>
+                        {/* time column */}
+                        <div className={`tl-time ${startHm && startHm === nextUpHm ? 'tl-time--now' : ''}`}>
+                          {startHm || ''}
+                        </div>
+
+                        {/* events get an accent bar; everything else a check or a glyph */}
+                        {isEvent ? (
+                          <span className={`ebar ${entry.shared_with ? 'ebar--together' : ''}`} />
+                        ) : checkable ? (
+                          <button
+                            className={`check ${entry.done ? 'check--on' : ''}`}
+                            onClick={() => handleToggle(entry.id, entry.done)}
+                            title={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}
+                            aria-label={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}>
+                            <svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7" /></svg>
+                          </button>
+                        ) : (
+                          <span className={`glyph ${entry.bullet_type === 'star' ? 'glyph--star' : ''}`}>
+                            {BULLET_TYPES.find(b => b.id === entry.bullet_type)?.symbol || '—'}
+                          </span>
+                        )}
+
+                        <div className="tl-body">
+                          <div className="tl-t">
+                            <span>{entry.text}</span>
+                            {/* The schema stores only a partner UUID — there is no
+                                name to show, so keep the app's existing wording. */}
+                            {entry.shared_with && (
+                              <span className="chip chip--together" title="นัดด้วยกัน">
+                                ♥ ด้วยกัน
+                              </span>
+                            )}
+                            {entry.tag && <span className="chip">{entry.tag}</span>}
+                          </div>
+                          {(entry.event_time || entry.location) && (
+                            <div className="tl-s">
+                              {entry.event_time && fmtEventRange(entry)}
+                              {entry.event_time && entry.location ? ' · ' : ''}
+                              {entry.location && `📍 ${entry.location}`}
+                            </div>
                           )}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                           <button onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                             title="รายละเอียด"
-                            style={{ opacity: hasDetails ? 0.8 : 0.35, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex' }}>
+                            style={{ opacity: hasDetails ? 0.9 : 0.4, padding: '0 4px', color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex' }}>
                             <span style={{ display: 'inline-flex', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}>
                               <Icon name="chevron" size={12} />
                             </span>
                           </button>
                           <button onClick={() => handleDelete(entry.id)}
-                            style={{ opacity: 0.4, fontSize: 14, padding: '0 4px', color: '#5a4632', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
+                            aria-label="ลบรายการ"
+                            style={{ opacity: 0.45, fontSize: 14, padding: '0 4px', color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer' }}>×</button>
                         </div>
                       </div>
                       {isExpanded && <EntryDetails entry={entry} date={date} partnerId={partnerId} onUpdate={handleEntryUpdate} />}
@@ -1120,7 +1161,7 @@ export function Journal() {
 
                 {!showAddEntry && (
                   <button onClick={() => setShowAddEntry(true)}
-                    style={{ marginTop: 12, background: 'transparent', border: '1px dashed rgba(90,70,50,0.35)', borderRadius: 'var(--r-sm)', padding: '6px 14px', color: '#8a6438', cursor: 'pointer', fontSize: 12, width: '100%', fontFamily: 'var(--f-display)', fontStyle: 'italic' }}>
+                    style={{ marginTop: 12, background: 'transparent', border: '1px dashed var(--hairline)', borderRadius: 'var(--radius-field)', padding: '9px 14px', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 13, width: '100%', fontWeight: 500 }}>
                     + เพิ่มรายการ
                   </button>
                 )}
@@ -1129,7 +1170,7 @@ export function Journal() {
           </div>
 
           {/* Right column of the top row: calendar only, keeping the row 50/50 */}
-          <div className="bujo-side">
+          <div className="journal-side">
             {/* Mini calendar */}
             <MiniCalendar
               monthDate={calMonth}
@@ -1144,7 +1185,7 @@ export function Journal() {
 
         {/* Full-width stack — everything from "นัดที่จะถึง" down spans 100% so a
             long email/Asana title no longer squeezes the checklist column. */}
-        <div className="bujo-stack">
+        <div className="journal-stack">
             {/* Upcoming events */}
             <div className="card">
               <div className="card__head">
@@ -1155,25 +1196,25 @@ export function Journal() {
                   ไม่มีนัดใน 14 วันข้างหน้า
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {futureEvents.map(ev => (
-                    <button key={ev.id} onClick={() => setDate(ev.entry_date)}
-                      style={{
-                        display: 'flex', flexDirection: 'column', gap: 2, textAlign: 'left',
-                        padding: '8px 10px', borderRadius: 'var(--r-sm)', cursor: 'pointer',
-                        border: `1px solid ${ev.entry_date === date ? 'var(--amber)' : 'var(--line)'}`,
-                        background: 'var(--surface-2)',
-                      }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
-                        <span>{relativeDayLabel(ev.entry_date)}</span>
-                        <span>{fmtEventRange(ev)}</span>
-                      </div>
-                      <div style={{ fontSize: 13, color: 'var(--ink)' }}>{ev.text}</div>
-                      {ev.location && (
-                        <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>📍 {ev.location}</div>
-                      )}
-                    </button>
-                  ))}
+                <div>
+                  {futureEvents.map(ev => {
+                    const d = new Date(ev.entry_date + 'T00:00:00');
+                    return (
+                      <button key={ev.id} onClick={() => setDate(ev.entry_date)} className="up-row">
+                        <span className="up-row__badge">
+                          <span>{d.toLocaleDateString('th-TH', { month: 'short' })}</span>
+                          <b>{d.getDate()}</b>
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 14.5, fontWeight: 500, color: 'var(--ink)' }}>{ev.text}</span>
+                          <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-2)', marginTop: 1 }}>
+                            {relativeDayLabel(ev.entry_date)} · {fmtEventRange(ev)}
+                            {ev.location ? ` · 📍 ${ev.location}` : ''}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1193,22 +1234,18 @@ export function Journal() {
                 <div className="card__title">อารมณ์วันนี้</div>
                 {mood && <span style={{ fontSize: 20 }}>{MOODS.find(m => m.value === mood.value)?.emoji}</span>}
               </div>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+              <div className="mood-row">
                 {MOODS.map(m => (
                   <button key={m.value} onClick={() => handleMood(m.value)}
-                    style={{
-                      flex: 1, aspectRatio: '1', borderRadius: 'var(--r-md)', fontSize: 22,
-                      background: mood?.value === m.value ? m.color : 'var(--surface-2)',
-                      border: `2px solid ${mood?.value === m.value ? m.color : 'var(--line)'}`,
-                      transition: 'all 150ms', cursor: 'pointer',
-                    }} title={m.label}>
+                    className={`mood-btn ${mood?.value === m.value ? 'mood-btn--on' : ''}`}
+                    title={m.label} aria-label={m.label}>
                     {m.emoji}
                   </button>
                 ))}
               </div>
-              {mood && <div style={{ marginTop: 10, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', textAlign: 'center' }}>
-                {MOODS.find(m => m.value === mood.value)?.label}
-              </div>}
+              <div className="mood-lbl">
+                {mood ? MOODS.find(m => m.value === mood.value)?.label : ''}
+              </div>
             </div>
 
             {/* Habits */}
@@ -1226,26 +1263,23 @@ export function Journal() {
                   {habits.map(h => {
                     const done = habitLogs.some(l => l.habit_id === h.id && l.completed);
                     return (
-                      <div key={h.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div key={h.id} className="habit-row">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                           <button onClick={() => handleHabitToggle(h.id)}
-                            style={{
-                              width: 22, height: 22, borderRadius: 4,
-                              background: done ? 'var(--amber)' : 'var(--surface-2)',
-                              border: `1.5px solid ${done ? 'var(--amber)' : 'var(--line)'}`,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 12, cursor: 'pointer',
-                            }}>
-                            {done ? '✓' : ''}
+                            className={`check ${done ? 'check--on' : ''}`}
+                            aria-label={done ? 'ยกเลิก' : 'ทำแล้ว'}>
+                            <svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7" /></svg>
                           </button>
-                          <span style={{ fontSize: 13, color: done ? 'var(--ink-3)' : 'var(--ink)', textDecoration: done ? 'line-through' : 'none' }}>
-                            {h.name}
-                          </span>
+                          <span className="habit-row__name" style={{
+                            color: done ? 'var(--ink-2)' : 'var(--ink)',
+                            textDecoration: done ? 'line-through' : 'none',
+                          }}>{h.name}</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{h.target_per_week}×/wk</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          <span className="habit-row__streak">🔥 {h.target_per_week} วัน/สัปดาห์</span>
                           <button onClick={() => { if (confirm('ลบ Habit นี้?')) { deleteHabit(h.id).then(refresh); } }}
-                            style={{ color: 'var(--ink-4)', fontSize: 12, padding: '2px 4px' }}>×</button>
+                            aria-label="ลบ Habit"
+                            style={{ color: 'var(--ink-3)', fontSize: 12, padding: '2px 4px', background: 'none', border: 0, cursor: 'pointer' }}>×</button>
                         </div>
                       </div>
                     );
