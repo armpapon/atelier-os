@@ -9,12 +9,13 @@ import {
   getMoodForDate, upsertMood,
   listHabits, createHabit, deleteHabit,
   getHabitLogsForDate, toggleHabitLog,
+  listEntriesByGcalIds, deleteEntriesByIds,
 } from '../lib/api/journal.js';
 import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread, ALL_GOOGLE_SCOPES } from '../lib/integrations.js';
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { AsanaHours } from '../components/AsanaHours.jsx';
 import { SheetTimeline } from '../components/SheetTimeline.jsx';
-import { todayStr } from '../lib/dates.js';
+import { todayStr, toLocalYMD } from '../lib/dates.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDateThai(dateStr) {
@@ -138,7 +139,10 @@ function buildGCalUrl({ text, note, location, event_time, event_end_time }, date
 // the rest become tasks. Leading bullet/checkbox markers are stripped.
 function parseScheduleText(text, date) {
   const out = [];
-  for (const raw of (text || '').split('\n')) {
+  // Pasted calendar text arrives with CRLF (Outlook), bare CR (some Mac apps)
+  // and U+2028/U+2029 line separators — splitting on '\n' alone glued whole
+  // schedules into one entry.
+  for (const raw of (text || '').split(/\r\n|\r|\n|\u2028|\u2029/)) {
     // Strip leading noise (emoji, checkmarks, bullets, dashes, spaces) but keep
     // digits, letters (incl. Thai) and "[" so "[MKT] ..." survives.
     let s = raw.replace(/^[^\p{L}\p{N}[]+/u, '').trim();
@@ -146,9 +150,11 @@ function parseScheduleText(text, date) {
     const m = s.match(/^(\d{1,2})[:.](\d{2})(?:\s*[-–—]\s*\d{1,2}[:.]\d{2})?\s*[:.-]?\s*(.*)$/);
     if (m && Number(m[1]) <= 23) {
       const hh = String(Number(m[1])).padStart(2, '0');
-      out.push({ entry_date: date, bullet_type: 'event', text: (m[3].trim() || 'ประชุม'), tag: null, event_time: `${hh}:${m[2]}:00`, done: false });
+      out.push({ entry_date: date, bullet_type: 'event', text: (m[3].trim() || 'ประชุม'), tag: null, event_time: `${hh}:${m[2]}:00`, event_end_time: null, done: false });
     } else {
-      out.push({ entry_date: date, bullet_type: 'task', text: s, tag: null, done: false });
+      // Same key set on every row — PostgREST rejects a bulk insert whose
+      // objects don't all share the same shape.
+      out.push({ entry_date: date, bullet_type: 'task', text: s, tag: null, event_time: null, event_end_time: null, done: false });
     }
   }
   out.sort((a, b) => (a.event_time || '99').localeCompare(b.event_time || '99'));
@@ -216,11 +222,18 @@ function gcalEventToEntry(ev, date) {
     gcal_event_id: ev.id || null,   // stable id → re-imports update, not duplicate
     text: (ev.summary || 'ประชุม').trim(),
     location: ev.location ? ev.location.trim() : null,
+    // Always present, always the same keys — bulk insert needs a uniform shape.
     event_time: null,
+    event_end_time: null,
   };
   if (ev.start?.dateTime) {                       // timed event
-    row.event_time = hms(ev.start.dateTime);
-    if (ev.end?.dateTime) row.event_end_time = hms(ev.end.dateTime);
+    // A multi-day event spills into this day but STARTED on another one; its
+    // start clock belongs to the origin day, so showing it here was a lie.
+    const startsHere = toLocalYMD(new Date(ev.start.dateTime)) === date;
+    if (startsHere) {
+      row.event_time = hms(ev.start.dateTime);
+      if (ev.end?.dateTime) row.event_end_time = hms(ev.end.dateTime);
+    }
   }
   return row;                                     // all-day → event bullet, no time
 }
@@ -284,23 +297,40 @@ function GoogleCalendarButton({ date, existing, onImported }) {
         .filter(ev => !isOfficeMarker(ev.summary || ''))
         .map(ev => gcalEventToEntry(ev, date));
 
-      // Reconcile against what's already on this day so a moved meeting UPDATES
-      // its card (single card, latest time) instead of duplicating.
-      const byId = new Map();       // gcal_event_id → existing entry
+      // Reconcile. Matching by gcal id has to span ALL dates, not just this
+      // day — a meeting the user moved to another date still lives under its
+      // old entry_date, and a day-scoped lookup happily inserted a duplicate.
+      const incomingIds = rows.map(r => r.gcal_event_id).filter(Boolean);
+      let known = [];
+      try { known = await listEntriesByGcalIds(incomingIds); } catch { known = []; }
+
+      const byId = new Map();       // gcal_event_id → existing entry (any date)
       const byKey = new Map();      // "text|time" → legacy entry (imported before ids existed)
+      for (const e of known) if (e.gcal_event_id) byId.set(e.gcal_event_id, e);
       for (const e of (existing || [])) {
-        if (e.gcal_event_id) byId.set(e.gcal_event_id, e);
+        if (e.gcal_event_id) { if (!byId.has(e.gcal_event_id)) byId.set(e.gcal_event_id, e); }
         else byKey.set(`${(e.text || '').trim()}|${e.event_time || ''}`, e);
       }
 
       const toInsert = [];
+      const seenIds = new Set();
       let updated = 0;
       for (const r of rows) {
-        const match = (r.gcal_event_id && byId.get(r.gcal_event_id))
-          || byKey.get(`${r.text}|${r.event_time || ''}`);
+        if (r.gcal_event_id) seenIds.add(r.gcal_event_id);
+
+        let match = r.gcal_event_id ? byId.get(r.gcal_event_id) : null;
+        if (match) byId.delete(r.gcal_event_id);
+        if (!match) {
+          const key = `${r.text}|${r.event_time || ''}`;
+          match = byKey.get(key) || null;
+          // Claim the legacy row so a second meeting with the same title can't
+          // collapse onto it — that pair re-duplicated on every later import.
+          if (match) byKey.delete(key);
+        }
         if (!match) { toInsert.push(r); continue; }
         // Patch only changed fields; never touch `done` (keep the tick).
         const patch = {};
+        if ((match.entry_date || null)     !== r.entry_date)               patch.entry_date = r.entry_date;
         if ((match.event_time || null)     !== (r.event_time || null))     patch.event_time = r.event_time || null;
         if ((match.event_end_time || null) !== (r.event_end_time || null)) patch.event_end_time = r.event_end_time || null;
         if ((match.text || '')             !== r.text)                     patch.text = r.text;
@@ -310,9 +340,18 @@ function GoogleCalendarButton({ date, existing, onImported }) {
       }
       if (toInsert.length) await bulkCreateEntries(toInsert);
 
+      // Events cancelled in Google used to linger on the day forever. Remove
+      // only rows that CAME from Google and are gone from today's fetch —
+      // hand-written entries (gcal_event_id = null) are never touched.
+      const stale = (existing || []).filter(e => e.gcal_event_id && !seenIds.has(e.gcal_event_id));
+      let removed = 0;
+      if (stale.length) {
+        try { removed = await deleteEntriesByIds(stale.map(e => e.id)); } catch { removed = 0; }
+      }
+
       const added = toInsert.length;
-      if (!added && !updated) { alert('ตารางตรงกับที่มีอยู่แล้ว — ไม่มีอะไรต้องอัปเดต'); return; }
-      alert(`ซิงก์แล้ว · เพิ่ม ${added} · อัปเดต ${updated} รายการ`);
+      if (!added && !updated && !removed) { alert('ตารางตรงกับที่มีอยู่แล้ว — ไม่มีอะไรต้องอัปเดต'); return; }
+      alert(`ซิงก์แล้ว · เพิ่ม ${added} · อัปเดต ${updated} · ลบที่ยกเลิก ${removed} รายการ`);
       onImported();
     } catch (e) {
       const msg = String(e.message || e);

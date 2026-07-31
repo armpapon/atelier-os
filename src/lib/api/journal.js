@@ -128,6 +128,30 @@ export async function updateEntry(id, patch) {
   return data;
 }
 
+/**
+ * Look up entries by Google Calendar event id ACROSS ALL DATES.
+ * The day-scoped reconcile could not see a meeting that had been moved to a
+ * different date, so it inserted a second copy instead of re-dating the first.
+ */
+export async function listEntriesByGcalIds(ids) {
+  if (!supabase || !ids?.length) return [];
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('*')
+    .in('gcal_event_id', [...new Set(ids)]);
+  if (error) throw error;
+  return data || [];
+}
+
+/** Delete several entries at once. Returns how many rows actually went away. */
+export async function deleteEntriesByIds(ids) {
+  if (!supabase || !ids?.length) return 0;
+  const { data, error } = await supabase
+    .from('journal_entries').delete().in('id', ids).select('id');
+  if (error) throw error;
+  return (data || []).length;
+}
+
 export async function deleteEntry(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('journal_entries').delete().eq('id', id);
