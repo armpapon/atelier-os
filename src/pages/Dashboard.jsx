@@ -321,7 +321,6 @@ function TodayHero({
               </button>
               <span style={{
                 flex: 1, fontSize: 14,
-                textDecoration: f.done ? 'line-through' : 'none',
                 color: f.done ? 'var(--ink-3)' : 'var(--ink)',
               }}>{f.title}</span>
               <button onClick={() => onFocusDelete(f.id)} aria-label="ลบ"

@@ -1173,12 +1173,14 @@ export function Journal() {
                           {startHm || ''}
                         </div>
 
-                        {/* events get an accent bar; everything else a check or a glyph */}
-                        {isEvent ? (
-                          <span className={`ebar ${entry.shared_with ? 'ebar--together' : ''}`} />
-                        ) : checkable ? (
+                        {/* Meetings tick like tasks — same circle, so a calendar
+                            item can be marked handled with one click. The circle
+                            carries the event identity the old accent bar did:
+                            accent for a meeting, pink when it's shared "ด้วยกัน". */}
+                        {checkable ? (
                           <button
-                            className={`check ${entry.done ? 'check--on' : ''}`}
+                            className={`check ${entry.done ? 'check--on' : ''}`
+                              + (isEvent ? (entry.shared_with ? ' check--together' : ' check--event') : '')}
                             onClick={() => handleToggle(entry.id, entry.done)}
                             title={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}
                             aria-label={entry.done ? 'ยกเลิก' : 'เสร็จแล้ว'}>
@@ -1346,7 +1348,6 @@ export function Journal() {
                           </button>
                           <span className="habit-row__name" style={{
                             color: done ? 'var(--ink-2)' : 'var(--ink)',
-                            textDecoration: done ? 'line-through' : 'none',
                           }}>{h.name}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>

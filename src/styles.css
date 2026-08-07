@@ -417,7 +417,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
   border: 1.5px solid var(--ink-4); display: flex; align-items: center; justify-content: center;
 }
 .today-item--done .today-item__check { background: var(--amber); border-color: var(--amber); }
-.today-item--done .today-item__text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--ink-4); }
+.today-item--done .today-item__text { color: var(--ink-3); }
 .today-item__text { font-size: 13.5px; }
 .today-item__meta { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); }
 
@@ -579,15 +579,12 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
   font-variant-numeric: tabular-nums;
 }
 .tl-time--now { color: var(--accent); }
-.ebar { width: 3.5px; border-radius: 99px; background: var(--accent); align-self: stretch; margin: 2px 0; opacity: .9; flex-shrink: 0; }
-.ebar--together { background: #E64980; }   /* shared "ด้วยกัน" pink — intentionally fixed */
 .tl-body { flex: 1; min-width: 0; padding-top: 1px; }
 .tl-t { font-size: 15px; font-weight: 500; color: var(--ink); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tl-s { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
-.tl-item--done .tl-t {
-  color: var(--ink-2); text-decoration: line-through;
-  text-decoration-color: var(--ink-3); font-weight: 400;
-}
+/* Done = the filled circle plus a quieter line. No strike-through: the user
+   reads finished items back and a struck line is hard to read. */
+.tl-item--done .tl-t { color: var(--ink-2); font-weight: 400; }
 
 /* Chips */
 .chip {
@@ -606,6 +603,10 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .check:hover { border-color: var(--accent); }
 .check--on { background: var(--accent); border-color: var(--accent); }
+/* A meeting's circle keeps the colour its bar used to carry. */
+.check--event { border-color: var(--accent); }
+.check--together { border-color: #E64980; }
+.check--together.check--on { background: #E64980; border-color: #E64980; }
 /* stroke pairs with .check--on's var(--accent) fill — must be the inverse token,
    not #fff: dark mode's accent is a light gold, so white sat at 2.2:1 on it. */
 .check svg { width: 11px; height: 11px; stroke: var(--text-inverse); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
