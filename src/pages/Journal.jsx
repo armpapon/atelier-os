@@ -636,8 +636,13 @@ function ShopeeOrders() {
 }
 
 const GMAIL_CACHE = 'gmail:waiting';
+// Arm doesn't work client mail; Pat does. Hiding is per device (localStorage)
+// so each of them keeps the layout they actually use. Hidden also means NO
+// inbox scan — the card costs nothing when off.
+const GMAIL_HIDE_KEY = 'journal:hideGmailCard';
 
 function GmailInbox() {
+  const [hidden, setHidden] = useState(() => localStorage.getItem(GMAIL_HIDE_KEY) === '1');
   const [status, setStatus] = useState('loading'); // loading | connected | disconnected
   const [items, setItems] = useState(() => getCache(GMAIL_CACHE)?.data ?? null); // null=not loaded, []=none
   const [lastSync, setLastSync] = useState(() => getCache(GMAIL_CACHE)?.ts ?? null);
@@ -731,6 +736,7 @@ function GmailInbox() {
 
   useEffect(() => {
     let cancelled = false;
+    if (hidden) return undefined; // hidden = no scan at all
     const run = async () => {
       const i = await getIntegration('google').catch(() => null);
       if (cancelled) return;
@@ -742,7 +748,21 @@ function GmailInbox() {
     run();
     window.addEventListener('loop:oauth-connected', run);
     return () => { cancelled = true; window.removeEventListener('loop:oauth-connected', run); };
-  }, [load]);
+  }, [load, hidden]);
+
+  const toggleHidden = (v) => {
+    setHidden(v);
+    try { v ? localStorage.setItem(GMAIL_HIDE_KEY, '1') : localStorage.removeItem(GMAIL_HIDE_KEY); } catch { /* private mode */ }
+  };
+  if (hidden) {
+    // A whisper, not a card — the way back for whoever hid it.
+    return (
+      <button onClick={() => toggleHidden(false)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 4px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--ink-4)' }}>
+        ✉ แสดง "เมลค้างตอบ"
+      </button>
+    );
+  }
 
   // Mark a thread as handled (answered by phone, no reply needed, …).
   // It stays hidden unless the client sends a newer message in that thread.
@@ -759,7 +779,11 @@ function GmailInbox() {
   return (
     <div className="card">
       <div className="card__head">
-        <div className="card__title">เมลค้างตอบ{items && items.length ? ` (${items.length})` : ''}</div>
+        <div className="card__title" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          เมลค้างตอบ{items && items.length ? ` (${items.length})` : ''}
+          <button onClick={() => toggleHidden(true)} title={'ไม่ใช้การ์ดนี้ — ซ่อน (เอากลับมาได้จากลิงก์เล็ก ๆ ที่เดิม)'}
+            style={{ background: 'none', border: 'none', color: 'var(--ink-4)', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px' }}>×</button>
+        </div>
         {status === 'connected' && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {busy && progress
