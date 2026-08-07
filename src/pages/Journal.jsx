@@ -12,6 +12,7 @@ import {
   listEntriesByGcalIds, deleteEntriesByIds,
 } from '../lib/api/journal.js';
 import { startGoogleAuth, getIntegration, callProvider, listGmailDismissed, dismissGmailThread, ALL_GOOGLE_SCOPES } from '../lib/integrations.js';
+import { listShopeeOrders, saveShopeeOrders, setShopeeState } from '../lib/api/shopee.js';
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { AsanaHours } from '../components/AsanaHours.jsx';
 import { SheetTimeline } from '../components/SheetTimeline.jsx';
@@ -454,7 +455,7 @@ function waitingLabel(ms) {
 // (shipped / cancelled / completed) clear it from the queue automatically;
 // "ส่งแล้ว ✓" clears it by hand (stored as shopee:<orderId> in the existing
 // gmail_dismissed table — synced across devices, no migration).
-const SHOPEE_CACHE = 'shopee:toship';
+const SHOPEE_CACHE = 'shopee:toship2'; // v4.12 row shape — old key self-discards
 const SHOPEE_SENDER = /@(?:mail\.)?shopee\.(?:co\.th|com)$/i;
 // Subjects that mean "this order needs shipping" vs "this order left the queue".
 const SHOPEE_OPEN = /ถูกยืนยันแล้ว|คำสั่งซื้อใหม่|ได้ชำระเงิน|ชำระเงินแล้ว|กรุณาจัดส่ง|พร้อมจัดส่ง/;
@@ -469,123 +470,161 @@ function parseShopeeSubject(subject = '') {
   return null; // other order chatter (e.g. buyer messages) — not a queue event
 }
 
+// Scan the connected Gmail for Shopee order mail → latest state per order id.
+// Returns null when Gmail isn't connected (nothing to scan with).
+async function scanShopeeMail() {
+  const integ = await getIntegration('google').catch(() => null);
+  if (!(integ && (integ.scope || '').includes('gmail'))) return null;
+  const params = new URLSearchParams({
+    q: 'from:shopee subject:คำสั่งซื้อ newer_than:30d', maxResults: '100',
+  });
+  const list = await callProvider('google', {
+    url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages?' + params,
+  });
+  if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
+  const ids = (list.messages || []).map(m => m.id);
+  const BATCH = 15;
+  const msgs = [];
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const wave = await Promise.all(ids.slice(i, i + BATCH).map(id => {
+      const p = new URLSearchParams({ format: 'metadata' });
+      p.append('metadataHeaders', 'From');
+      p.append('metadataHeaders', 'Subject');
+      return callProvider('google', {
+        url: `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?${p}`,
+      }).catch(() => null);
+    }));
+    msgs.push(...wave.filter(Boolean));
+  }
+  const orders = new Map();
+  for (const m of msgs) {
+    const from = parseFrom(gmailHeader(m, 'From'));
+    if (!SHOPEE_SENDER.test(from.email || '')) continue;
+    const parsed = parseShopeeSubject(gmailHeader(m, 'Subject'));
+    if (!parsed) continue;
+    const ts = Number(m.internalDate) || 0;
+    const cur = orders.get(parsed.order);
+    if (!cur || ts > cur.ts) orders.set(parsed.order, { ...parsed, ts, threadId: m.threadId || m.id });
+  }
+  return [...orders.values()];
+}
+
 function ShopeeOrders() {
-  const [status, setStatus] = useState('loading');
-  const [items, setItems] = useState(() => getCache(SHOPEE_CACHE)?.data ?? null);
+  // mode: 'shared' = the Supabase queue both partners see (migration run);
+  //       'local'  = v4.11 behaviour, this device's mail + dismiss marks only.
+  const [mode, setMode] = useState(null);
+  const [queue, setQueue] = useState(() => getCache(SHOPEE_CACHE)?.data ?? null);
   const [lastSync, setLastSync] = useState(() => getCache(SHOPEE_CACHE)?.ts ?? null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  // Owner side: push what the mail says into the shared queue. Partner-side
+  // scans find no shop mail and RLS blocks their inserts — both harmless.
+  const syncSharedFromMail = useCallback(async () => {
+    const scanned = await scanShopeeMail().catch(() => null);
+    if (!scanned) return;
+    const legacy = new Map(
+      (await listGmailDismissed().catch(() => [])).map(d => [d.thread_id, Number(d.dismissed_ts)]),
+    );
+    const db = new Map((await listShopeeOrders(true)).map(r => [r.order_id, r]));
+    const inserts = [];
+    for (const o of scanned) {
+      const cur = db.get(o.order);
+      if (!cur) {
+        if (o.state === 'closed') continue;         // never queued — nothing to record
+        const dts = legacy.get(`shopee:${o.order}`); // v4.11 device-local ticks carry over
+        inserts.push({
+          order_id: o.order, buyer: o.buyer, label: o.label,
+          state: dts && o.ts <= dts ? 'shipped' : 'open',
+          mail_ts: new Date(o.ts).toISOString(), thread_id: o.threadId,
+        });
+      } else if (o.state === 'closed') {
+        if (cur.state !== 'cleared') await setShopeeState(o.order, 'cleared').catch(() => {});
+      } else if (cur.state === 'shipped' && cur.shipped_at && o.ts > +new Date(cur.shipped_at)) {
+        // a NEWER open mail than the tick — Shopee reopened it, resurface
+        await setShopeeState(o.order, 'open').catch(() => {});
+      }
+    }
+    if (inserts.length) await saveShopeeOrders(inserts).catch(() => {});
+  }, []);
+
+  // Local fallback (migration not run yet): exactly the previous behaviour.
+  const loadLocal = useCallback(async () => {
+    const scanned = await scanShopeeMail().catch(() => null);
+    if (!scanned) { setQueue([]); return; }
+    const dismissed = new Map(
+      (await listGmailDismissed().catch(() => [])).map(d => [d.thread_id, Number(d.dismissed_ts)]),
+    );
+    const open = scanned
+      .filter(o => o.state === 'open')
+      .filter(o => { const dts = dismissed.get(`shopee:${o.order}`); return !(dts && o.ts <= dts); })
+      .sort((a, b) => a.ts - b.ts)
+      .map(o => ({ order_id: o.order, buyer: o.buyer, label: o.label, mail_ts: new Date(o.ts).toISOString(), thread_id: o.threadId }));
+    setQueue(open); setCache(SHOPEE_CACHE, open);
+  }, []);
+
+  const refresh = useCallback(async (withMailSync) => {
     setBusy(true);
     try {
-      const dismissed = new Map(
-        (await listGmailDismissed().catch(() => [])).map(d => [d.thread_id, Number(d.dismissed_ts)]),
-      );
-      // Targeted search — Shopee order mail only, recent window. Subject match
-      // in Gmail search is loose; the parser re-verifies sender + order id.
-      const params = new URLSearchParams({
-        q: 'from:shopee subject:คำสั่งซื้อ newer_than:30d', maxResults: '100',
-      });
-      const list = await callProvider('google', {
-        url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages?' + params,
-      });
-      if (list?.error) throw new Error(list.error.message || JSON.stringify(list.error));
-      const ids = (list.messages || []).map(m => m.id);
-      const BATCH = 15;
-      const msgs = [];
-      for (let i = 0; i < ids.length; i += BATCH) {
-        const wave = await Promise.all(ids.slice(i, i + BATCH).map(id => {
-          const p = new URLSearchParams({ format: 'metadata' });
-          p.append('metadataHeaders', 'From');
-          p.append('metadataHeaders', 'Subject');
-          return callProvider('google', {
-            url: `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?${p}`,
-          }).catch(() => null);
-        }));
-        msgs.push(...wave.filter(Boolean));
+      try {
+        if (withMailSync) await syncSharedFromMail();
+        const rows = await listShopeeOrders();
+        setMode('shared');
+        setQueue(rows); setCache(SHOPEE_CACHE, rows);
+      } catch {
+        // table missing / RLS says no → device-local mode, nothing breaks
+        setMode('local');
+        await loadLocal();
       }
-      // Latest state per order id wins.
-      const orders = new Map();
-      for (const m of msgs) {
-        const from = parseFrom(gmailHeader(m, 'From'));
-        if (!SHOPEE_SENDER.test(from.email || '')) continue;
-        const parsed = parseShopeeSubject(gmailHeader(m, 'Subject'));
-        if (!parsed) continue;
-        const ts = Number(m.internalDate) || 0;
-        const cur = orders.get(parsed.order);
-        if (!cur || ts > cur.ts) {
-          orders.set(parsed.order, { ...parsed, ts, threadId: m.threadId || m.id });
-        }
-      }
-      const open = [...orders.values()]
-        .filter(o => o.state === 'open')
-        .filter(o => {
-          const dts = dismissed.get(`shopee:${o.order}`);
-          return !(dts && o.ts <= dts); // re-surface only if a newer open mail arrives
-        })
-        .sort((a, b) => a.ts - b.ts); // oldest first — ship the overdue ones first
-      setItems(open);
-      setCache(SHOPEE_CACHE, open);
       setLastSync(Date.now());
-    } catch (e) {
-      const msg = String(e.message || e);
-      if (msg.includes('not_connected')) setStatus('disconnected');
-      else alert('ดึงออเดอร์ Shopee ไม่สำเร็จ: ' + msg);
     } finally { setBusy(false); }
-  }, []);
+  }, [syncSharedFromMail, loadLocal]);
 
   useEffect(() => {
     let cancelled = false;
-    const run = async () => {
-      const i = await getIntegration('google').catch(() => null);
-      if (cancelled) return;
-      const connected = !!(i && (i.scope || '').includes('gmail'));
-      setStatus(connected ? 'connected' : 'disconnected');
-      if (connected && cacheAge(SHOPEE_CACHE) > STALE_MS) load();
-    };
+    const run = () => { if (!cancelled) refresh(cacheAge(SHOPEE_CACHE) > STALE_MS); };
     run();
     window.addEventListener('loop:oauth-connected', run);
     return () => { cancelled = true; window.removeEventListener('loop:oauth-connected', run); };
-  }, [load]);
+  }, [refresh]);
 
   const handleShipped = async (e, o) => {
     e.preventDefault(); e.stopPropagation();
     try {
-      await dismissGmailThread(`shopee:${o.order}`, o.ts);
-      setItems(prev => (prev || []).filter(x => x.order !== o.order));
+      if (mode === 'shared') await setShopeeState(o.order_id, 'shipped');
+      else await dismissGmailThread(`shopee:${o.order_id}`, +new Date(o.mail_ts));
+      setQueue(prev => (prev || []).filter(x => x.order_id !== o.order_id));
     } catch (err) { alert('บันทึกไม่สำเร็จ: ' + (err.message || err)); }
   };
 
-  // Fully quiet when the shop has nothing waiting — the card only appears
-  // when there is something to ship (or Gmail isn't connected yet).
-  if (status !== 'connected' || !items || items.length === 0) return null;
+  if (!queue || queue.length === 0) return null;
 
-  const dayOld = o => Date.now() - o.ts > 86400000;
+  const dayOld = o => Date.now() - +new Date(o.mail_ts) > 86400000;
   return (
     <div className="card">
       <div className="card__head">
-        <div className="card__title">📦 Shopee รอจัดส่ง ({items.length})</div>
+        <div className="card__title">📦 Shopee รอจัดส่ง ({queue.length})</div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <a href="https://seller.shopee.co.th/portal/sale/order?type=toship" target="_blank" rel="noopener noreferrer"
             style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none' }}>เปิด Seller Centre ↗</a>
-          {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-          <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
+          {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>
+            {mode === 'shared' ? 'คิวร่วม · ' : ''}ซิงก์ {fmtSyncClock(lastSync)}</span>}
+          <button onClick={() => refresh(true)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
             style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {items.map(o => (
-          <a key={o.order} href={`https://mail.google.com/mail/u/0/#inbox/${o.threadId}`}
+        {queue.map(o => (
+          <a key={o.order_id} href={o.thread_id ? `https://mail.google.com/mail/u/0/#inbox/${o.thread_id}` : 'https://seller.shopee.co.th/portal/sale/order?type=toship'}
             target="_blank" rel="noopener noreferrer"
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 'var(--r-sm)', border: `1px solid ${dayOld(o) ? 'var(--amber)' : 'var(--line)'}`, background: 'var(--surface-2)', textDecoration: 'none' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink)' }}>#{o.order}</div>
+              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink)' }}>#{o.order_id}</div>
               <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>
-                {o.label}{o.buyer ? ` · ผู้ซื้อ ${o.buyer}` : ''} · {waitingLabel(o.ts)}ที่แล้ว
+                {o.label}{o.buyer ? ` · ผู้ซื้อ ${o.buyer}` : ''} · {waitingLabel(+new Date(o.mail_ts))}ที่แล้ว
               </div>
             </div>
             <button onClick={e => handleShipped(e, o)}
-              title="ส่งของแล้ว — เอาออกจากคิว"
+              title="ส่งของแล้ว — เอาออกจากคิวของทั้งคู่"
               style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 11.5, padding: '4px 10px', whiteSpace: 'nowrap', flexShrink: 0 }}>
               ส่งแล้ว ✓
             </button>
