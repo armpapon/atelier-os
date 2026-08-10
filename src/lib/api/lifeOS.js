@@ -3,6 +3,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { supabase } from '../supabase.js';
 import { todayStr, toLocalYMD } from '../dates.js';
+import {
+  currentYearMonth, getMonthBounds, isTransfer, financeMonthSummary,
+} from './finance.js';
 
 async function getUser() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -173,19 +176,43 @@ export async function deleteMilestone(id) {
 /** Get current month finance summary across both scopes */
 export async function getFinancePulse() {
   if (!supabase) return { income: 0, expense: 0, net: 0, savingsRate: 0 };
-  const now = new Date();
-  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const start = `${ym}-01`;
-  const nextM = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const end = nextM.toISOString().split('T')[0];
+  // Bangkok month, not UTC: bare 'YYYY-MM-01' used to be read as UTC midnight
+  // (07:00 Bangkok), stealing the first 7 hours of the month and borrowing
+  // the last 7 of the previous one. Also: scope transfers are not P&L.
+  const ym = currentYearMonth();
 
-  const { data, error } = await supabase
-    .from('transactions').select('amount, scope')
-    .gte('occurred_at', start).lt('occurred_at', end);
-  if (error) throw error;
+  // Preferred: server-side aggregate (transfer-excluded, Bangkok-bucketed,
+  // immune to the PostgREST 1000-row cap). Null = RPC not installed yet.
+  const summary = await financeMonthSummary({ scope: null, fromYm: ym, toYm: ym })
+    .catch(() => null);
+  if (summary) {
+    const row = summary.find(r => r.ym === ym) || { income: 0, expense: 0 };
+    const net = row.income - row.expense;
+    return {
+      income: row.income, expense: row.expense, net,
+      savingsRate: row.income > 0 ? (net / row.income) * 100 : 0,
+    };
+  }
+
+  // Fallback: paginated client-side sum with the same Bangkok bounds.
+  const { startTs, endTs } = getMonthBounds(ym);
+  const PAGE = 1000;
+  const rows = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('transactions').select('amount, type')
+      .gte('occurred_at', startTs).lt('occurred_at', endTs)
+      .order('occurred_at', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+  }
 
   let income = 0, expense = 0;
-  for (const t of (data || [])) {
+  for (const t of rows) {
+    if (isTransfer(t)) continue;
     const amt = Number(t.amount) || 0;
     if (amt > 0) income += amt;
     else expense += Math.abs(amt);

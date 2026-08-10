@@ -38,6 +38,56 @@ export function bangkokMonth(ts) {
   return bangkokDate(ts).substring(0, 7);
 }
 
+/** A timestamp → its Bangkok wall-clock time, `HH:mm:ss` (empty if unreadable). */
+export function bangkokTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString('en-GB', { timeZone: BANGKOK, hour12: false });
+}
+
+// ── RPC / schema fallbacks ───────────────────────────────────────────────────
+// SQL migrations are run by hand in the Supabase SQL Editor, so the deployed
+// app can never assume a function or column exists yet. Every RPC call site
+// checks these and falls back to the legacy client-side path.
+
+/** Postgres 42883 / PostgREST PGRST202 = function does not exist (yet). */
+export function isRpcMissing(err) {
+  if (!err) return false;
+  const code = err.code || '';
+  const msg  = String(err.message || '');
+  return code === '42883' || code === 'PGRST202'
+    || /could not find the function|function .* does not exist/i.test(msg);
+}
+
+/** Postgres 42703 / PostgREST PGRST204 = column does not exist (yet). */
+export function isColumnMissing(err) {
+  if (!err) return false;
+  const code = err.code || '';
+  const msg  = String(err.message || '');
+  return code === '42703' || code === 'PGRST204'
+    || /could not find the .* column|column .* does not exist/i.test(msg);
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+// PostgREST silently caps a response at max-rows (default 1000) even when
+// .limit() asks for more — a >1000-row month under-counted every total.
+// Fetch in pages until a short page (or the caller's cap) instead.
+const PAGE_SIZE = 1000;
+
+async function fetchAllPages(buildQuery, limit = Infinity) {
+  const all = [];
+  for (let from = 0; all.length < limit; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, limit) - 1;
+    const { data, error } = await buildQuery().range(from, to);
+    if (error) throw error;
+    if (!data?.length) break;
+    all.push(...data);
+    if (data.length < (to - from + 1)) break;   // short page = no more rows
+  }
+  return all;
+}
+
 // ── CSV Parser (KBank Make + generic Thai bank CSV) ──────────────────────────
 
 /** Pockets that belong to family scope */
@@ -316,19 +366,19 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
 // ── Transactions ─────────────────────────────────────────────────────────────
 export async function listTransactions({ limit = 200, yearMonth, scope } = {}) {
   if (!supabase) return [];
-  let q = supabase
-    .from('transactions')
-    .select('*')
-    .order('occurred_at', { ascending: false })
-    .limit(limit);
-  if (yearMonth) {
-    const { startTs, endTs } = getMonthBounds(yearMonth);
-    q = q.gte('occurred_at', startTs).lt('occurred_at', endTs);
-  }
-  if (scope) q = q.eq('scope', scope);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data;
+  const buildQuery = () => {
+    let q = supabase
+      .from('transactions')
+      .select('*')
+      .order('occurred_at', { ascending: false });
+    if (yearMonth) {
+      const { startTs, endTs } = getMonthBounds(yearMonth);
+      q = q.gte('occurred_at', startTs).lt('occurred_at', endTs);
+    }
+    if (scope) q = q.eq('scope', scope);
+    return q;
+  };
+  return fetchAllPages(buildQuery, limit);
 }
 
 export async function createTransaction(input) {
@@ -425,19 +475,46 @@ export async function deleteTransaction(id) {
 }
 
 /** List transactions in an arbitrary date range — used by analytics */
-export async function listTransactionsRange({ startDate, endDate, scope, limit = 5000 } = {}) {
+export async function listTransactionsRange({ startDate, endDate, scope, limit = 50000 } = {}) {
   if (!supabase) return [];
-  let q = supabase
-    .from('transactions')
-    .select('*')
-    .gte('occurred_at', startDate)
-    .lt('occurred_at', endDate)
-    .order('occurred_at', { ascending: false })
-    .limit(limit);
-  if (scope) q = q.eq('scope', scope);
-  const { data, error } = await q;
-  if (error) throw error;
-  return data || [];
+  const buildQuery = () => {
+    let q = supabase
+      .from('transactions')
+      .select('*')
+      .gte('occurred_at', startDate)
+      .lt('occurred_at', endDate)
+      .order('occurred_at', { ascending: false });
+    if (scope) q = q.eq('scope', scope);
+    return q;
+  };
+  return fetchAllPages(buildQuery, limit);
+}
+
+/**
+ * Server-side month totals (income/expense per Bangkok month, transfers
+ * excluded) via the finance_month_summary RPC. Immune to the PostgREST
+ * max-rows cap. Returns null when the RPC is not installed yet — callers
+ * must fall back to paginated client aggregation.
+ */
+export async function financeMonthSummary({ scope = null, fromYm, toYm } = {}) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('finance_month_summary', {
+    p_scope: scope, p_from: fromYm, p_to: toYm,
+  });
+  if (error) {
+    if (isRpcMissing(error)) return null;
+    throw error;
+  }
+  return (data || []).map(r => {
+    const income  = Number(r.income)  || 0;
+    const expense = Number(r.expense) || 0;
+    return {
+      ym: r.ym, income, expense,
+      net: income - expense,
+      savingsRate: income > 0 ? ((income - expense) / income) * 100 : 0,
+      count: Number(r.count) || 0,
+    };
+  });
 }
 
 // ── Analytics aggregators (pure client-side) ─────────────────────────────────
@@ -581,6 +658,80 @@ export async function deleteAccount(id) {
   if (error) throw error;
 }
 
+// ── Account lifecycle (archive · reassign · balance anchor) ──────────────────
+// Hard-deleting an account orphaned its transaction history (account_id →
+// NULL via FK) and destroyed the balance. Archive = is_active:false — every
+// reader already filters on is_active, so the account disappears from
+// pickers while its ledger rows keep their account_id.
+
+/** Hide an account without destroying history. */
+export async function archiveAccount(id) {
+  return updateAccount(id, { is_active: false });
+}
+
+/** Move ALL transactions from one account to another (before archiving). */
+export async function reassignTransactionsAccount(fromAccountId, toAccountId) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const { error } = await supabase
+    .from('transactions')
+    .update({ account_id: toAccountId })
+    .eq('account_id', fromAccountId);
+  if (error) throw error;
+}
+
+/**
+ * Set an account's balance as an ANCHOR: stores the balance + the moment it
+ * was true (balance_anchor_at). Displayed balance is then
+ *   anchor + SUM(ledger transactions after the anchor)
+ * If migration_add_account_archive.sql has not been run, falls back to a
+ * plain balance update (old snapshot behaviour).
+ */
+export async function setAccountBalanceAnchor(id, balance) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const anchorAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('accounts')
+    .update({ balance, balance_anchor_at: anchorAt })
+    .eq('id', id).select().single();
+  if (!error) return data;
+  if (!isColumnMissing(error)) throw error;
+  return updateAccount(id, { balance });
+}
+
+/**
+ * Overlay effective balances onto a list of accounts:
+ *   effective = stored balance + SUM(transactions after balance_anchor_at)
+ * Accounts without an anchor (or before the migration) are returned as-is.
+ * `_stored_balance` keeps the raw anchor value for the edit form.
+ */
+export async function applyEffectiveBalances(accounts) {
+  const list = accounts || [];
+  if (!supabase) return list;
+  const anchored = list.filter(a => a.balance_anchor_at);
+  if (!anchored.length) return list;
+
+  const minAnchor = anchored.map(a => a.balance_anchor_at).sort()[0];
+  const ids = anchored.map(a => a.id);
+  const rows = await fetchAllPages(() => supabase
+    .from('transactions')
+    .select('account_id, amount, occurred_at')
+    .in('account_id', ids)
+    .gt('occurred_at', minAnchor)
+    .order('occurred_at', { ascending: false }));
+
+  const anchorById = new Map(anchored.map(a => [a.id, a.balance_anchor_at]));
+  const deltaById = new Map();
+  for (const t of rows) {
+    const anchor = anchorById.get(t.account_id);
+    if (!anchor || !(new Date(t.occurred_at) > new Date(anchor))) continue;
+    deltaById.set(t.account_id, (deltaById.get(t.account_id) || 0) + Number(t.amount || 0));
+  }
+
+  return list.map(a => a.balance_anchor_at
+    ? { ...a, _stored_balance: Number(a.balance || 0), balance: Number(a.balance || 0) + (deltaById.get(a.id) || 0) }
+    : a);
+}
+
 // ── Account auto-create from Make pocket import ──────────────────────────────
 
 /**
@@ -710,17 +861,45 @@ function txnKey(t) {
 /** Get keys of existing transactions in a date range for dedup. */
 export async function getExistingTxnKeys({ startDate, endDate, scope } = {}) {
   if (!supabase) return new Set();
-  let q = supabase.from('transactions')
-    .select('occurred_at, amount, title, scope')
-    .gte('occurred_at', startDate)
-    .lt('occurred_at', endDate);
-  if (scope) q = q.eq('scope', scope);
-  const { data, error } = await q;
-  if (error) throw error;
-  return new Set((data || []).map(txnKey));
+  const buildQuery = () => {
+    let q = supabase.from('transactions')
+      .select('occurred_at, amount, title, scope')
+      .gte('occurred_at', startDate)
+      .lt('occurred_at', endDate)
+      .order('occurred_at', { ascending: false });
+    if (scope) q = q.eq('scope', scope);
+    return q;
+  };
+  const data = await fetchAllPages(buildQuery);
+  return new Set(data.map(txnKey));
 }
 
 export { txnKey };
+
+/**
+ * Atomic wipe+insert of one scope+month batch via the import_transactions
+ * RPC (single transaction + per-user/month advisory lock + server-side
+ * dedup under the lock). Returns the inserted row count.
+ * Throws the raw error when the RPC is missing — the importer catches it
+ * with isRpcMissing() and falls back to the legacy multi-call path.
+ */
+export async function importTransactionsBatch({ scope, month, wipe, dedup, rows }) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const payload = rows.map(r => ({
+    title:       r.title,
+    occurred_at: r.occurred_at,
+    amount:      r.amount,
+    category:    r.category ?? null,
+    type:        r.type ?? null,
+    note:        r.note ?? null,
+    account_id:  r.account_id ?? null,
+  }));
+  const { data, error } = await supabase.rpc('import_transactions', {
+    p_scope: scope, p_month: month, p_wipe: !!wipe, p_rows: payload, p_dedup: !!dedup,
+  });
+  if (error) throw error;
+  return Number(data) || 0;
+}
 
 /** Delete all transactions in a month (used for clean re-import). */
 export async function deleteTransactionsInMonth(yearMonth, scope) {
@@ -746,13 +925,20 @@ export async function upsertBudget({ category, monthly_limit, yearMonth, scope =
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
-  const { data, error } = await supabase
+  const row = { user_id: user.id, category, monthly_limit, month: `${yearMonth}-01`, scope };
+  // Key includes scope (migration_fix_budget_scope_key.sql) so a family budget
+  // can no longer overwrite the personal one for the same category+month.
+  let { data, error } = await supabase
     .from('budgets')
-    .upsert(
-      { user_id: user.id, category, monthly_limit, month: `${yearMonth}-01`, scope },
-      { onConflict: 'user_id,category,month' }
-    )
+    .upsert(row, { onConflict: 'user_id,scope,category,month' })
     .select().single();
+  if (error && (error.code === '42P10' || /no unique|exclusion constraint/i.test(error.message || ''))) {
+    // Migration not run yet — fall back to the old scope-less key.
+    ({ data, error } = await supabase
+      .from('budgets')
+      .upsert(row, { onConflict: 'user_id,category,month' })
+      .select().single());
+  }
   if (error) throw error;
   return data;
 }
@@ -857,6 +1043,19 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
 
+  // Preferred path: one transaction on the server (migration_add_debt_rpc.sql)
+  // — payment row + months_paid counter can never desync. Falls back to the
+  // legacy guarded multi-call path while the RPC is not installed.
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('debt_mark_paid', {
+    p_debt_id: debt_id,
+    p_pay_month: pay_month,
+    p_amount: amount_paid ?? null,
+    p_transaction_id: transaction_id || null,
+    p_notes: notes || null,
+  });
+  if (!rpcErr) return { debt_id, pay_month, months_paid: Number(rpcData) };
+  if (!isRpcMissing(rpcErr)) throw rpcErr;
+
   // ── BUG FIX (v0.20) ─────────────────────────────────────────────────────
   // Previously this function COUNT'd all debt_payments and overwrote
   // months_paid — which destroyed the user's initial "already paid X" value
@@ -911,6 +1110,12 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
 
 export async function deleteDebtPayment(id) {
   if (!supabase) throw new Error('Supabase not configured');
+
+  // Preferred path: transactional decrement via RPC (see recordDebtPayment).
+  const { error: rpcErr } = await supabase.rpc('debt_unmark_paid', { p_payment_id: id });
+  if (!rpcErr) return;
+  if (!isRpcMissing(rpcErr)) throw rpcErr;
+
   const { data: row } = await supabase.from('debt_payments').select('debt_id').eq('id', id).single();
   const debtId = row?.debt_id;
   const { error } = await supabase.from('debt_payments').delete().eq('id', id);
