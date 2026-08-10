@@ -27,17 +27,21 @@ const RECURRING_STATUS = {
   upcoming: { label: 'อนาคต',    tone: 'neutral', icon: '…' },
 };
 
-export function RecurringTracker({ recurring, transactions, yearMonth, scope, onChange }) {
+export function RecurringTracker({ recurring, transactions, historyTxns, yearMonth, scope, onChange }) {
   const [adding, setAdding]     = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
 
   const suggestions = useMemo(() => {
-    if (!transactions?.length) return [];
+    // The detector needs a txn appearing in 2+ DIFFERENT months — it must be
+    // fed the multi-month history window (historyTxns), not the single
+    // viewed month, or suggestions can never trigger.
+    const source = historyTxns?.length ? historyTxns : transactions;
+    if (!source?.length) return [];
     const existingTitles = new Set(recurring.map(r => (r.vendor || r.name || '').toLowerCase()));
-    return detectRecurringFromTransactions(transactions)
+    return detectRecurringFromTransactions(source)
       .filter(s => !existingTitles.has((s.title || '').toLowerCase()))
       .slice(0, 8);
-  }, [transactions, recurring]);
+  }, [historyTxns, transactions, recurring]);
 
   const statusFor = (r) => RECURRING_STATUS[checkRecurringStatus(r, transactions, yearMonth).status] || RECURRING_STATUS.upcoming;
 

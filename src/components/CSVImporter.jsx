@@ -1,9 +1,9 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import {
   parseCSV, detectKBankColumns, mapRowsToTransactions,
   bulkCreateTransactions, isMakeFormat,
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
-  getExistingTxnKeys, txnKey, deleteTransactionsInMonth,
+  getExistingTxnKeyCounts, multisetDedupRows, txnKey,
   suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments,
   getMonthBounds, bangkokMonth, bangkokDate,
   importTransactionsBatch, isRpcMissing, listTransactionsRange,
@@ -152,12 +152,39 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     [preview, makeFmt]
   );
 
-  // Debt payment auto-link suggestions
+  // Debt payment auto-link suggestions.
+  // Real existing payments for the preview's months — passing [] used to
+  // re-offer months that were already recorded (double increment risk).
+  const [existingPayments, setExistingPayments] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!preview.length || !debts.length) { if (alive) setExistingPayments([]); return; }
+      const yms = [...new Set(preview.map(r => bangkokMonth(r.occurred_at)).filter(Boolean))].sort();
+      if (!yms.length) { if (alive) setExistingPayments([]); return; }
+      try {
+        const pays = await listDebtPayments({
+          startMonth: `${yms[0]}-01`, endMonth: `${yms[yms.length - 1]}-01`,
+        });
+        if (alive) setExistingPayments(pays || []);
+      } catch { if (alive) setExistingPayments([]); }
+    })();
+    return () => { alive = false; };
+  }, [preview, debts]);
+
   const debtSuggestions = useMemo(
-    () => suggestDebtPaymentLinks(preview, debts, []),
-    [preview, debts]
+    () => suggestDebtPaymentLinks(preview, debts, existingPayments),
+    [preview, debts, existingPayments]
   );
   const [skippedSuggestions, setSkippedSuggestions] = useState(new Set());
+  // 60–79 = "น่าจะใช่" only — auto-record needs the user's explicit tick, so
+  // sub-80 suggestions start UNchecked (≥80 start checked).
+  useEffect(() => {
+    setSkippedSuggestions(new Set(
+      debtSuggestions.filter(s => s.confidence < 80)
+        .map(s => `${s.txn._rowIdx}|${s.debt.id}|${s.ym}`)
+    ));
+  }, [debtSuggestions]);
   const activeSuggestions = debtSuggestions.filter(s =>
     !skippedSuggestions.has(`${s.txn._rowIdx}|${s.debt.id}|${s.ym}`)
   );
@@ -222,30 +249,34 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         if (!isRpcMissing(err)) throw err;
       }
 
+      let wipeExecuted = usedRpc && wipeMonth;
       if (!usedRpc) {
         // ── Legacy path (RPC not installed yet) ──────────────────────────
-        // 3a: optionally wipe existing transactions in these months
-        if (wipeMonth && monthArr.length) {
-          const scopes = new Set(selectedRows.map(r => r.scope));
-          await Promise.all(
-            monthArr.flatMap(ym =>
-              [...scopes].map(sc => deleteTransactionsInMonth(ym, sc))
-            )
+        // 3a: NEVER wipe outside the RPC transaction. Deleting a month and
+        // then failing to insert loses data with no undo — so wipe mode is
+        // REFUSED here and downgraded to append + dedup (no deletes).
+        if (wipeMonth) {
+          alert(
+            'โหมดแทนที่ทั้งเดือนต้องรันไฟล์ SQL migration_add_import_rpc.sql ก่อน — ' +
+            'ครั้งนี้จะใช้โหมดเพิ่ม + ข้ามรายการซ้ำแทน (ไม่มีการลบข้อมูล)'
           );
         }
+        const effDedup = dedup || wipeMonth;   // downgraded wipe forces dedup
 
-        // 3b: dedup against existing transactions
+        // 3b: MULTISET dedup against existing transactions — same semantics
+        // as the RPC: keep max(0, batch_count − existing_count) per key, so
+        // two legitimate identical rows are never collapsed.
         let toImport = cleanAll;
-        if (dedup && !wipeMonth && monthArr.length) {
+        if (effDedup && monthArr.length) {
           const { startTs: first } = getMonthBounds(monthArr[0]);
           const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
           const scopesNeeded = [...new Set(cleanAll.map(r => r.scope))];
-          const allKeys = new Set();
+          const counts = new Map();
           for (const sc of scopesNeeded) {
-            const keys = await getExistingTxnKeys({ startDate: first, endDate: lastEnd, scope: sc });
-            keys.forEach(k => allKeys.add(k + '|' + sc));
+            const c = await getExistingTxnKeyCounts({ startDate: first, endDate: lastEnd, scope: sc });
+            c.forEach((v, k) => counts.set(`${k}|${sc}`, v));
           }
-          toImport = cleanAll.filter(r => !allKeys.has(txnKey(r) + '|' + r.scope));
+          toImport = multisetDedupRows(cleanAll, counts, r => `${txnKey(r)}|${r.scope}`);
           skipped = cleanAll.length - toImport.length;
         }
 
@@ -290,7 +321,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       setImportStats({
         inserted, skipped, debtLinked,
         accountsCreated: pocketIdMap.size,
-        wipedMonths: wipeMonth ? monthArr.length : 0,
+        wipedMonths: wipeExecuted ? monthArr.length : 0,
       });
       setStep('done');
       onImported?.();

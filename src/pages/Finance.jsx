@@ -248,6 +248,10 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
   const [error, setError]   = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const isIncome = form.type === 'income';
+  // Transfer legs are sign- and category-locked: editing the title/note/date
+  // of a scope transfer must never turn it into income/expense (that would
+  // corrupt P&L on BOTH scopes).
+  const isTransferEdit = isEdit && isTransfer(initialTxn);
 
   // Popup is now only used for + เพิ่มใหม่ or ⋯ full edit.
   // Auto-focus first input + close on Esc.
@@ -265,10 +269,30 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
     if (!form.title.trim() || !form.amount) return;
     setSaving(true); setError(null);
     try {
-      const amount = Number(form.amount) * (isIncome ? 1 : -1);
+      // Sign rule (audit round 2):
+      //  - NEW rows: sign follows the picked type (income ⇒ +, else −).
+      //  - EDITS where the user did NOT change the type: preserve the row's
+      //    original sign — a note edit on a positive non-'income' row (e.g.
+      //    a CSV credit or a transfer +leg) must not flip it negative.
+      //  - EDITS with an explicit type change: sign follows the new type.
+      //  - Transfer rows: sign, type and category are locked to the original.
+      const abs = Math.abs(Number(form.amount));
+      const typeChanged = isEdit && form.type !== initialTxn.type;
+      let amount;
+      if (isTransferEdit) {
+        amount = abs * (Number(initialTxn.amount) < 0 ? -1 : 1);
+      } else if (isEdit && !typeChanged) {
+        amount = abs * (Number(initialTxn.amount) < 0 ? -1 : 1);
+      } else {
+        amount = abs * (isIncome ? 1 : -1);
+      }
       const payload = {
-        title: form.title.trim(), amount, type: form.type,
-        category: categories.find(c => c.id === form.type)?.label || form.type,
+        title: form.title.trim(), amount,
+        // Never rewrite 'โอนภายใน' → 'transfer': the transfer category/type
+        // pair is preserved verbatim on transfer rows.
+        type:     isTransferEdit ? initialTxn.type     : form.type,
+        category: isTransferEdit ? initialTxn.category
+                 : (categories.find(c => c.id === form.type)?.label || form.type),
         account_id: form.account_id || null,
         note: form.note.trim() || null,
         // Pin the Bangkok offset. A bare 'YYYY-MM-DD' is read by Postgres as
@@ -341,6 +365,16 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
         </div>
         <div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
+          {isTransferEdit ? (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', borderRadius: 'var(--radius-btn)',
+              background: 'var(--fill)', color: 'var(--text-secondary)',
+              fontSize: 12.5, fontWeight: 500,
+            }}>
+              🔒 โอนภายใน — เปลี่ยนประเภท/เครื่องหมายไม่ได้ (กันยอดสอง scope เพี้ยน)
+            </div>
+          ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {categories.map(c => (
               <button key={c.id} type="button" onClick={() => set('type', c.id)}
@@ -364,13 +398,18 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
               </button>
             )}
           </div>
+          )}
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รายการ</span>
           <input ref={firstInputRef} className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="เช่น ข้าวกลางวัน, ค่าน้ำมัน" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>จำนวน (บาท) {isIncome ? '— รายรับ (+)' : '— รายจ่าย (-)'}</span>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+            จำนวน (บาท) {isTransferEdit
+              ? (Number(initialTxn.amount) < 0 ? '— โอนออก (-)' : '— รับโอน (+)')
+              : (isIncome ? '— รายรับ (+)' : '— รายจ่าย (-)')}
+          </span>
           <input className="input" type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0.00" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -493,7 +532,8 @@ function AccountModal({ scope, initial = null, accounts = [], onSave, onClose })
           <input className="input" type="number" step="0.01" value={form.balance} onChange={e => setForm(f => ({...f, balance: e.target.value}))} placeholder="0" />
           {isEdit && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              ใส่ยอดจริง ณ ตอนนี้ — ระบบจะจำเวลาไว้ แล้วบวก/ลบรายการที่บันทึกหลังจากนี้ให้อัตโนมัติ
+              ใส่ยอดจริง ณ ตอนนี้ — ยอดที่โชว์ = ยอดนี้ + รายการที่ลงวันที่หลังจากนี้
+              (รายการย้อนหลังก่อนจุดนี้ไม่กระทบยอด เพราะเงินสะท้อนอยู่ในยอดจริงแล้ว)
             </span>
           )}
         </label>
@@ -945,7 +985,10 @@ export function FinanceView({ scope }) {
         <BudgetProgress budgets={budgets} categoryActuals={categories} />
 
         {/* Row 4a: Recurring Expenses */}
-        <RecurringTracker recurring={recurring} transactions={txns}
+        {/* historyTxns = 12-month window: the suggestion detector needs 2+
+            months of history — feeding it the single viewed month meant
+            suggestions could NEVER appear. Status checks still use txns. */}
+        <RecurringTracker recurring={recurring} transactions={txns} historyTxns={trend12}
           yearMonth={yearMonth} scope={scope} onChange={refresh} />
 
         {/* Row 4b: Debt Tracker */}
@@ -1023,6 +1066,7 @@ export function FinanceView({ scope }) {
                           <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : 400 }}>{a.name}</div>
                           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
                             {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
+                            {a.balance_anchor_at && ` · ยอด ณ ${txDate(a.balance_anchor_at)} + รายการหลังจากนั้น`}
                           </div>
                         </div>
                       </div>
@@ -1203,7 +1247,18 @@ export function FinanceView({ scope }) {
                             cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
                           />
                           <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>·</span>
-                          {/* CATEGORY — inline dropdown */}
+                          {/* CATEGORY — inline dropdown. Transfer rows are
+                              category-locked: recategorising a transfer leg
+                              books fake income/spending on both scopes. */}
+                          {isTransfer(t) ? (
+                            <span title="โอนระหว่าง scope — เปลี่ยนหมวด/จำนวนไม่ได้ (แก้ได้เฉพาะชื่อ/โน้ต/วันที่)"
+                              style={{
+                                fontSize: 12, color: 'var(--text-muted)', padding: '1px 6px',
+                                background: 'var(--fill)', borderRadius: 6, whiteSpace: 'nowrap',
+                              }}>
+                              🔒 โอนภายใน
+                            </span>
+                          ) : (
                           <InlineSelect
                             value={t.type}
                             options={allCategories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
@@ -1212,17 +1267,15 @@ export function FinanceView({ scope }) {
                               const patch = { type: newType, category: cat?.label || newType };
                               // Enforce the sign invariant on category change:
                               // รายรับ ⇒ amount > 0, expense types ⇒ amount < 0.
-                              // (Transfers keep their leg's sign.)
-                              if (!isTransfer(t)) {
-                                const abs = Math.abs(Number(t.amount) || 0);
-                                patch.amount = newType === 'income' ? abs : -abs;
-                              }
+                              const abs = Math.abs(Number(t.amount) || 0);
+                              patch.amount = newType === 'income' ? abs : -abs;
                               await updateTransaction(t.id, patch);
                               refresh();
                             }}
                             onAdd={addCategory}
                             cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
                           />
+                          )}
                           {/* NOTE stays on this line on desktop; on mobile it drops
                               to its own line below so nothing has to truncate to
                               three characters — still inline-editable either way. */}
@@ -1256,7 +1309,20 @@ export function FinanceView({ scope }) {
                         )}
                       </div>
 
-                      {/* AMOUNT — inline editable, sign follows the TYPE */}
+                      {/* AMOUNT — inline editable, sign follows the TYPE.
+                          Transfer rows are amount-locked (both legs must
+                          stay mirrored; edit via a new transfer instead). */}
+                      {isTransfer(t) ? (
+                        <div title="โอนระหว่าง scope — จำนวนถูกล็อกให้สองฝั่งตรงกันเสมอ"
+                          style={{
+                            textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums',
+                            color: 'var(--text-muted)', fontWeight: 600,
+                            minWidth: isMobile ? 0 : 96, flexShrink: 0, whiteSpace: 'nowrap',
+                            padding: '3px 6px',
+                          }}>
+                          {`${isIn ? '+' : '−'}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
+                        </div>
+                      ) : (
                       <InlineEdit
                         value={Math.abs(Number(t.amount))}
                         type="number"
@@ -1264,11 +1330,8 @@ export function FinanceView({ scope }) {
                         hint="คลิกเพื่อแก้ไขจำนวน (เครื่องหมายตามหมวด)"
                         onSave={async v => {
                           // Sign comes from the row's TYPE, not its possibly
-                          // stale amount — รายรับ stays +, expenses stay −,
-                          // transfer legs keep their direction.
-                          const sign = isTransfer(t)
-                            ? (Number(t.amount) < 0 ? -1 : 1)
-                            : (isIncomeTxn(t) ? 1 : -1);
+                          // stale amount — รายรับ stays +, expenses stay −.
+                          const sign = isIncomeTxn(t) ? 1 : -1;
                           await updateTransaction(t.id, { amount: Math.abs(Number(v)) * sign });
                           refresh();
                         }}
@@ -1279,6 +1342,7 @@ export function FinanceView({ scope }) {
                         }}
                         inputStyle={{ textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums' }}
                       />
+                      )}
                       {/* ACTIONS — link recurring + delete + full-edit drawer */}
                       <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexShrink: 0 }}>
                         <button onClick={(e) => {
