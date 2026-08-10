@@ -635,11 +635,16 @@ export async function createAccount(input) {
   if (!supabase) throw new Error('Supabase not configured');
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
-  const { data, error } = await supabase
-    .from('accounts')
-    .insert({ ...input, user_id: user.id })
-    .select()
-    .single();
+  // INVARIANT (audit round 2): every write of `balance` stamps
+  // balance_anchor_at — the balance is a statement of truth "as of now".
+  // Falls back without the column while the migration is unrun.
+  const row = { ...input, user_id: user.id, balance_anchor_at: new Date().toISOString() };
+  let { data, error } = await supabase
+    .from('accounts').insert(row).select().single();
+  if (error && isColumnMissing(error)) {
+    delete row.balance_anchor_at;
+    ({ data, error } = await supabase.from('accounts').insert(row).select().single());
+  }
   if (error) throw error;
   return data;
 }
@@ -703,6 +708,14 @@ export async function setAccountBalanceAnchor(id, balance) {
  *   effective = stored balance + SUM(transactions after balance_anchor_at)
  * Accounts without an anchor (or before the migration) are returned as-is.
  * `_stored_balance` keeps the raw anchor value for the edit form.
+ *
+ * ANCHOR SEMANTICS (deliberate — audit round 2, partial rebuttal accepted):
+ * the anchor states "the REAL balance was X at time T" (read off the bank
+ * app / CP Bal). A backdated transaction entered later but dated BEFORE T
+ * must NOT move the displayed balance — that money was already reflected in
+ * the real balance the user observed at T. Only rows dated AFTER the anchor
+ * adjust the display. The UI exposes this as
+ * "ยอด ณ <anchor date> + รายการหลังจากนั้น".
  */
 export async function applyEffectiveBalances(accounts) {
   const list = accounts || [];
@@ -770,9 +783,30 @@ function pickTone(name = '') {
 }
 
 /**
- * Upsert accounts based on { pocket, scope, latestBalance } records.
+ * Decide whether an imported CP Bal may replace the account's current
+ * balance anchor. Pure — unit-tested in audit/evidence.
+ *
+ * Rule (audit round 2): a CSV import must NEVER move a balance BACKWARD in
+ * time. The imported CP Bal was true at `importedAt` (the file's latest
+ * transaction). Apply it only when that moment's Bangkok month is >= the
+ * month of the account's current anchor; an older statement file leaves
+ * balance AND anchor untouched.
+ */
+export function shouldApplyImportedBalance(existingAnchorAt, importedAt) {
+  if (!importedAt) return false;
+  if (!existingAnchorAt) return true;                     // never anchored → take it
+  return bangkokMonth(importedAt) >= bangkokMonth(existingAnchorAt);
+}
+
+/**
+ * Upsert accounts based on { pocket, scope, latestBalance, latestDate }.
  * Dedup key: (user_id, name, scope) — case-insensitive match on name.
  * Returns: Map<pocketName, accountId>
+ *
+ * Balance writes stamp balance_anchor_at = latestDate (the moment the CP Bal
+ * was true), and are skipped entirely when the file is OLDER than the
+ * current anchor (see shouldApplyImportedBalance). While the anchor column
+ * migration is unrun, falls back to the legacy overwrite behaviour.
  */
 export async function bulkUpsertAccountsByPocket(pockets) {
   if (!supabase) return new Map();
@@ -781,10 +815,17 @@ export async function bulkUpsertAccountsByPocket(pockets) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
 
-  // Fetch existing accounts for this user
-  const { data: existing, error: fetchErr } = await supabase
-    .from('accounts').select('id, name, scope, balance')
+  // Fetch existing accounts — anchor column first, legacy select as fallback.
+  let anchorSupported = true;
+  let { data: existing, error: fetchErr } = await supabase
+    .from('accounts').select('id, name, scope, balance, balance_anchor_at')
     .eq('user_id', user.id);
+  if (fetchErr && isColumnMissing(fetchErr)) {
+    anchorSupported = false;
+    ({ data: existing, error: fetchErr } = await supabase
+      .from('accounts').select('id, name, scope, balance')
+      .eq('user_id', user.id));
+  }
   if (fetchErr) throw fetchErr;
 
   const exMap = new Map();
@@ -801,12 +842,20 @@ export async function bulkUpsertAccountsByPocket(pockets) {
     const found = exMap.get(key);
     if (found) {
       idMap.set(p.pocket, found.id);
-      // Update balance if we have a newer one
       if (p.latestBalance != null) {
-        toUpdate.push({ id: found.id, balance: p.latestBalance });
+        if (!anchorSupported) {
+          // Legacy behaviour while the migration is unrun.
+          toUpdate.push({ id: found.id, patch: { balance: p.latestBalance } });
+        } else if (shouldApplyImportedBalance(found.balance_anchor_at, p.latestDate)) {
+          toUpdate.push({ id: found.id, patch: {
+            balance: p.latestBalance,
+            balance_anchor_at: p.latestDate,   // CP Bal was true at the file's last txn
+          } });
+        }
+        // else: older statement file — balance and anchor stay untouched.
       }
     } else {
-      toInsert.push({
+      const row = {
         user_id: user.id,
         name: p.pocket,
         type: 'savings',  // Make pockets are essentially savings sub-accounts
@@ -814,7 +863,9 @@ export async function bulkUpsertAccountsByPocket(pockets) {
         tone: pickTone(p.pocket),
         scope: p.scope,
         is_active: true,
-      });
+      };
+      if (anchorSupported) row.balance_anchor_at = p.latestDate || new Date().toISOString();
+      toInsert.push(row);
     }
   }
 
@@ -831,7 +882,7 @@ export async function bulkUpsertAccountsByPocket(pockets) {
   // Update existing balances (parallel)
   if (toUpdate.length) {
     const results = await Promise.all(toUpdate.map(u =>
-      supabase.from('accounts').update({ balance: u.balance }).eq('id', u.id)
+      supabase.from('accounts').update(u.patch).eq('id', u.id)
     ));
     const failed = results.find(r => r.error);
     if (failed) throw failed.error;
@@ -875,6 +926,51 @@ export async function getExistingTxnKeys({ startDate, endDate, scope } = {}) {
 }
 
 export { txnKey };
+
+/**
+ * Multiset counts of natural keys in a range — Map<txnKey, count>.
+ * (A Set collapses two legitimate identical transactions; the counts let the
+ * importer keep them — same MULTISET semantics as the import RPC.)
+ */
+export async function getExistingTxnKeyCounts({ startDate, endDate, scope } = {}) {
+  if (!supabase) return new Map();
+  const buildQuery = () => {
+    let q = supabase.from('transactions')
+      .select('occurred_at, amount, title, scope')
+      .gte('occurred_at', startDate)
+      .lt('occurred_at', endDate)
+      .order('occurred_at', { ascending: false });
+    if (scope) q = q.eq('scope', scope);
+    return q;
+  };
+  const data = await fetchAllPages(buildQuery);
+  const counts = new Map();
+  for (const t of data) {
+    const k = txnKey(t);
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * MULTISET dedup plan (pure — mirrors import_transactions v2 exactly):
+ * for each natural key keep max(0, count_in_batch − count_existing) rows.
+ * Two legitimate identical rows both import when the ledger has none; a
+ * re-import of the same file imports nothing.
+ * `keyFn(row)` defaults to txnKey; existingCounts is Map<key, count>.
+ */
+export function multisetDedupRows(rows, existingCounts, keyFn = txnKey) {
+  const used = new Map();   // key → how many batch copies we've seen so far
+  const keep = [];
+  for (const r of rows || []) {
+    const k = keyFn(r);
+    const seen = (used.get(k) || 0) + 1;
+    used.set(k, seen);
+    const already = existingCounts.get(k) || 0;
+    if (seen > already) keep.push(r);   // this copy is missing from the ledger
+  }
+  return keep;
+}
 
 /**
  * Atomic wipe+insert of one scope+month batch via the import_transactions
@@ -933,7 +1029,18 @@ export async function upsertBudget({ category, monthly_limit, yearMonth, scope =
     .upsert(row, { onConflict: 'user_id,scope,category,month' })
     .select().single();
   if (error && (error.code === '42P10' || /no unique|exclusion constraint/i.test(error.message || ''))) {
-    // Migration not run yet — fall back to the old scope-less key.
+    // Migration not run yet. The old key has no scope, so a blind upsert
+    // would OVERWRITE the other scope's budget for the same category+month.
+    // Guard: refuse cross-scope writes until the migration is run.
+    const { data: clash, error: clashErr } = await supabase
+      .from('budgets')
+      .select('id, scope')
+      .eq('user_id', user.id).eq('category', category).eq('month', `${yearMonth}-01`)
+      .maybeSingle();
+    if (clashErr) throw clashErr;
+    if (clash && (clash.scope || 'personal') !== scope) {
+      throw new Error('ต้องรันไฟล์ SQL migration_fix_budget_scope_key.sql ก่อน จึงจะตั้งงบแยก scope ได้ (มีงบของอีก scope อยู่ในหมวด/เดือนเดียวกัน)');
+    }
     ({ data, error } = await supabase
       .from('budgets')
       .upsert(row, { onConflict: 'user_id,category,month' })
@@ -1056,37 +1163,40 @@ export async function recordDebtPayment({ debt_id, pay_month, amount_paid, trans
   if (!rpcErr) return { debt_id, pay_month, months_paid: Number(rpcData) };
   if (!isRpcMissing(rpcErr)) throw rpcErr;
 
-  // ── BUG FIX (v0.20) ─────────────────────────────────────────────────────
-  // Previously this function COUNT'd all debt_payments and overwrote
-  // months_paid — which destroyed the user's initial "already paid X" value
-  // (e.g. if they entered 12 months paid pre-Loop, marking 1 in Loop reset
-  // it to 1 instead of 13).
-  //
-  // Fix: increment months_paid by +1 ONLY when this is a genuinely new month
-  // (no existing payment row for that pay_month yet). Re-marking same month
-  // = no change to months_paid.
+  // ── FALLBACK (best-effort; the RPC above is the real closure) ──────────
+  // v2 (audit round 2): write the payment row FIRST with ON CONFLICT DO
+  // NOTHING (ignoreDuplicates) and increment months_paid ONLY when that
+  // insert actually inserted a row. This removes the old check-then-act
+  // window where two concurrent marks both read "no payment yet". It is
+  // still two statements, not one transaction — the disabled-button guard
+  // in DebtTracker plus this insert-first shape make it best-effort safe;
+  // full atomicity requires migration_add_debt_rpc.sql.
   // ────────────────────────────────────────────────────────────────────────
-
-  // Check if a payment already exists for this month. The error used to be
-  // discarded — a failed lookup then looked like "no payment yet" and
-  // double-incremented months_paid.
-  const { data: existing, error: existErr } = await supabase
-    .from('debt_payments').select('id')
-    .eq('debt_id', debt_id).eq('pay_month', pay_month).maybeSingle();
-  if (existErr) throw existErr;
-  const isNewMonth = !existing;
-
-  // Upsert the payment row
-  const { data, error } = await supabase
+  const paymentRow = {
+    user_id: user.id, debt_id, pay_month,
+    amount_paid, transaction_id: transaction_id || null, notes: notes || null,
+  };
+  const { data: insertedRows, error: insErr } = await supabase
     .from('debt_payments')
-    .upsert({
-      user_id: user.id, debt_id, pay_month,
-      amount_paid, transaction_id: transaction_id || null, notes: notes || null,
-    }, { onConflict: 'debt_id,pay_month' })
-    .select().single();
-  if (error) throw error;
+    .upsert(paymentRow, { onConflict: 'debt_id,pay_month', ignoreDuplicates: true })
+    .select();
+  if (insErr) throw insErr;
+  const isNewMonth = (insertedRows || []).length > 0;
+  let data = insertedRows?.[0] || null;
 
-  // Only increment debt counters for genuinely new months
+  if (!isNewMonth) {
+    // Row already existed (this month is already marked) — refresh the
+    // amount/link fields without touching the counter.
+    const { data: updated, error: updErr } = await supabase
+      .from('debt_payments')
+      .update({ amount_paid, transaction_id: transaction_id || null, notes: notes || null })
+      .eq('debt_id', debt_id).eq('pay_month', pay_month)
+      .select().maybeSingle();
+    if (updErr) throw updErr;
+    data = updated || data;
+  }
+
+  // Only increment debt counters when OUR insert created the month's row
   if (isNewMonth) {
     const { data: debtRow, error: readErr } = await supabase
       .from('debts').select('months_paid, total_months, monthly_payment').eq('id', debt_id).single();
@@ -1289,10 +1399,14 @@ export function suggestDebtPaymentLinks(transactions, debts, existingPayments = 
       const creditor = (debt.creditor || '').toLowerCase().trim();
       const name     = (debt.name || '').toLowerCase().trim();
 
-      let confidence = 50;
+      // Scoring (audit round 2): an amount match ALONE must never cross the
+      // inclusion threshold (60) — base 40 + exact-amount 10 tops out at 50.
+      // Crossing requires creditor/name evidence in the transaction title.
+      let confidence = 40;
       if (creditor.length >= 4 && title.includes(creditor.substring(0, Math.min(8, creditor.length)))) confidence += 35;
       if (name.length >= 3     && title.includes(name.substring(0, Math.min(6, name.length))))         confidence += 20;
       if (amtDiff < 1)                                                                                  confidence += 10;
+      confidence = Math.min(confidence, 100);
 
       if (confidence >= 60) {
         all.push({ txn, debt, ym, amount: absAmt, confidence });
@@ -1488,6 +1602,7 @@ export function detectRecurringFromTransactions(transactions) {
   for (const t of transactions) {
     const amt = Number(t.amount);
     if (amt >= 0) continue;
+    if (isTransfer(t)) continue;          // scope transfers are not bills
     if (t.category === 'แบ่งงบ') continue;
     const key = normalizeTitle(t.title) + '|' + Math.round(Math.abs(amt) / 100) * 100;
     if (!groups[key]) groups[key] = { title: t.title, txns: [] };
@@ -1525,7 +1640,9 @@ function normalizeTitle(t) {
 /** Check whether a recurring expense has been paid for a given month. */
 export function checkRecurringStatus(recurring, transactions, yearMonth) {
   const ym = yearMonth || currentYearMonth();
-  const inMonth = (t) => bangkokMonth(t.occurred_at) === ym && Number(t.amount) < 0;
+  // Transfers can never mark a bill paid — a scope-transfer leg that happens
+  // to contain the vendor text (or match the amount) is not a payment.
+  const inMonth = (t) => !isTransfer(t) && bangkokMonth(t.occurred_at) === ym && Number(t.amount) < 0;
 
   // 1) Explicit link wins — a transaction tagged with this bill's id.
   const linked = (transactions || []).find(t => t.recurring_id === recurring.id && inMonth(t));

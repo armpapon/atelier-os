@@ -1,5 +1,5 @@
 -- ============================================================================
---  Migration: Atomic CSV import RPC (audit blocker #1)
+--  Migration: Atomic CSV import RPC (audit blocker #1) — v2 MULTISET dedup
 --
 --  Problem: the CSV importer wipes a month (DELETE) and bulk-inserts in two
 --  separate PostgREST calls. A failure in between loses the month, and two
@@ -9,8 +9,21 @@
 --  lock serialises concurrent imports of the same month, and dedup runs
 --  server-side UNDER that lock, so the race window is closed.
 --
+--  v2 (audit round 2): dedup is MULTISET, not set-based.
+--  For each natural key (minute + amount + title-40) the function inserts
+--    max(0, count_in_batch − count_already_in_ledger)
+--  rows. This fixes both round-2 findings:
+--   (b) duplicates INSIDE p_rows are handled — re-running the same batch
+--       under the lock inserts 0 because the ledger counts now match;
+--   (c) no false positives — two LEGITIMATE identical transactions (e.g.
+--       two identical coffees in the same minute) both import when the
+--       ledger has none, and importing a file containing both against a
+--       ledger that already has one inserts exactly the missing one.
+--  Rows within one natural key are interchangeable by definition of the
+--  key; the function keeps the first N in occurred_at order.
+--
 --  SECURITY INVOKER → RLS still applies to every statement inside.
---  Idempotent: CREATE OR REPLACE. Safe to re-run.
+--  Idempotent: CREATE OR REPLACE. Safe to re-run (replaces v1).
 --
 --  Suggested tab name: loop_import_transactions_rpc
 -- ============================================================================
@@ -20,7 +33,7 @@ create or replace function public.import_transactions(
   p_month text,                 -- 'YYYY-MM' (Bangkok calendar month of the batch)
   p_wipe  boolean,              -- true = delete this scope+month first
   p_rows  jsonb,                -- [{title, occurred_at, amount, category, type, note, account_id}]
-  p_dedup boolean default true  -- skip rows already in the ledger (minute+amount+title)
+  p_dedup boolean default true  -- multiset-skip rows already in the ledger
 ) returns int
 language plpgsql
 security invoker
@@ -57,26 +70,42 @@ begin
 
   with incoming as (
     select
-      r.title, r.occurred_at, r.amount, r.category, r.type, r.note, r.account_id
+      r.title, r.occurred_at, r.amount, r.category, r.type, r.note, r.account_id,
+      date_trunc('minute', r.occurred_at) as k_min,
+      round(r.amount * 100)               as k_amt,
+      left(trim(r.title), 40)             as k_title,
+      row_number() over (
+        partition by date_trunc('minute', r.occurred_at),
+                     round(r.amount * 100),
+                     left(trim(r.title), 40)
+        order by r.occurred_at
+      ) as rn
     from jsonb_to_recordset(p_rows) as r(
       title text, occurred_at timestamptz, amount numeric,
       category text, type text, note text, account_id uuid
     )
+  ), existing as (
+    -- Ledger multiset counts per natural key (empty when wiping / not deduping)
+    select
+      date_trunc('minute', t.occurred_at) as k_min,
+      round(t.amount * 100)               as k_amt,
+      left(trim(t.title), 40)             as k_title,
+      count(*)                            as c
+    from transactions t
+    where (not p_wipe) and p_dedup
+      and t.user_id = v_uid
+      and t.scope = p_scope
+      and t.occurred_at >= v_start and t.occurred_at < v_end
+    group by 1, 2, 3
   ), ins as (
     insert into transactions (user_id, title, occurred_at, amount, category, type, note, account_id, scope)
     select v_uid, i.title, i.occurred_at, i.amount, i.category, i.type, i.note, i.account_id, p_scope
     from incoming i
+    left join existing e
+      on e.k_min = i.k_min and e.k_amt = i.k_amt and e.k_title = i.k_title
     where p_wipe
        or not p_dedup
-       or not exists (
-            select 1 from transactions t
-            where t.user_id = v_uid
-              and t.scope = p_scope
-              and t.occurred_at >= v_start and t.occurred_at < v_end
-              and date_trunc('minute', t.occurred_at) = date_trunc('minute', i.occurred_at)
-              and round(t.amount * 100) = round(i.amount * 100)
-              and left(trim(t.title), 40) = left(trim(i.title), 40)
-          )
+       or i.rn > coalesce(e.c, 0)      -- MULTISET: insert only the missing copies
     returning 1
   )
   select count(*) into v_count from ins;
