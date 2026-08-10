@@ -5,7 +5,8 @@ import {
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
   getExistingTxnKeys, txnKey, deleteTransactionsInMonth,
   suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments,
-  getMonthBounds, bangkokMonth,
+  getMonthBounds, bangkokMonth, bangkokDate,
+  importTransactionsBatch, isRpcMissing, listTransactionsRange,
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
@@ -175,70 +176,110 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       }
       const monthArr = [...months].sort();
 
-      // Step 1: optionally wipe existing transactions in these months
-      if (wipeMonth && monthArr.length) {
-        const scopes = new Set(selectedRows.map(r => r.scope));
-        await Promise.all(
-          monthArr.flatMap(ym =>
-            [...scopes].map(sc => deleteTransactionsInMonth(ym, sc))
-          )
-        );
-      }
-
-      // Step 2: auto-create accounts from pocket names → get id map
+      // Step 1: auto-create accounts from pocket names → get id map
+      // (idempotent upsert — safe to run before the atomic insert below)
       let pocketIdMap = new Map();
       if (createAccts && makeFmt && pocketSummary.length) {
         pocketIdMap = await bulkUpsertAccountsByPocket(pocketSummary);
       }
 
-      // Step 3: dedup against existing transactions
-      let toImport = selectedRows;
-      let skipped = 0;
-      if (dedup && !wipeMonth && monthArr.length) {
-        const { startTs: first } = getMonthBounds(monthArr[0]);
-        const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
-        const scopesNeeded = [...new Set(selectedRows.map(r => r.scope))];
-        const allKeys = new Set();
-        for (const sc of scopesNeeded) {
-          const keys = await getExistingTxnKeys({ startDate: first, endDate: lastEnd, scope: sc });
-          keys.forEach(k => allKeys.add(k + '|' + sc));
-        }
-        toImport = selectedRows.filter(r => !allKeys.has(txnKey(r) + '|' + r.scope));
-        skipped = selectedRows.length - toImport.length;
-      }
-
-      // Step 4: attach account_id from pocket → strip internal _* fields → insert
-      // Keep _rowIdx so we can match inserted rows back to suggestions
-      const rowIndexes = toImport.map(r => r._rowIdx);
-      const clean = toImport.map(({ _rowIdx, _pocket, _txtype, _cp_bal, ...r }) => ({
+      // Step 2: strip internal _* fields, attach account_id from pocket
+      const cleanAll = selectedRows.map(({ _rowIdx, _pocket, _txtype, _cp_bal, ...r }) => ({
         ...r,
         account_id: pocketIdMap.get(_pocket) || null,
       }));
 
       let inserted = 0;
-      let insertedRows = [];
-      if (clean.length) {
-        insertedRows = (await bulkCreateTransactions(clean)) || [];
-        inserted = insertedRows.length || clean.length;
+      let skipped = 0;
+      let insertedRows = [];   // legacy path only — RPC path re-queries below
+
+      // Step 3 (preferred): atomic wipe+insert per (scope, month) via the
+      // import_transactions RPC — one transaction + advisory lock + dedup
+      // under the lock, so two concurrent imports can no longer double rows.
+      // Falls back to the legacy multi-call path if the RPC isn't installed.
+      let usedRpc = false;
+      try {
+        const groups = new Map();   // 'scope|ym' → rows
+        for (const r of cleanAll) {
+          const ym = bangkokMonth(r.occurred_at);
+          if (!ym) continue;
+          const key = `${r.scope}|${ym}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(r);
+        }
+        for (const [key, rows] of groups) {
+          const [sc, ym] = key.split('|');
+          const n = await importTransactionsBatch({
+            scope: sc, month: ym,
+            wipe: wipeMonth, dedup: dedup && !wipeMonth,
+            rows,
+          });
+          inserted += n;
+          skipped  += rows.length - n;
+        }
+        usedRpc = true;
+      } catch (err) {
+        if (!isRpcMissing(err)) throw err;
       }
 
-      // Step 5: auto-link debt payments using suggestions on the still-active rows
+      if (!usedRpc) {
+        // ── Legacy path (RPC not installed yet) ──────────────────────────
+        // 3a: optionally wipe existing transactions in these months
+        if (wipeMonth && monthArr.length) {
+          const scopes = new Set(selectedRows.map(r => r.scope));
+          await Promise.all(
+            monthArr.flatMap(ym =>
+              [...scopes].map(sc => deleteTransactionsInMonth(ym, sc))
+            )
+          );
+        }
+
+        // 3b: dedup against existing transactions
+        let toImport = cleanAll;
+        if (dedup && !wipeMonth && monthArr.length) {
+          const { startTs: first } = getMonthBounds(monthArr[0]);
+          const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
+          const scopesNeeded = [...new Set(cleanAll.map(r => r.scope))];
+          const allKeys = new Set();
+          for (const sc of scopesNeeded) {
+            const keys = await getExistingTxnKeys({ startDate: first, endDate: lastEnd, scope: sc });
+            keys.forEach(k => allKeys.add(k + '|' + sc));
+          }
+          toImport = cleanAll.filter(r => !allKeys.has(txnKey(r) + '|' + r.scope));
+          skipped = cleanAll.length - toImport.length;
+        }
+
+        // 3c: insert
+        if (toImport.length) {
+          insertedRows = (await bulkCreateTransactions(toImport)) || [];
+          inserted = insertedRows.length || toImport.length;
+        }
+      }
+
+      // Step 4: auto-link debt payments using suggestions
       let debtLinked = 0;
-      if (activeSuggestions.length && insertedRows.length) {
-        // map by natural key (date+amount+title) → inserted id
+      if (activeSuggestions.length && (insertedRows.length || (usedRpc && inserted > 0))) {
+        // RPC path returns a count, not rows — re-query the affected range to
+        // map natural keys (date+amount+title) back to real transaction ids.
+        let linkTargets = insertedRows;
+        if (usedRpc && monthArr.length) {
+          const { startTs: first } = getMonthBounds(monthArr[0]);
+          const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
+          linkTargets = await listTransactionsRange({ startDate: first, endDate: lastEnd });
+        }
         const insertedByKey = new Map();
-        for (let i = 0; i < insertedRows.length; i++) {
-          insertedByKey.set(txnKey(insertedRows[i]), insertedRows[i]);
+        for (let i = 0; i < linkTargets.length; i++) {
+          insertedByKey.set(txnKey(linkTargets[i]), linkTargets[i]);
         }
         for (const sug of activeSuggestions) {
-          const inserted = insertedByKey.get(txnKey(sug.txn));
-          if (!inserted) continue;
+          const match = insertedByKey.get(txnKey(sug.txn));
+          if (!match) continue;
           try {
             await recordDebtPayment({
               debt_id: sug.debt.id,
               pay_month: sug.ym + '-01',
               amount_paid: sug.amount,
-              transaction_id: inserted.id,
+              transaction_id: match.id,
               notes: 'auto-linked from import',
             });
             debtLinked++;
@@ -719,7 +760,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         }}>{chk ? '✓' : ''}</div>
 
                         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
-                          {row.occurred_at?.split('T')[0] || ''}
+                          {bangkokDate(row.occurred_at)}
                         </div>
 
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>

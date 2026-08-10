@@ -4,14 +4,16 @@ import { CSVImporter } from '../components/CSVImporter.jsx';
 import { toneColor } from '../lib/helpers.js';
 import {
   listTransactions, listTransactionsRange, createTransaction, updateTransaction, deleteTransaction,
-  listAccounts, createAccount, deleteAccount, updateAccount,
+  listAccounts, createAccount, updateAccount,
+  archiveAccount, reassignTransactionsAccount, setAccountBalanceAnchor, applyEffectiveBalances,
   listBudgets, listGoals, createGoal, deleteGoal,
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
-  deleteTransactionsInMonth,
+  deleteTransactionsInMonth, financeMonthSummary,
   listDebts, listDebtPayments,
   listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
   monthlyRecurringTotal,
+  bangkokDate, bangkokTime, isTransfer,
 } from '../lib/api/finance.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
@@ -57,12 +59,23 @@ const SCOPE_META = {
 
 function txDate(iso, compact = false) {
   if (!iso) return '';
-  const d = new Date(iso);
+  // Bangkok calendar date, not device-local — display and the inline edit
+  // value must agree even when the device clock is on another timezone.
+  const ymd = bangkokDate(iso);   // 'YYYY-MM-DD'
   // Narrow screens get 30/7 instead of "30 ก.ค." so the category beside it
   // doesn't get truncated down to two characters.
-  if (compact) return `${d.getDate()}/${d.getMonth() + 1}`;
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  if (compact) return `${Number(ymd.substring(8, 10))}/${Number(ymd.substring(5, 7))}`;
+  return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' });
 }
+
+/** Preserve the row's Bangkok wall-clock when only the date is edited. */
+function withBangkokTime(dateYMD, originalTs) {
+  const time = bangkokTime(originalTs) || '12:00:00';
+  return `${dateYMD}T${time}+07:00`;
+}
+
+/** The sign invariant: income rows are positive, everything else negative. */
+const isIncomeTxn = (t) => t?.type === 'income' || t?.category === 'รายรับ';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Transaction Form Drawer (add + edit)
@@ -221,7 +234,9 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
         type:        initialTxn.type || 'food',
         account_id:  initialTxn.account_id || '',
         note:        initialTxn.note || '',
-        occurred_at: (initialTxn.occurred_at || '').split('T')[0] || todayStr(),
+        // Bangkok calendar date — split('T')[0] on the stored UTC string
+        // opened "1 ก.ค." as 30 มิ.ย. and every re-save walked the date back.
+        occurred_at: bangkokDate(initialTxn.occurred_at) || todayStr(),
       };
     }
     return {
@@ -256,7 +271,11 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
         category: categories.find(c => c.id === form.type)?.label || form.type,
         account_id: form.account_id || null,
         note: form.note.trim() || null,
-        occurred_at: form.occurred_at,
+        // Pin the Bangkok offset. A bare 'YYYY-MM-DD' is read by Postgres as
+        // UTC midnight; edits keep the row's original Bangkok wall-clock.
+        occurred_at: isEdit
+          ? withBangkokTime(form.occurred_at, initialTxn.occurred_at)
+          : `${form.occurred_at}T12:00:00+07:00`,
         scope,
       };
       if (isEdit) await updateTransaction(initialTxn.id, payload);
@@ -382,42 +401,126 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Account Modal
+//  Account Modal — create + edit + archive (no hard delete)
 // ════════════════════════════════════════════════════════════════════════════
-function AccountModal({ scope, onSave, onClose }) {
-  const [form, setForm] = useState({ name: '', type: 'savings', balance: '', tone: 'amber' });
+const ACCOUNT_TONES = ['amber', 'profit', 'blue', 'violet', 'rose', 'brass'];
+
+function AccountModal({ scope, initial = null, accounts = [], onSave, onClose }) {
+  const isEdit = !!initial;
+  // In edit mode the balance field is the ANCHOR value (ยอดจริงตอนนี้), not
+  // the derived display balance.
+  const initialBalance = isEdit ? (initial._stored_balance ?? initial.balance ?? 0) : '';
+  const [form, setForm] = useState({
+    name:    initial?.name || '',
+    type:    initial?.type || 'savings',
+    balance: initialBalance === '' ? '' : String(initialBalance),
+    tone:    initial?.tone || 'amber',
+  });
+  const [reassignTo, setReassignTo] = useState('');
   const [saving, setSaving] = useState(false);
+  const otherAccounts = accounts.filter(a => a.id !== initial?.id);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    try { await createAccount({ name: form.name, type: form.type, balance: Number(form.balance) || 0, tone: form.tone, scope }); onSave(); onClose(); }
+    try {
+      if (isEdit) {
+        await updateAccount(initial.id, { name: form.name, type: form.type, tone: form.tone });
+        const newBalance = Number(form.balance);
+        if (form.balance !== '' && Number.isFinite(newBalance) && newBalance !== Number(initialBalance)) {
+          // Setting a balance stamps the anchor — from now on the displayed
+          // balance = this value + ledger transactions after this moment.
+          await setAccountBalanceAnchor(initial.id, newBalance);
+        }
+      } else {
+        await createAccount({ name: form.name, type: form.type, balance: Number(form.balance) || 0, tone: form.tone, scope });
+      }
+      onSave(); onClose();
+    }
     catch (err) { alert(err.message); } finally { setSaving(false); }
   };
+
+  const handleArchive = async () => {
+    const moveTo = otherAccounts.find(a => a.id === reassignTo);
+    const msg = moveTo
+      ? `ย้ายรายการทั้งหมดของ "${initial.name}" ไป "${moveTo.name}" แล้วเก็บบัญชีนี้?`
+      : `เก็บบัญชี "${initial.name}"?\n(ประวัติรายการยังอยู่ครบ — บัญชีแค่ถูกซ่อนจากรายการ)`;
+    if (!confirm(msg)) return;
+    setSaving(true);
+    try {
+      if (moveTo) await reassignTransactionsAccount(initial.id, moveTo.id);
+      await archiveAccount(initial.id);
+      onSave(); onClose();
+    } catch (err) { alert(err.message); } finally { setSaving(false); }
+  };
+
+  const labelStyle = { fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
-      <form onSubmit={handleSubmit} style={{ position: 'relative', background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)', padding: 30, width: 360, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>เพิ่มบัญชี</div>
+      <form onSubmit={handleSubmit} style={{ position: 'relative', background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)', padding: 30, width: 360, maxHeight: '88vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>
+          {isEdit ? '✎ แก้ไขบัญชี' : 'เพิ่มบัญชี'}
+        </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อบัญชี</span>
+          <span style={labelStyle}>ชื่อบัญชี</span>
           <input className="input" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} placeholder="Make by KBank ออมทรัพย์" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ประเภท</span>
+          <span style={labelStyle}>ประเภท</span>
           <select className="input" value={form.type} onChange={e => setForm(f => ({...f, type: e.target.value}))}>
             <option value="savings">ออมทรัพย์</option><option value="checking">กระแสรายวัน</option>
             <option value="investment">การลงทุน</option><option value="cash">เงินสด</option>
             <option value="debt">หนี้สิน</option><option value="crypto">คริปโต</option>
           </select>
         </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={labelStyle}>สี</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {ACCOUNT_TONES.map(t => (
+              <button key={t} type="button" onClick={() => setForm(f => ({ ...f, tone: t }))}
+                aria-label={`สี ${t}`}
+                style={{
+                  width: 24, height: 24, borderRadius: '50%', cursor: 'pointer',
+                  background: toneColor(t),
+                  border: form.tone === t ? '2px solid var(--text-primary)' : '2px solid transparent',
+                }} />
+            ))}
+          </div>
+        </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ยอดเริ่มต้น (บาท)</span>
-          <input className="input" type="number" value={form.balance} onChange={e => setForm(f => ({...f, balance: e.target.value}))} placeholder="0" />
+          <span style={labelStyle}>{isEdit ? 'ตั้งยอดปัจจุบัน (บาท)' : 'ยอดเริ่มต้น (บาท)'}</span>
+          <input className="input" type="number" step="0.01" value={form.balance} onChange={e => setForm(f => ({...f, balance: e.target.value}))} placeholder="0" />
+          {isEdit && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              ใส่ยอดจริง ณ ตอนนี้ — ระบบจะจำเวลาไว้ แล้วบวก/ลบรายการที่บันทึกหลังจากนี้ให้อัตโนมัติ
+            </span>
+          )}
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
           <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
-          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : '+ เพิ่มบัญชี'}</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : (isEdit ? '💾 บันทึก' : '+ เพิ่มบัญชี')}</Button>
         </div>
+
+        {isEdit && (
+          <div style={{ borderTop: '1px solid var(--hairline)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={labelStyle}>เก็บบัญชี (แทนการลบ)</span>
+            <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              บัญชีจะถูกซ่อนจากทุกรายการ แต่ประวัติธุรกรรมยังอยู่ครบ
+            </div>
+            {otherAccounts.length > 0 && (
+              <select className="input" value={reassignTo} onChange={e => setReassignTo(e.target.value)}>
+                <option value="">ไม่ย้ายรายการ (เก็บไว้กับบัญชีเดิม)</option>
+                {otherAccounts.map(a => (
+                  <option key={a.id} value={a.id}>ย้ายรายการทั้งหมดไป → {a.name}</option>
+                ))}
+              </select>
+            )}
+            <Button type="button" variant="danger" size="sm" onClick={handleArchive} disabled={saving}>
+              🗂 เก็บบัญชีนี้
+            </Button>
+          </div>
+        )}
       </form>
     </div>
   );
@@ -553,6 +656,7 @@ export function FinanceView({ scope }) {
   const [txns, setTxns]         = useState([]);
   const [prevTxns, setPrevTxns] = useState([]);
   const [trend12, setTrend12]   = useState([]);
+  const [monthSummary, setMonthSummary] = useState(null);   // server aggregate (null = RPC not installed)
   const [accounts, setAccounts] = useState([]);
   const [budgets, setBudgets]   = useState([]);
   const [goals, setGoals]       = useState([]);
@@ -561,11 +665,15 @@ export function FinanceView({ scope }) {
   const [recurring, setRecurring] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
+  // Partial-load failures (debts/recurring/…): the page stays alive but says
+  // so, instead of silently rendering "empty".
+  const [loadWarning, setLoadWarning] = useState(null);
 
   const [showTxnForm, setShowTxnForm]   = useState(false);
   const [editingTxn,  setEditingTxn]    = useState(null);
   const [linkingTxn,  setLinkingTxn]    = useState(null);
   const [showAccForm, setShowAccForm]   = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [showImporter, setShowImporter] = useState(false);
@@ -619,23 +727,41 @@ export function FinanceView({ scope }) {
       const { start: paymentStart } = getMonthBounds(months12[0]);
       const { end:   paymentEnd   } = getMonthBounds(months12[months12.length - 1]);
 
-      const [t, p, r12, a, b, g, d, dp, rec] = await Promise.all([
-        listTransactions({ yearMonth, scope, limit: 2000 }),
-        listTransactions({ yearMonth: prev, scope, limit: 2000 }),
+      // Secondary lists must not kill the page, but a failure must be SAID —
+      // a swallowed error used to render as "ไม่มีหนี้" with zero burden.
+      const failedParts = [];
+      const softly = (promise, label) =>
+        promise.catch(() => { failedParts.push(label); return []; });
+
+      const [t, p, r12, a, b, g, d, dp, rec, ms] = await Promise.all([
+        listTransactions({ yearMonth, scope, limit: 20000 }),
+        listTransactions({ yearMonth: prev, scope, limit: 20000 }),
         listTransactionsRange({ startDate: startTrend, endDate: endTrend, scope }),
         listAccounts({ scope }),
         listBudgets(yearMonth, scope),
         listGoals(scope),
-        listDebts({ scope }).catch(() => []),
-        listDebtPayments({ startMonth: paymentStart, endMonth: paymentEnd }).catch(() => []),
-        listRecurring({ scope }).catch(() => []),
+        softly(listDebts({ scope }), 'หนี้สิน'),
+        softly(listDebtPayments({ startMonth: paymentStart, endMonth: paymentEnd }), 'ประวัติจ่ายหนี้'),
+        softly(listRecurring({ scope }), 'บิลประจำ'),
+        // Server-side month totals (transfer-excluded, Bangkok) — null when
+        // the RPC migration hasn't been run; trendData falls back below.
+        financeMonthSummary({ scope, fromYm: months12[0], toYm: months12[months12.length - 1] })
+          .catch(() => null),
       ]);
+
+      // Displayed balance = anchor + ledger after the anchor (accounts
+      // without an anchor keep the stored snapshot).
+      const aEff = await applyEffectiveBalances(a || []).catch(() => a || []);
 
       if (myReq !== reqSeq.current) return;   // a newer load already won
       setTxns(t || []); setPrevTxns(p || []); setTrend12(r12 || []);
-      setAccounts(a || []); setBudgets(b || []); setGoals(g || []);
+      setMonthSummary(ms);
+      setAccounts(aEff); setBudgets(b || []); setGoals(g || []);
       setDebts(d || []); setDebtPayments(dp || []);
       setRecurring(rec || []);
+      setLoadWarning(failedParts.length
+        ? `โหลดข้อมูล ${failedParts.join(' / ')} ไม่สำเร็จ — ตัวเลขส่วนนั้นอาจไม่ครบ ลองรีเฟรชอีกครั้ง`
+        : null);
     } catch (err) {
       if (myReq !== reqSeq.current) return;
       setError(err.message || 'โหลดข้อมูลไม่สำเร็จ');
@@ -651,10 +777,12 @@ export function FinanceView({ scope }) {
   const prevSum = useMemo(() => summarize(prevTxns), [prevTxns]);
 
   const trendData = useMemo(() => {
-    const agg = aggregateByMonth(trend12);
+    // Prefer the SQL aggregate (immune to the PostgREST 1000-row cap);
+    // fall back to paginated client aggregation when the RPC isn't installed.
+    const agg = monthSummary || aggregateByMonth(trend12);
     const months = lastNMonths(12, yearMonth);
     return months.map(ym => agg.find(a => a.ym === ym) || { ym, income: 0, expense: 0, net: 0, savingsRate: 0, count: 0 });
-  }, [trend12, yearMonth]);
+  }, [monthSummary, trend12, yearMonth]);
 
   const categories = useMemo(() => aggregateByCategory(txns), [txns]);
   const top10      = useMemo(() => topExpenses(txns, 10),      [txns]);
@@ -735,6 +863,16 @@ export function FinanceView({ scope }) {
             border: 'none', borderRadius: 'var(--radius-field)', fontSize: 13,
           }}>
             ⚠️ {error}
+          </div>
+        )}
+        {!error && loadWarning && (
+          <div style={{
+            padding: '12px 16px', background: 'var(--warning-soft)', color: 'var(--warning)',
+            border: 'none', borderRadius: 'var(--radius-field)', fontSize: 13,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          }}>
+            <span style={{ flex: 1 }}>⚠️ {loadWarning}</span>
+            <Button variant="ghost" size="sm" onClick={refresh}>↻ ลองใหม่</Button>
           </div>
         )}
         {loading && (
@@ -892,9 +1030,12 @@ export function FinanceView({ scope }) {
                         <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: Number(a.balance) >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>
                           ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); if (confirm(`ลบบัญชี "${a.name}"?`)) deleteAccount(a.id).then(refresh); }}
-                          aria-label={`ลบบัญชี ${a.name}`}
-                          style={{ color: 'var(--text-muted)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>×</button>
+                        {/* Edit + archive replaced the hard delete — deleting
+                            an account nulled account_id on its whole history
+                            and destroyed the balance with no undo. */}
+                        <button onClick={(e) => { e.stopPropagation(); setEditingAccount(a); }}
+                          aria-label={`แก้ไขบัญชี ${a.name}`} title="แก้ไข / ตั้งยอด / เก็บบัญชี"
+                          style={{ color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>✎</button>
                       </div>
                     </div>
                   );
@@ -1048,13 +1189,15 @@ export function FinanceView({ scope }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: isMobile ? 'nowrap' : 'wrap', marginTop: 1, minWidth: 0 }}>
                           {/* DATE — inline editable */}
                           <InlineEdit
-                            value={t.occurred_at ? t.occurred_at.split('T')[0] : ''}
+                            value={bangkokDate(t.occurred_at)}
                             type="date"
                             display={txDate(t.occurred_at, isMobile)}
                             hint="คลิกเพื่อแก้ไขวันที่"
                             onSave={async date => {
-                              const time = (t.occurred_at || '').split('T')[1] || '12:00:00+07:00';
-                              await updateTransaction(t.id, { occurred_at: `${date}T${time}` });
+                              // Edit value + display + save all speak Bangkok:
+                              // the old UTC split showed "1 ก.ค." but opened
+                              // 30 มิ.ย., and re-saving walked the date back.
+                              await updateTransaction(t.id, { occurred_at: withBangkokTime(date, t.occurred_at) });
                               refresh();
                             }}
                             cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
@@ -1066,7 +1209,15 @@ export function FinanceView({ scope }) {
                             options={allCategories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
                             onSave={async newType => {
                               const cat = allCategories.find(c => c.id === newType);
-                              await updateTransaction(t.id, { type: newType, category: cat?.label || newType });
+                              const patch = { type: newType, category: cat?.label || newType };
+                              // Enforce the sign invariant on category change:
+                              // รายรับ ⇒ amount > 0, expense types ⇒ amount < 0.
+                              // (Transfers keep their leg's sign.)
+                              if (!isTransfer(t)) {
+                                const abs = Math.abs(Number(t.amount) || 0);
+                                patch.amount = newType === 'income' ? abs : -abs;
+                              }
+                              await updateTransaction(t.id, patch);
                               refresh();
                             }}
                             onAdd={addCategory}
@@ -1105,14 +1256,19 @@ export function FinanceView({ scope }) {
                         )}
                       </div>
 
-                      {/* AMOUNT — inline editable, preserves sign */}
+                      {/* AMOUNT — inline editable, sign follows the TYPE */}
                       <InlineEdit
                         value={Math.abs(Number(t.amount))}
                         type="number"
                         display={`${isIn ? '+' : '−'}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
-                        hint="คลิกเพื่อแก้ไขจำนวน (เครื่องหมายจะคงเดิม)"
+                        hint="คลิกเพื่อแก้ไขจำนวน (เครื่องหมายตามหมวด)"
                         onSave={async v => {
-                          const sign = Number(t.amount) < 0 ? -1 : 1;
+                          // Sign comes from the row's TYPE, not its possibly
+                          // stale amount — รายรับ stays +, expenses stay −,
+                          // transfer legs keep their direction.
+                          const sign = isTransfer(t)
+                            ? (Number(t.amount) < 0 ? -1 : 1)
+                            : (isIncomeTxn(t) ? 1 : -1);
                           await updateTransaction(t.id, { amount: Math.abs(Number(v)) * sign });
                           refresh();
                         }}
@@ -1212,7 +1368,8 @@ export function FinanceView({ scope }) {
           onClose={() => setShowTransfer(false)}
         />
       )}
-      {showAccForm && <AccountModal scope={scope} onSave={refresh} onClose={() => setShowAccForm(false)} />}
+      {showAccForm && <AccountModal scope={scope} accounts={accounts} onSave={refresh} onClose={() => setShowAccForm(false)} />}
+      {editingAccount && <AccountModal scope={scope} accounts={accounts} initial={editingAccount} onSave={refresh} onClose={() => setEditingAccount(null)} />}
       {showGoalForm && <GoalModal scope={scope} onSave={refresh} onClose={() => setShowGoalForm(false)} />}
       {showImporter && <CSVImporter scope={scope} debts={debts} onImported={refresh} onClose={() => setShowImporter(false)} />}
     </>

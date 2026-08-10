@@ -556,9 +556,11 @@ function DebtStrategyCard({ debts }) {
     );
   }
 
+  // The simulation runs on instalment counts only (no interest accrual), so
+  // copy must never promise baht saved — only months, labelled as such.
   const desc = {
     snowball:  'โปะหนี้ก้อนเล็กก่อน → ปิดได้เร็ว สร้างกำลังใจ',
-    avalanche: 'โปะหนี้ดอกเบี้ยสูงก่อน → ประหยัดดอกเบี้ยมากที่สุด',
+    avalanche: 'โปะหนี้ดอกเบี้ยสูงก่อน → ลดภาระดอกเบี้ยในชีวิตจริง (ตัวเลขจำลองด้านล่างยังไม่คิดดอกเบี้ย)',
   }[strategy];
 
   // Turn "months left" into a tangible calendar date.
@@ -647,8 +649,7 @@ function DebtStrategyCard({ debts }) {
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
             อีก {result.totalMonthsWithExtra} เดือน
-            {result.monthsSaved > 0 && ` · โปะเพิ่มช่วยร่นเร็วขึ้น ${result.monthsSaved} เดือน`}
-            {result.monthsSaved > 0 && result.cashSaved > 0 && ` ประหยัด ${fmt(result.cashSaved)}`}
+            {result.monthsSaved > 0 && ` · โปะเพิ่มช่วยร่นเร็วขึ้น ${result.monthsSaved} เดือน (แบบไม่คิดดอกเบี้ย)`}
           </div>
         </div>
       </div>
@@ -656,18 +657,18 @@ function DebtStrategyCard({ debts }) {
       {/* Result comparison */}
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10,
-        padding: 12, background: result.cashSaved > 0 ? 'var(--success-soft)' : 'var(--surface-muted)',
-        border: '1px solid ' + (result.cashSaved > 0 ? 'var(--success)' : 'var(--hairline)'),
+        padding: 12, background: 'var(--surface-muted)',
+        border: '1px solid var(--hairline)',
         borderRadius: 'var(--radius-control)',
       }}>
         <MiniStat label="ปลอดหนี้ใน" value={`${result.totalMonthsWithExtra} เดือน`} color="var(--text-primary)"
           sub={`ปกติ ${result.totalMonthsBaseline} เดือน`} />
         <MiniStat label="เร็วขึ้น" value={`${result.monthsSaved} เดือน`}
           color={result.monthsSaved > 0 ? 'var(--success)' : 'var(--text-muted)'}
-          sub={result.monthsSaved >= 12 ? `~${(result.monthsSaved / 12).toFixed(1)} ปี` : ''} />
-        <MiniStat label="ประหยัด" value={result.cashSaved > 0 ? fmt(result.cashSaved) : '—'}
-          color={result.cashSaved > 0 ? 'var(--success)' : 'var(--text-muted)'}
-          sub="เทียบกับไม่โปะ" />
+          sub="แบบไม่คิดดอกเบี้ย" />
+        <MiniStat label="ดอกเบี้ยที่ประหยัด" value="—"
+          color="var(--text-muted)"
+          sub="โมเดลนี้ยังไม่คิดดอกเบี้ย" />
       </div>
 
       {/* Payoff order */}

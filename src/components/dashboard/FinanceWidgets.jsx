@@ -5,6 +5,7 @@ import {
   detectRecurringFromTransactions, checkRecurringStatus,
   forecastCashFlow, computeEmergencyFundCoverage,
   updateAccount, createTransaction,
+  monthlyizeRecurring, monthlyRecurringTotal,
 } from '../../lib/api/finance.js';
 
 const fmt = (n) => {
@@ -69,7 +70,9 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
       onChange?.();
     } catch (err) { alert(err.message); }
   };
-  const total     = recurring.reduce((s, r) => s + Number(r.amount || 0), 0);
+  // "ภาระต่อเดือน" must be monthlyized — summing r.amount at face value adds
+  // a yearly bill's full year into every month.
+  const total     = monthlyRecurringTotal(recurring);
   const paidCount = recurring.filter(r => checkRecurringStatus(r, transactions, yearMonth).status === 'paid').length;
   const overdueCount = recurring.filter(r => checkRecurringStatus(r, transactions, yearMonth).status === 'overdue').length;
 
@@ -142,6 +145,11 @@ export function RecurringTracker({ recurring, transactions, yearMonth, scope, on
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                     {Number(r.amount) > 0 ? fmt(r.amount) : 'ผันแปร'}
+                    {Number(r.amount) > 0 && r.frequency && r.frequency !== 'monthly' && (
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>
+                        {' '}≈ {fmt(monthlyizeRecurring(r))}/เดือน
+                      </span>
+                    )}
                   </div>
                   <Badge tone={st.tone} size="sm">{st.icon} {st.label}</Badge>
                 </div>
