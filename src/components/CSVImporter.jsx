@@ -3,7 +3,7 @@ import {
   parseCSV, detectKBankColumns, mapRowsToTransactions,
   bulkCreateTransactions, isMakeFormat,
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
-  classifyImportRows, getExistingRowsForDedup, txnKey,
+  classifyImportRows, getExistingRowsForDedup, txnKey, assignRowIds,
   suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments,
   getMonthBounds, bangkokMonth, bangkokDate,
   importTransactionsBatch, isRpcMissing, listTransactionsRange,
@@ -73,7 +73,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         setColMap(detected);
         setMakeFmt(isMakeFormat(detected));
 
-        const txns = mapRowsToTransactions(parsed.rows, detected, defaultScope);
+        // assignRowIds: the ONE place every source gets its immutable _rid —
+        // all ambiguity/force/suggestion bookkeeping keys on it.
+        const txns = assignRowIds(mapRowsToTransactions(parsed.rows, detected, defaultScope));
         setPreview(txns);
         setSelected(new Set(txns.map((_, i) => i)));
         setStep('preview');
@@ -87,7 +89,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   const handleColChange = (key, val) => {
     const newMap = { ...colMap, [key]: val };
     setColMap(newMap);
-    const txns = mapRowsToTransactions(rows, newMap, defaultScope);
+    const txns = assignRowIds(mapRowsToTransactions(rows, newMap, defaultScope));
     setPreview(txns);
     setSelected(new Set(txns.map((_, i) => i)));
   };
@@ -98,7 +100,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     setPdfParsing(true); setError(null);
     try {
       const buf  = await pdfFile.arrayBuffer();
-      const txns = await parseKBankPDF(buf, pdfPassword, defaultScope);
+      // PDF rows had NO per-row id (round-5 bug 1): every Set key collapsed
+      // to undefined, so one ambiguity decision hit ALL PDF rows at once.
+      const txns = assignRowIds(await parseKBankPDF(buf, pdfPassword, defaultScope));
       if (!txns.length) throw new Error('ไม่พบรายการธุรกรรม — ลองตรวจสอบรหัสผ่านหรือรูปแบบ Statement');
       setPreview(txns);
       setSelected(new Set(txns.map((_, i) => i)));
@@ -182,42 +186,121 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   useEffect(() => {
     setSkippedSuggestions(new Set(
       debtSuggestions.filter(s => s.confidence < 80)
-        .map(s => `${s.txn._rowIdx}|${s.debt.id}|${s.ym}`)
+        .map(s => `${s.txn._rid}|${s.debt.id}|${s.ym}`)
     ));
   }, [debtSuggestions]);
   const activeSuggestions = debtSuggestions.filter(s =>
-    !skippedSuggestions.has(`${s.txn._rowIdx}|${s.debt.id}|${s.ym}`)
+    !skippedSuggestions.has(`${s.txn._rid}|${s.debt.id}|${s.ym}`)
   );
 
-  // ── Two-tier dedup pre-classification (audit round 4) ────────────────────
-  // Statement rows carry synthetic seconds; a row that only matches an
-  // existing legacy (:00) row at MINUTE precision is AMBIGUOUS — it may be
-  // the same transaction re-exported, or a genuinely distinct one. That call
-  // is never made silently: the rows are listed below with both sides shown,
-  // default SKIP, one tap to include (sent with force=true).
-  const [ambiguous, setAmbiguous] = useState([]);              // [{ row, existing }]
-  const [includedAmbiguous, setIncludedAmbiguous] = useState(new Set());  // _rowIdx
+  // ── Two-tier dedup pre-classification (audit rounds 4–5) ─────────────────
+  // A row that only matches an existing row through made-up clocks is
+  // AMBIGUOUS — never decided silently: listed below with both sides shown,
+  // default SKIP, one tap (or bulk action) to include → sent with force=true.
+  //
+  // Round-5 bug 2: classification MUST run on the SELECTED batch, not the
+  // full preview — deselecting a tier-1 consumer changes what the rest of
+  // the batch means. Existing ledger rows are fetched once per preview
+  // (superset range); the classification itself is a pure useMemo over the
+  // CURRENT selection, so what is shown never diverges from what executes.
+  const [existingRows, setExistingRows] = useState(null);   // null = loading/unavailable
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!preview.length) { if (alive) { setAmbiguous([]); setIncludedAmbiguous(new Set()); } return; }
+      if (!preview.length) { if (alive) setExistingRows([]); return; }
       const yms = [...new Set(preview.map(r => bangkokMonth(r.occurred_at)).filter(Boolean))].sort();
-      if (!yms.length) { if (alive) setAmbiguous([]); return; }
+      if (!yms.length) { if (alive) setExistingRows([]); return; }
       try {
         const { startTs } = getMonthBounds(yms[0]);
         const { endTs }   = getMonthBounds(yms[yms.length - 1]);
-        const scopes = [...new Set(preview.map(r => r.scope))];
-        const amb = [];
-        for (const sc of scopes) {
-          const existing = await getExistingRowsForDedup({ startDate: startTs, endDate: endTs, scope: sc });
-          const cls = classifyImportRows(preview.filter(r => r.scope === sc), existing);
-          amb.push(...cls.ambiguous);
+        const rowsAll = [];
+        for (const sc of [...new Set(preview.map(r => r.scope))]) {
+          const got = await getExistingRowsForDedup({ startDate: startTs, endDate: endTs, scope: sc });
+          rowsAll.push(...got.map(g => ({ ...g, scope: sc })));
         }
-        if (alive) { setAmbiguous(amb); setIncludedAmbiguous(new Set()); }
-      } catch { if (alive) setAmbiguous([]); }
+        if (alive) setExistingRows(rowsAll);
+      } catch { if (alive) setExistingRows([]); }
     })();
     return () => { alive = false; };
   }, [preview]);
+
+  const classification = useMemo(() => {
+    if (!dedup || wipeMonth || !existingRows) return null;
+    const selectedRows = preview.filter((_, i) => selected.has(i));
+    if (!selectedRows.length) return null;
+    const out = { toImport: [], duplicates: [], ambiguous: [] };
+    for (const sc of [...new Set(selectedRows.map(r => r.scope))]) {
+      const cls = classifyImportRows(
+        selectedRows.filter(r => r.scope === sc),
+        existingRows.filter(e => e.scope === sc));
+      out.toImport.push(...cls.toImport);
+      out.duplicates.push(...cls.duplicates);
+      out.ambiguous.push(...cls.ambiguous);
+    }
+    return out;
+  }, [preview, selected, existingRows, dedup, wipeMonth]);
+
+  const ambiguous = classification?.ambiguous ?? [];
+  const [includedAmbiguous, setIncludedAmbiguous] = useState(new Set());  // _rid
+  // Selection/dedup changes can add or remove ambiguities — keep only the
+  // user choices that still apply.
+  useEffect(() => {
+    setIncludedAmbiguous(prev => {
+      const valid = new Set(ambiguous.map(a => a.row._rid));
+      const next = new Set([...prev].filter(rid => valid.has(rid)));
+      return next.size === prev.size ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classification]);
+
+  // Phase-2 (round-5 bug 2b/4): ambiguities discovered by the AUTHORITATIVE
+  // RPC (or the execution-time fallback classification) that the preview
+  // did not show — the decision step reopens for exactly these rows.
+  const [serverAmbiguous, setServerAmbiguous] = useState([]);   // [{ row, incoming, existing }]
+  const [serverIncluded, setServerIncluded] = useState(new Set());
+  const pendingStatsRef = useRef(null);   // stats accumulated in phase 1
+
+  // ── Finalise: debt auto-link + stats + done screen ────────────────────────
+  const finalizeImport = async (S) => {
+    let debtLinked = 0;
+    if (activeSuggestions.length && (S.insertedRows.length || (S.usedRpc && S.inserted > 0))) {
+      // RPC path returns counts, not rows — re-query the affected range to
+      // map natural keys back to real transaction ids.
+      let linkTargets = S.insertedRows;
+      if (S.usedRpc && S.monthArr.length) {
+        const { startTs: first } = getMonthBounds(S.monthArr[0]);
+        const { endTs: lastEnd }  = getMonthBounds(S.monthArr[S.monthArr.length - 1]);
+        linkTargets = await listTransactionsRange({ startDate: first, endDate: lastEnd });
+      }
+      const insertedByKey = new Map();
+      for (let i = 0; i < linkTargets.length; i++) {
+        insertedByKey.set(txnKey(linkTargets[i]), linkTargets[i]);
+      }
+      for (const sug of activeSuggestions) {
+        const match = insertedByKey.get(txnKey(sug.txn));
+        if (!match) continue;
+        try {
+          await recordDebtPayment({
+            debt_id: sug.debt.id,
+            pay_month: sug.ym + '-01',
+            amount_paid: sug.amount,
+            transaction_id: match.id,
+            notes: 'auto-linked from import',
+          });
+          debtLinked++;
+        } catch (_) { /* swallow individual link failures */ }
+      }
+    }
+
+    setImportStats({
+      inserted: S.inserted, skipped: S.skipped, debtLinked,
+      ambiguousSkipped: S.ambiguousSkipped, ambiguousImported: S.ambiguousImported,
+      accountsCreated: S.accountsCreated,
+      wipedMonths: S.wipeExecuted ? S.monthArr.length : 0,
+    });
+    setStep('done');
+    onImported?.();
+  };
 
   const handleImport = async () => {
     const selectedRows = preview.filter((_, i) => selected.has(i));
@@ -240,36 +323,33 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         pocketIdMap = await bulkUpsertAccountsByPocket(pocketSummary);
       }
 
-      // Step 2: resolve ambiguity choices, attach account_id from pocket.
-      // Ambiguous rows the user did NOT include are dropped here (default
-      // SKIP — visible in the section above, counted in the stats below).
-      // Included ones travel with _force: the classifier/RPC bypasses both
-      // dedup tiers for them.
-      const useAmbiguity = dedup && !wipeMonth;
-      const ambiguousIdx = new Set(ambiguous.map(a => a.row._rowIdx));
+      // Step 2: resolve ambiguity choices — from the SAME selection-driven
+      // classification the user just saw (round-5 bug 2: no divergence
+      // between shown and executed). Keys are the immutable per-row _rid.
+      const useAmbiguity = dedup && !wipeMonth && !!classification;
+      const ambiguousRids = new Set(ambiguous.map(a => a.row._rid));
       let ambiguousSkipped = 0;
       let ambiguousImported = 0;
       const withMeta = [];
       for (const row of selectedRows) {
-        const { _rowIdx, _pocket, _txtype, _cp_bal, ...r } = row;
-        if (useAmbiguity && ambiguousIdx.has(_rowIdx)) {
-          if (!includedAmbiguous.has(_rowIdx)) { ambiguousSkipped++; continue; }
+        const { _rowIdx, _rid, _pocket, _txtype, _cp_bal, ...r } = row;
+        r._rid = _rid;                            // identity survives the pipeline
+        if (useAmbiguity && ambiguousRids.has(_rid)) {
+          if (!includedAmbiguous.has(_rid)) { ambiguousSkipped++; continue; }
           ambiguousImported++;
-          r._force = true;                       // user resolved: import it
+          r._force = true;                        // user resolved: import it
         }
         withMeta.push({ ...r, account_id: pocketIdMap.get(_pocket) || null });
       }
-      // (_synthetic rides along on r; both it and _force are stripped again
-      // before any raw table insert.)
 
       let inserted = 0;
       let skipped = 0;
-      let insertedRows = [];   // legacy path only — RPC path re-queries below
+      let insertedRows = [];      // legacy path only
+      const discovered = [];      // ambiguities first found at execution time
 
-      // Step 3 (preferred): atomic wipe+insert per (scope, month) via the
-      // import_transactions RPC — one transaction + advisory lock + the SAME
-      // two-tier classifier under the lock (authoritative; catches races).
-      // Falls back to the legacy multi-call path if the RPC isn't installed.
+      // Step 3 (preferred): atomic import per (scope, month) via the RPC —
+      // authoritative classifier under the advisory lock. Any ambiguity IT
+      // discovers (concurrent writes) round-trips to a decision step below.
       let usedRpc = false;
       try {
         const groups = new Map();   // 'scope|ym' → rows
@@ -288,8 +368,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
             rows,
           });
           inserted += res.inserted;
-          skipped  += res.dupSkipped || (rows.length - res.inserted - (res.ambiguousSkipped || 0));
-          ambiguousSkipped += res.ambiguousSkipped || 0;   // race-caught by the RPC
+          skipped  += res.dupSkipped;
+          for (const a of res.ambiguous || []) {
+            if (a.row) discovered.push({ row: a.row, incoming: a.incoming, existing: a.existing });
+            else ambiguousSkipped++;   // v4 RPC: count only — cannot round-trip
+          }
         }
         usedRpc = true;
       } catch (err) {
@@ -299,9 +382,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       let wipeExecuted = usedRpc && wipeMonth;
       if (!usedRpc) {
         // ── Legacy path (RPC not installed yet) ──────────────────────────
-        // 3a: NEVER wipe outside the RPC transaction. Deleting a month and
-        // then failing to insert loses data with no undo — so wipe mode is
-        // REFUSED here and downgraded to append + dedup (no deletes).
+        // NEVER wipe outside the RPC transaction — downgrade with notice.
         if (wipeMonth) {
           alert(
             'โหมดแทนที่ทั้งเดือนต้องรันไฟล์ SQL migration_add_import_rpc.sql ก่อน — ' +
@@ -310,71 +391,93 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         }
         const effDedup = dedup || wipeMonth;   // downgraded wipe forces dedup
 
-        // 3b: the SAME two-tier classifier as the RPC — tier-1 exact-key
-        // multiset auto-skips duplicates, tier-2 flags synthetic minute
-        // matches as ambiguous (skipped here; they were surfaced above).
+        // Execution-time classification with FRESH ledger rows — the same
+        // two-tier algorithm; new ambiguities (concurrent writes) go to the
+        // decision step exactly like the RPC path.
         let toImport = withMeta;
         if (effDedup && monthArr.length) {
           const { startTs: first } = getMonthBounds(monthArr[0]);
           const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
-          const scopesNeeded = [...new Set(withMeta.map(r => r.scope))];
           toImport = [];
-          for (const sc of scopesNeeded) {
+          for (const sc of [...new Set(withMeta.map(r => r.scope))]) {
             const existing = await getExistingRowsForDedup({ startDate: first, endDate: lastEnd, scope: sc });
             const cls = classifyImportRows(withMeta.filter(r => r.scope === sc), existing);
             toImport.push(...cls.toImport);
             skipped += cls.duplicates.length;
-            ambiguousSkipped += cls.ambiguous.length;
+            for (const a of cls.ambiguous) discovered.push({ row: a.row, existing: a.existing });
           }
         }
 
-        // 3c: insert (classifier meta never reaches the table)
         if (toImport.length) {
-          const cleanRows = toImport.map(({ _synthetic, _force, ...r }) => r);
+          const cleanRows = toImport.map(({ _rid, _synthetic, _force, ...r }) => r);
           insertedRows = (await bulkCreateTransactions(cleanRows)) || [];
           inserted = insertedRows.length || cleanRows.length;
         }
       }
 
-      // Step 4: auto-link debt payments using suggestions
-      let debtLinked = 0;
-      if (activeSuggestions.length && (insertedRows.length || (usedRpc && inserted > 0))) {
-        // RPC path returns a count, not rows — re-query the affected range to
-        // map natural keys (date+amount+title) back to real transaction ids.
-        let linkTargets = insertedRows;
-        if (usedRpc && monthArr.length) {
-          const { startTs: first } = getMonthBounds(monthArr[0]);
-          const { endTs: lastEnd }  = getMonthBounds(monthArr[monthArr.length - 1]);
-          linkTargets = await listTransactionsRange({ startDate: first, endDate: lastEnd });
-        }
-        const insertedByKey = new Map();
-        for (let i = 0; i < linkTargets.length; i++) {
-          insertedByKey.set(txnKey(linkTargets[i]), linkTargets[i]);
-        }
-        for (const sug of activeSuggestions) {
-          const match = insertedByKey.get(txnKey(sug.txn));
-          if (!match) continue;
-          try {
-            await recordDebtPayment({
-              debt_id: sug.debt.id,
-              pay_month: sug.ym + '-01',
-              amount_paid: sug.amount,
-              transaction_id: match.id,
-              notes: 'auto-linked from import',
+      const stats = {
+        inserted, skipped, ambiguousSkipped, ambiguousImported,
+        insertedRows, usedRpc, wipeExecuted, monthArr,
+        accountsCreated: pocketIdMap.size,
+      };
+
+      if (discovered.length) {
+        // Phase 2: REOPEN the decision step for execution-time ambiguities —
+        // the import is NOT declared complete until the user has decided.
+        pendingStatsRef.current = stats;
+        setServerAmbiguous(discovered);
+        setServerIncluded(new Set());
+        setStep('resolve');
+        return;
+      }
+
+      await finalizeImport(stats);
+    } catch (err) {
+      setError('Import ไม่สำเร็จ: ' + (err.message || String(err)));
+    } finally { setImporting(false); }
+  };
+
+  // Phase 2 confirm: import the user-approved rows with force=true, skip the
+  // rest, then finalise with truthful bucket counts.
+  const handleResolveAmbiguous = async () => {
+    const S = pendingStatsRef.current;
+    if (!S) return;
+    setImporting(true); setError(null);
+    try {
+      const approved = serverAmbiguous
+        .filter(a => serverIncluded.has(a.row._rid))
+        .map(a => ({ ...a.row, _force: true }));
+      S.ambiguousSkipped += serverAmbiguous.length - approved.length;
+      S.ambiguousImported += approved.length;
+
+      if (approved.length) {
+        if (S.usedRpc) {
+          const groups = new Map();
+          for (const r of approved) {
+            const ym = bangkokMonth(r.occurred_at);
+            if (!ym) continue;
+            const key = `${r.scope}|${ym}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(r);
+          }
+          for (const [key, rows] of groups) {
+            const [sc, ym] = key.split('|');
+            const res = await importTransactionsBatch({
+              scope: sc, month: ym, wipe: false, dedup: true, rows,
             });
-            debtLinked++;
-          } catch (_) { /* swallow individual link failures */ }
+            S.inserted += res.inserted;
+          }
+        } else {
+          const cleanRows = approved.map(({ _rid, _synthetic, _force, ...r }) => r);
+          const rowsIns = (await bulkCreateTransactions(cleanRows)) || [];
+          S.insertedRows = [...S.insertedRows, ...rowsIns];
+          S.inserted += rowsIns.length || cleanRows.length;
         }
       }
 
-      setImportStats({
-        inserted, skipped, debtLinked,
-        ambiguousSkipped, ambiguousImported,
-        accountsCreated: pocketIdMap.size,
-        wipedMonths: wipeExecuted ? monthArr.length : 0,
-      });
-      setStep('done');
-      onImported?.();
+      setServerAmbiguous([]); setServerIncluded(new Set());
+      pendingStatsRef.current = null;
+      await finalizeImport(S);
     } catch (err) {
       setError('Import ไม่สำเร็จ: ' + (err.message || String(err)));
     } finally { setImporting(false); }
@@ -732,7 +835,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {debtSuggestions.map(sug => {
-                      const key = `${sug.txn._rowIdx}|${sug.debt.id}|${sug.ym}`;
+                      const key = `${sug.txn._rid}|${sug.debt.id}|${sug.ym}`;
                       const isSkipped = skippedSuggestions.has(key);
                       const isStrong  = sug.confidence >= 80;
                       return (
@@ -779,19 +882,31 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   background: tint('--warning', 8), border: '1px solid var(--warning)',
                   borderRadius: 'var(--radius-card)', padding: '14px 16px',
                 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600, marginBottom: 4 }}>
-                    ⚠️ อาจซ้ำกับรายการเดิม — เลือกเอง · {ambiguous.length} รายการ
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
+                      ⚠️ อาจซ้ำกับรายการเดิม — เลือกเอง · {ambiguous.length} รายการ
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className="btn btn--ghost btn--sm"
+                        onClick={() => setIncludedAmbiguous(new Set())}>
+                        ข้ามทั้งหมด
+                      </button>
+                      <button type="button" className="btn btn--ghost btn--sm"
+                        onClick={() => setIncludedAmbiguous(new Set(ambiguous.map(a => a.row._rid)))}>
+                        นำเข้าทั้งหมด
+                      </button>
+                    </div>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.55 }}>
-                    รายการจากไฟล์นี้ตรงกับรายการเดิมแค่ระดับนาที (ไฟล์ไม่มีวินาทีจริง) —
+                    รายการจากไฟล์นี้ตรงกับรายการเดิมผ่านเวลาที่ระบบสร้างขึ้นเอง (ไฟล์ไม่มีวินาทีจริง) —
                     อาจเป็นรายการเดียวกันที่ export ซ้ำ หรือรายการใหม่ที่หน้าตาเหมือนกันก็ได้
                     ระบบไม่เดาให้: ค่าเริ่มต้นคือ<strong>ข้าม</strong> ติ๊กเฉพาะอันที่มั่นใจว่าเป็นรายการใหม่
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {ambiguous.map(({ row, existing }) => {
-                      const included = includedAmbiguous.has(row._rowIdx);
+                      const included = includedAmbiguous.has(row._rid);
                       return (
-                        <label key={row._rowIdx} style={{
+                        <label key={row._rid} style={{
                           display: 'grid', gridTemplateColumns: '20px 1fr', gap: 10,
                           padding: '8px 10px', background: 'var(--surface)',
                           border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
@@ -800,7 +915,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           <input type="checkbox" checked={included}
                             onChange={() => setIncludedAmbiguous(prev => {
                               const n = new Set(prev);
-                              included ? n.delete(row._rowIdx) : n.add(row._rowIdx);
+                              included ? n.delete(row._rid) : n.add(row._rid);
                               return n;
                             })}
                             style={{ accentColor: 'var(--warning)', marginTop: 2 }} />
@@ -941,6 +1056,84 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           )}
 
           {/* ──────────────── DONE ────────────────────────────────────────── */}
+          {/* ──────────────── RESOLVE (phase 2 — execution-time ambiguities) ── */}
+          {step === 'resolve' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{
+                background: tint('--warning', 8), border: '1px solid var(--warning)',
+                borderRadius: 'var(--radius-card)', padding: '14px 16px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
+                    ⚠️ พบรายการกำกวมตอนบันทึกจริง · {serverAmbiguous.length} รายการ — ต้องตัดสินใจก่อนปิดงาน
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className="btn btn--ghost btn--sm"
+                      onClick={() => setServerIncluded(new Set())}>
+                      ข้ามทั้งหมด
+                    </button>
+                    <button type="button" className="btn btn--ghost btn--sm"
+                      onClick={() => setServerIncluded(new Set(serverAmbiguous.map(a => a.row._rid)))}>
+                      นำเข้าทั้งหมด
+                    </button>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, lineHeight: 1.55 }}>
+                  ระหว่างบันทึก เซิร์ฟเวอร์เจอรายการที่อาจซ้ำเพิ่มเติมจากที่โชว์ไว้ตอน preview
+                  (ข้อมูลในระบบเปลี่ยนระหว่างทาง) — เหมือนเดิม: ระบบไม่เดาให้ ค่าเริ่มต้นคือข้าม
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {serverAmbiguous.map(({ row, incoming, existing }) => {
+                    const inc = incoming || row;
+                    const included = serverIncluded.has(row._rid);
+                    return (
+                      <label key={row._rid} style={{
+                        display: 'grid', gridTemplateColumns: '20px 1fr', gap: 10,
+                        padding: '8px 10px', background: 'var(--surface)',
+                        border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+                        alignItems: 'start', fontSize: 12, cursor: 'pointer',
+                      }}>
+                        <input type="checkbox" checked={included}
+                          onChange={() => setServerIncluded(prev => {
+                            const n = new Set(prev);
+                            included ? n.delete(row._rid) : n.add(row._rid);
+                            return n;
+                          })}
+                          style={{ accentColor: 'var(--warning)', marginTop: 2 }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--warning)', letterSpacing: '0.1em' }}>ในไฟล์</span>
+                            <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.title}</span>
+                            <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                              {bangkokDate(inc.occurred_at)} · ฿{Math.abs(Number(inc.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
+                            </span>
+                          </div>
+                          {existing && (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2, opacity: 0.75 }}>
+                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-3)', letterSpacing: '0.1em' }}>ในระบบ</span>
+                              <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{existing.title}</span>
+                              <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-muted)' }}>
+                                {bangkokDate(existing.occurred_at)} · ฿{Math.abs(Number(existing.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
+                              </span>
+                            </div>
+                          )}
+                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, marginTop: 3, color: included ? 'var(--profit)' : 'var(--ink-3)' }}>
+                            {included ? '✓ จะนำเข้าเป็นรายการใหม่' : '— ข้าม (ค่าเริ่มต้น)'}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              {error && (
+                <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 13 }}>
+                  ⚠️ {error}
+                </div>
+              )}
+            </div>
+          )}
+
           {step === 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, padding: '40px 0' }}>
               <div style={{ fontSize: 52 }}>✅</div>
@@ -991,6 +1184,16 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               {importing
                 ? 'กำลัง Import...'
                 : `💾 Import ${sel.length} รายการ${familySel > 0 ? ` (${familySel} ครอบครัว)` : ''}`}
+            </button>
+          </div>
+        )}
+        {step === 'resolve' && (
+          <div style={{ padding: '14px 26px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0, background: 'var(--surface)' }}>
+            <button className="btn btn--primary" disabled={importing} onClick={handleResolveAmbiguous}
+              style={{ minWidth: 240, justifyContent: 'center' }}>
+              {importing
+                ? 'กำลังบันทึก...'
+                : `✓ ยืนยัน — นำเข้า ${serverIncluded.size} · ข้าม ${serverAmbiguous.length - serverIncluded.size}`}
             </button>
           </div>
         )}
