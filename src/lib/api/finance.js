@@ -1038,19 +1038,35 @@ export function multisetDedupRows(rows, existingCounts, keyFn = txnKey) {
   return keep;
 }
 
-// ── Two-tier import identity (audit round 4) ─────────────────────────────────
+// ── Two-tier import identity (audit rounds 4–5) ──────────────────────────────
 // Rows from CSV/PDF statements carry SYNTHETIC seconds (the sources are
 // date- or minute-precision). Pre-v4.16 the app stored ALL such rows at
 // :00 seconds; v4.16+ stores :00/:01/:02… by row order. Exact second-key
 // dedup alone would therefore re-import every non-first row of an OLD file
 // (duplicates), and a minute-only fallback alone silently DROPS genuinely
 // distinct rows. The two-tier classifier keeps both honest:
-//   tier-1  exact second-key multiset  → DUPLICATE (auto-skip)
+//   tier-1  exact second-key multiset. Round 5: an exact match is only an
+//           automatic DUPLICATE when the identity is trustworthy — i.e. NOT
+//           (incoming is synthetic AND the matched ledger row carries the
+//           :00 legacy signature). Both clocks made-up ⇒ identity is
+//           unknowable ⇒ AMBIGUOUS, the user decides.
 //   tier-2  only for still-unmatched SYNTHETIC rows: minute-key multiset
 //           against remaining existing rows with the legacy :00 signature
 //           → AMBIGUOUS: never decided silently — surfaced to the user
 //           (default: skip), or force-imported when the user opts in.
-// Real-timestamp rows (no _synthetic flag) never enter tier-2.
+// Real-timestamp rows (no _synthetic flag) keep automatic exact-dup and
+// never enter tier-2. Every match CONSUMES its ledger row from BOTH pools.
+
+/**
+ * Assign a unique immutable per-row identity to parsed statement rows —
+ * the ONE place every source (Make CSV, generic CSV, KBank PDF) gets its
+ * `_rid`. All selection/ambiguity/force bookkeeping keys on `_rid`
+ * (round 5: PDF rows had no `_rowIdx`, so Set keys collapsed to undefined
+ * and one decision applied to every PDF row at once).
+ */
+export function assignRowIds(rows) {
+  return (rows || []).map((r, i) => ({ ...r, _rid: i }));
+}
 
 /** Minute-truncated variant of txnKey — tier-2 legacy matching. */
 export function txnMinuteKey(t) {
@@ -1089,26 +1105,41 @@ export async function getExistingRowsForDedup({ startDate, endDate, scope } = {}
 }
 
 /**
- * Two-tier classification (pure; mirrored by import_transactions v4 SQL).
+ * Two-tier classification (pure; mirrored by import_transactions v5 SQL).
  *   rows: batch rows ({_synthetic, _force} respected)
  *   existingRows: ledger rows in the same scope+range
  * Returns { toImport, duplicates, ambiguous } where ambiguous entries are
  * { row, existing } pairs (existing = the ledger row it may duplicate).
- * Multiset semantics throughout: every match consumes its ledger row, and
- * a :00 row consumed by tier-1 is no longer available to tier-2.
+ * Multiset semantics throughout: every match consumes its ledger row from
+ * BOTH pools (exact + legacy), so nothing is double-spent.
+ *
+ * Round 5 (bug 3): synthetic-vs-:00 exact matches are AMBIGUOUS, not
+ * automatic duplicates — a skipped-count is not explicit confirmation.
+ * Only real-source timestamps keep the automatic exact-dup.
  */
 export function classifyImportRows(rows, existingRows) {
-  const exact = new Map();          // exactKey → count
-  const legacy = new Map();         // minuteKey → array of :00 ledger rows
+  const exactPool = new Map();      // exactKey → ledger rows[]
+  const legacyPool = new Map();     // minuteKey → ledger rows[] (seconds==0)
   for (const e of existingRows || []) {
     const k = txnKey(e);
-    exact.set(k, (exact.get(k) || 0) + 1);
+    if (!exactPool.has(k)) exactPool.set(k, []);
+    exactPool.get(k).push(e);
     if (txnSecond(e) === 0) {
       const mk = txnMinuteKey(e);
-      if (!legacy.has(mk)) legacy.set(mk, []);
-      legacy.get(mk).push(e);
+      if (!legacyPool.has(mk)) legacyPool.set(mk, []);
+      legacyPool.get(mk).push(e);
     }
   }
+  const take = (pool, key) => {
+    const list = pool.get(key);
+    return list?.length ? list.pop() : null;
+  };
+  const removeRef = (pool, key, ref) => {
+    const list = pool.get(key);
+    if (!list) return;
+    const i = list.indexOf(ref);
+    if (i >= 0) list.splice(i, 1);
+  };
 
   const out = { toImport: [], duplicates: [], ambiguous: [] };
   for (const r of rows || []) {
@@ -1116,24 +1147,24 @@ export function classifyImportRows(rows, existingRows) {
 
     // tier-1: exact second-key multiset
     const k = txnKey(r);
-    const c = exact.get(k) || 0;
-    if (c > 0) {
-      exact.set(k, c - 1);
-      if (txnSecond(r) === 0) {
-        const mk = txnMinuteKey(r);
-        const list = legacy.get(mk);
-        if (list?.length) list.pop();   // that ledger row is spoken for
+    const ex = take(exactPool, k);
+    if (ex) {
+      if (txnSecond(ex) === 0) removeRef(legacyPool, txnMinuteKey(ex), ex);
+      if (r._synthetic && txnSecond(ex) === 0) {
+        // Both clocks are made up — identity unknowable, user decides.
+        out.ambiguous.push({ row: r, existing: ex });
+      } else {
+        out.duplicates.push(r);
       }
-      out.duplicates.push(r);
       continue;
     }
 
     // tier-2: synthetic rows only, against remaining legacy :00 rows
     if (r._synthetic) {
-      const mk = txnMinuteKey(r);
-      const list = legacy.get(mk);
-      if (list?.length) {
-        out.ambiguous.push({ row: r, existing: list.pop() });
+      const lg = take(legacyPool, txnMinuteKey(r));
+      if (lg) {
+        removeRef(exactPool, txnKey(lg), lg);
+        out.ambiguous.push({ row: r, existing: lg });
         continue;
       }
     }
@@ -1147,11 +1178,18 @@ export function classifyImportRows(rows, existingRows) {
  * Atomic wipe+insert of one scope+month batch via the import_transactions
  * RPC (single transaction + per-user/month advisory lock + server-side
  * dedup under the lock).
- * v4: rows carry `synthetic` (statement rows with made-up seconds) and
+ * v5: rows carry `synthetic` (statement rows with made-up seconds) and
  * `force` (user resolved an ambiguity as "import"); the RPC runs the same
- * two-tier classifier as classifyImportRows and returns
- *   { inserted, dup_skipped, ambiguous_skipped }
- * (a v3 deployment returns a bare int — normalised here).
+ * two-tier classifier as classifyImportRows under its advisory lock and —
+ * because it is AUTHORITATIVE and may discover ambiguities the client
+ * preview could not (concurrent writes) — returns the ambiguous rows
+ * themselves, not just a count:
+ *   { inserted, dup_skipped,
+ *     ambiguous: [{ ord, incoming: {...}, existing: {...} }] }
+ * `ord` is the 1-based position in the p_rows array — the caller maps it
+ * back to its own row identity (`rows[ord-1]._rid`).
+ * Older deployments are normalised: v4 returns ambiguous_skipped (count
+ * only → surfaced as ambiguousSkipped), v3 returns a bare int.
  * Throws the raw error when the RPC is missing — the importer catches it
  * with isRpcMissing() and falls back to the legacy multi-call path.
  */
@@ -1173,13 +1211,22 @@ export async function importTransactionsBatch({ scope, month, wipe, dedup, rows 
   });
   if (error) throw error;
   if (data && typeof data === 'object') {
+    const ambiguous = Array.isArray(data.ambiguous)
+      ? data.ambiguous.map(a => ({
+          ord: Number(a.ord),
+          row: rows[Number(a.ord) - 1] || null,   // caller identity (_rid intact)
+          incoming: a.incoming || null,
+          existing: a.existing || null,
+        }))
+      : [];
     return {
       inserted:         Number(data.inserted) || 0,
       dupSkipped:       Number(data.dup_skipped) || 0,
-      ambiguousSkipped: Number(data.ambiguous_skipped) || 0,
+      ambiguous,
+      ambiguousSkipped: ambiguous.length || Number(data.ambiguous_skipped) || 0,
     };
   }
-  return { inserted: Number(data) || 0, dupSkipped: 0, ambiguousSkipped: 0 };
+  return { inserted: Number(data) || 0, dupSkipped: 0, ambiguous: [], ambiguousSkipped: 0 };
 }
 
 /** Delete all transactions in a month (used for clean re-import). */
@@ -1602,7 +1649,7 @@ export function suggestDebtPaymentLinks(transactions, debts, existingPayments = 
   // Dedup: keep best suggestion per (txn, ym) pair
   const best = {};
   for (const s of all) {
-    const key = `${s.txn._rowIdx ?? s.txn.id ?? s.txn.title}|${s.ym}`;
+    const key = `${s.txn._rid ?? s.txn._rowIdx ?? s.txn.id ?? s.txn.title}|${s.ym}`;
     if (!best[key] || s.confidence > best[key].confidence) best[key] = s;
   }
   return Object.values(best).sort((a, b) => b.confidence - a.confidence);
