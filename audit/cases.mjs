@@ -15,6 +15,7 @@ import {
   multisetDedupRows, getExistingTxnKeyCounts,
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
+  parseCSV, detectKBankColumns, mapRowsToTransactions,
 } from '../src/lib/api/finance.js';
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
 import { toLocalYMD } from '../src/lib/dates.js';
@@ -391,6 +392,164 @@ section('R2 · Finding 5 · suggestions feed (12-month window)');
     { id: 's3', title: 'AIS', amount: -499, type: 'bills', occurred_at: '2026-07-01T12:00:00+07:00', scope: 'personal' }];
   check('multi-month feed (new historyTxns wiring) → suggestion appears',
     detectRecurringFromTransactions(twoMonths).length === 1);
+}
+
+// ════════════════════════════════ ROUND 3 ════════════════════════════════
+
+section('R3 · B1 · anchor reconciliation (stale updated_at scenario)');
+{
+  // Legacy account: stored balance 50,000 is the CURRENT truth (it already
+  // reflects the whole ledger). Its updated_at ≈ creation time.
+  const staleAnchor = '2025-01-01T00:00:00.000Z';   // ≈ created_at
+  const acct = { id: 'rec1', user_id: 'user-1', name: 'บัญชีเก่า', balance: 50000,
+    is_active: true, scope: 'personal' };
+  __tables.accounts.push(acct);
+  __tables.transactions.push(
+    { id: 'rc1', user_id: 'user-1', scope: 'personal', account_id: 'rec1', title: 'เก่า 1', amount: -20000, type: 'food', occurred_at: '2025-06-01T05:00:00.000Z' },
+    { id: 'rc2', user_id: 'user-1', scope: 'personal', account_id: 'rec1', title: 'เก่า 2', amount: -10000, type: 'food', occurred_at: '2026-01-01T05:00:00.000Z' },
+  );
+
+  // v2 backfill behaviour (anchor = stale updated_at) → whole ledger
+  // re-added on top of the current snapshot = double count. This is the
+  // auditor's scenario, reproduced with the REAL applyEffectiveBalances.
+  const [bad] = await applyEffectiveBalances([{ ...acct, balance_anchor_at: staleAnchor }]);
+  check('BEFORE (v2, anchor=updated_at≈created): double count', bad.balance === 20000,
+    `displayed ฿${bad.balance} — wrong, snapshot already contained those rows`);
+
+  // v3 / reconcile file behaviour: anchor = now() → Σ(after now) = 0 →
+  // display == stored snapshot exactly (pre-anchor behaviour restored).
+  const [good] = await applyEffectiveBalances([{ ...acct, balance_anchor_at: new Date().toISOString() }]);
+  check('AFTER (v3 backfill / reconcile: anchor=now): display == snapshot', good.balance === 50000,
+    `displayed ฿${good.balance}`);
+
+  // touch_account_anchor trigger decision table (JS mirror of the SQL:
+  // stamp iff balance IS DISTINCT FROM old AND anchor IS NOT DISTINCT FROM old)
+  const trig = (oldRow, newRow) => {
+    const balChanged     = !Object.is(newRow.balance, oldRow.balance);
+    const anchorUntouched = Object.is(newRow.balance_anchor_at, oldRow.balance_anchor_at);
+    return (balChanged && anchorUntouched) ? { ...newRow, balance_anchor_at: 'NOW()' } : newRow;
+  };
+  const oldRow = { balance: 100, balance_anchor_at: 'T0' };
+  check('trigger: balance write WITHOUT explicit anchor → stamped now()',
+    trig(oldRow, { balance: 200, balance_anchor_at: 'T0' }).balance_anchor_at === 'NOW()');
+  check('trigger: balance write WITH explicit anchor → explicit stamp respected',
+    trig(oldRow, { balance: 200, balance_anchor_at: 'T9' }).balance_anchor_at === 'T9');
+  check('trigger: non-balance update (rename etc.) → anchor untouched',
+    trig(oldRow, { balance: 100, balance_anchor_at: 'T0' }).balance_anchor_at === 'T0');
+}
+
+section('R3 · B2 · popup transfer amount lock (decision table as shipped)');
+{
+  // Replicates Finance.jsx handleSubmit: for transfer edits the amount is
+  // taken from the ORIGINAL row verbatim — the form field is read-only, and
+  // even a tampered form value cannot desync the mirrored pair.
+  const decide = (form, initialTxn, isEdit) => {
+    const isTransferEdit = isEdit && isTransfer(initialTxn);
+    const abs = Math.abs(Number(form.amount));
+    const typeChanged = isEdit && form.type !== initialTxn?.type;
+    if (isTransferEdit) return Number(initialTxn.amount);
+    if (isEdit && !typeChanged) return abs * (Number(initialTxn.amount) < 0 ? -1 : 1);
+    return abs * (form.type === 'income' ? 1 : -1);
+  };
+  const outLeg = { type: 'transfer', category: 'โอนภายใน', amount: -80000 };
+  const inLeg  = { type: 'transfer', category: 'โอนภายใน', amount: 80000 };
+  check('transfer −leg: tampered form amount 90000 ignored → −80000 kept',
+    decide({ type: 'transfer', amount: '90000' }, outLeg, true) === -80000);
+  check('transfer +leg: amount stays +80000 (legs remain mirrored)',
+    decide({ type: 'transfer', amount: '12345' }, inLeg, true) === 80000);
+  check('non-transfer edit still follows round-2 rules',
+    decide({ type: 'food', amount: '500' }, { type: 'food', amount: -450 }, true) === -500);
+}
+
+section('R3 · B3 · sharpened dedup key (second + title-80 + note)');
+{
+  const oldKey = (t) => {   // v2 key, for the BEFORE comparisons
+    const d = new Date(t.occurred_at);
+    return `${d.toISOString().substring(0, 16)}|${Math.round(t.amount * 100)}|${(t.title || '').trim().substring(0, 40)}`;
+  };
+  const r1 = { occurred_at: '2026-08-05T12:00:00+07:00', amount: -120, title: 'ข้าวมันไก่', note: null };
+  const r2 = { occurred_at: '2026-08-05T12:00:01+07:00', amount: -120, title: 'ข้าวมันไก่', note: null };
+  check('BEFORE: minute key collided two distinct same-minute rows', oldKey(r1) === oldKey(r2));
+  check('AFTER: second-precision keys differ', txnKey(r1) !== txnKey(r2));
+
+  const n1 = { ...r1, note: 'โต๊ะ 1' };
+  const n2 = { ...r1, note: 'โต๊ะ 2' };
+  check('note distinguishes otherwise-identical rows', txnKey(n1) !== txnKey(n2));
+  check('null note ≡ empty note (JS matches SQL coalesce(trim(note),\'\'))',
+    txnKey(r1) === txnKey({ ...r1, note: '' }) && txnKey(r1) === txnKey({ ...r1, note: '  ' }));
+
+  const long1 = { ...r1, title: 'A'.repeat(40) + 'X'.repeat(20) };
+  const long2 = { ...r1, title: 'A'.repeat(40) + 'Y'.repeat(20) };
+  check('title-80 separates rows the old title-40 slice collided',
+    oldKey(long1) === oldKey(long2) && txnKey(long1) !== txnKey(long2));
+
+  // SQL ≡ JS: build the key with the exact SQL expressions
+  // (date_trunc second → UTC, round(amount*100), left(trim(title),80),
+  // coalesce(trim(note),'')) and compare with txnKey.
+  const sqlKey = (t) => {
+    const d = new Date(t.occurred_at);
+    d.setUTCMilliseconds(0);
+    const ts = d.toISOString().substring(0, 19);
+    const amt = Math.round(Number(t.amount) * 100);
+    const title = (t.title || '').trim().substring(0, 80);
+    const note = t.note == null ? '' : String(t.note).trim();
+    return `${ts}|${amt}|${title}|${note}`;
+  };
+  for (const t of [r1, r2, n1, long1, { ...r1, note: null }]) {
+    if (sqlKey(t) !== txnKey(t)) { check('SQL key formula ≡ txnKey', false, `${sqlKey(t)} vs ${txnKey(t)}`); break; }
+  }
+  check('SQL key formula ≡ txnKey on all samples', [r1, r2, n1, long1].every(t => sqlKey(t) === txnKey(t)));
+
+  // Cross-file multiset: ledger has the 12:00:00 row; a NEW export contains
+  // a genuinely distinct second same-day row (synthetic :01). v2 (minute
+  // key, existing=1, batch=1) dropped it; v3 imports it. True re-import of
+  // the 12:00:00 row is still dropped.
+  const existing = new Map([[txnKey(r1), 1]]);
+  check('genuinely distinct 2nd row (different second) now imports',
+    multisetDedupRows([r2], existing).length === 1);
+  check('true duplicate (same second) still dedups',
+    multisetDedupRows([{ ...r1 }], existing).length === 0);
+}
+
+section('R3 · B3 · synthetic incrementing seconds in the real parsers');
+{
+  // Generic bank CSV (date-only source) through the REAL pipeline:
+  // parseCSV → detectKBankColumns → mapRowsToTransactions.
+  const csv = 'Date,Description,Amount\n' +
+    '05/08/2026,กาแฟ,-65\n' +
+    '05/08/2026,กาแฟ,-65\n' +          // genuinely distinct 2nd coffee, same day
+    '05/08/2026,ข้าวเย็น,-120\n' +
+    '06/08/2026,กาแฟ,-65\n';
+  const parsed = parseCSV(csv);
+  const colMap = detectKBankColumns(parsed.headers);
+  const txns = mapRowsToTransactions(parsed.rows, colMap, 'personal');
+  const times = txns.map(t => t.occurred_at);
+  check('same-day rows get incrementing synthetic seconds',
+    times[0].includes('T12:00:00') && times[1].includes('T12:00:01') && times[2].includes('T12:00:02'),
+    times.slice(0, 3).map(t => t.substring(11, 19)).join(' · '));
+  check('counter resets per day (next day starts at :00)', times[3].includes('T12:00:00'));
+  check('two distinct same-day coffees now have DIFFERENT dedup keys',
+    txnKey(txns[0]) !== txnKey(txns[1]));
+
+  // Determinism: re-parsing the same file reproduces identical timestamps →
+  // re-import still dedups to zero via multiset.
+  const txns2 = mapRowsToTransactions(parseCSV(csv).rows, detectKBankColumns(parseCSV(csv).headers), 'personal');
+  check('same file re-parsed → identical timestamps (dedup-stable)',
+    txns2.every((t, i) => t.occurred_at === txns[i].occurred_at));
+  const ledgerCounts = new Map();
+  for (const t of txns) ledgerCounts.set(txnKey(t), (ledgerCounts.get(txnKey(t)) || 0) + 1);
+  check('re-import of the same file → 0 rows pass dedup',
+    multisetDedupRows(txns2, ledgerCounts).length === 0);
+
+  // Make format with a real HH:MM clock: same-minute rows split by seconds.
+  const makeCsv = 'Time,Cloud Pocket,Type,Txn,Category,Memo,Note,Date\n' +
+    '09:15,Cashbox,Payment,-65,ชา กาแฟ,,ร้านกาแฟ,05/08/2026\n' +
+    '09:15,Cashbox,Payment,-65,ชา กาแฟ,,ร้านกาแฟ,05/08/2026\n';
+  const mp = parseCSV(makeCsv);
+  const mTxns = mapRowsToTransactions(mp.rows, detectKBankColumns(mp.headers), 'personal');
+  check('Make same-minute rows get :00 / :01 (real HH:MM kept)',
+    mTxns.length === 2 && mTxns[0].occurred_at.includes('T09:15:00') && mTxns[1].occurred_at.includes('T09:15:01'),
+    mTxns.map(t => t.occurred_at.substring(11, 19)).join(' · '));
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
