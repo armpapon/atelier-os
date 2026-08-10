@@ -1,29 +1,34 @@
 -- ============================================================================
---  Migration: Atomic CSV import RPC (audit blocker #1) — v2 MULTISET dedup
+--  Migration: Atomic CSV import RPC (audit blocker #1)
+--  v3 (audit round 3): SHARPENED natural key — second precision + note.
 --
---  Problem: the CSV importer wipes a month (DELETE) and bulk-inserts in two
---  separate PostgREST calls. A failure in between loses the month, and two
---  concurrent imports can double every row (client-side dedup races).
---
---  Fix: one SQL function = one transaction. A per-user, per-month advisory
---  lock serialises concurrent imports of the same month, and dedup runs
---  server-side UNDER that lock, so the race window is closed.
---
---  v2 (audit round 2): dedup is MULTISET, not set-based.
---  For each natural key (minute + amount + title-40) the function inserts
---    max(0, count_in_batch − count_already_in_ledger)
---  rows. This fixes both round-2 findings:
---   (b) duplicates INSIDE p_rows are handled — re-running the same batch
---       under the lock inserts 0 because the ledger counts now match;
---   (c) no false positives — two LEGITIMATE identical transactions (e.g.
---       two identical coffees in the same minute) both import when the
---       ledger has none, and importing a file containing both against a
---       ledger that already has one inserts exactly the missing one.
---  Rows within one natural key are interchangeable by definition of the
---  key; the function keeps the first N in occurred_at order.
+--  Fix history:
+--  v1  one SQL function = one transaction; per-user/month advisory lock.
+--  v2  MULTISET dedup — per natural key insert
+--        max(0, count_in_batch − count_already_in_ledger)
+--      so in-batch duplicates are handled and two legitimate identical
+--      transactions are never collapsed.
+--  v3  the natural key is now near-collision-proof:
+--        (occurred_at truncated to the SECOND,          -- was: minute
+--         round(amount*100),
+--         left(trim(title), 80),                        -- was: 40
+--         coalesce(trim(note), ''))                     -- new component
+--      Genuinely distinct transactions that share minute+amount+title no
+--      longer collide across separate export files. The client parsers now
+--      assign INCREMENTING synthetic seconds to date-only/minute-only rows
+--      (per day / per displayed minute, by row order), so a re-import of
+--      the same file still dedups exactly, while two distinct same-day
+--      rows get different seconds and both survive.
+--      KNOWN RESIDUAL LIMIT (documented, accepted): for date-only sources
+--      the synthetic seconds are row-order-dependent, so two DIFFERENT
+--      export files covering the same data must present the same rows in
+--      the same per-day order to dedup perfectly; the multiset floor is
+--      the backstop when they do not.
+--      The JS client mirrors this exact key (txnKey in finance.js) —
+--      equivalence is proven by audit/evidence.mjs.
 --
 --  SECURITY INVOKER → RLS still applies to every statement inside.
---  Idempotent: CREATE OR REPLACE. Safe to re-run (replaces v1).
+--  Idempotent: CREATE OR REPLACE. Safe to re-run (replaces v1/v2).
 --
 --  Suggested tab name: loop_import_transactions_rpc
 -- ============================================================================
@@ -71,13 +76,15 @@ begin
   with incoming as (
     select
       r.title, r.occurred_at, r.amount, r.category, r.type, r.note, r.account_id,
-      date_trunc('minute', r.occurred_at) as k_min,
+      date_trunc('second', r.occurred_at) as k_ts,
       round(r.amount * 100)               as k_amt,
-      left(trim(r.title), 40)             as k_title,
+      left(trim(r.title), 80)             as k_title,
+      coalesce(trim(r.note), '')          as k_note,
       row_number() over (
-        partition by date_trunc('minute', r.occurred_at),
+        partition by date_trunc('second', r.occurred_at),
                      round(r.amount * 100),
-                     left(trim(r.title), 40)
+                     left(trim(r.title), 80),
+                     coalesce(trim(r.note), '')
         order by r.occurred_at
       ) as rn
     from jsonb_to_recordset(p_rows) as r(
@@ -87,22 +94,23 @@ begin
   ), existing as (
     -- Ledger multiset counts per natural key (empty when wiping / not deduping)
     select
-      date_trunc('minute', t.occurred_at) as k_min,
+      date_trunc('second', t.occurred_at) as k_ts,
       round(t.amount * 100)               as k_amt,
-      left(trim(t.title), 40)             as k_title,
+      left(trim(t.title), 80)             as k_title,
+      coalesce(trim(t.note), '')          as k_note,
       count(*)                            as c
     from transactions t
     where (not p_wipe) and p_dedup
       and t.user_id = v_uid
       and t.scope = p_scope
       and t.occurred_at >= v_start and t.occurred_at < v_end
-    group by 1, 2, 3
+    group by 1, 2, 3, 4
   ), ins as (
     insert into transactions (user_id, title, occurred_at, amount, category, type, note, account_id, scope)
     select v_uid, i.title, i.occurred_at, i.amount, i.category, i.type, i.note, i.account_id, p_scope
     from incoming i
     left join existing e
-      on e.k_min = i.k_min and e.k_amt = i.k_amt and e.k_title = i.k_title
+      on e.k_ts = i.k_ts and e.k_amt = i.k_amt and e.k_title = i.k_title and e.k_note = i.k_note
     where p_wipe
        or not p_dedup
        or i.rn > coalesce(e.c, 0)      -- MULTISET: insert only the missing copies

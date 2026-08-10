@@ -118,6 +118,13 @@ export async function parseKBankPDF(arrayBuffer, password = '', scope = 'persona
   let match;
   TX_PATTERN.lastIndex = 0;
 
+  // Synthetic-seconds clock (audit round 3): the statement gives HH:MM only,
+  // and the dedup key is second-precision. Rows in the same displayed minute
+  // get incrementing seconds in statement order — deterministic, so
+  // re-importing the same PDF reproduces identical timestamps while two
+  // distinct same-minute rows never share a dedup key.
+  const minuteCounters = {};
+
   // Re-run on full text for matches
   while ((match = TX_PATTERN.exec(text)) !== null) {
     const [, dateRaw, timeStr, txtype, amtStr, balStr] = match;
@@ -136,9 +143,11 @@ export async function parseKBankPDF(arrayBuffer, password = '', scope = 'persona
     const detail = cleanDetail(rawDetail) || txtype;
     const { category, type } = autoCategorizeThai(detail, txtype);
 
+    const minuteKey = `${isoDate}T${timeStr}`;
+    const secN = minuteCounters[minuteKey] = (minuteCounters[minuteKey] ?? -1) + 1;
     transactions.push({
       title: detail,
-      occurred_at: `${isoDate}T${timeStr}:00+07:00`,
+      occurred_at: `${isoDate}T${timeStr}:${String(secN % 60).padStart(2, '0')}+07:00`,
       amount,
       category,
       type,

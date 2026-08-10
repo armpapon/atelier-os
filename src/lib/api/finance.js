@@ -274,6 +274,26 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
 
   const makeFmt = isMakeFormat(colMap);
 
+  // Synthetic-seconds clock (audit round 3): the dedup key is now
+  // second-precision, but this source only carries dates (or minutes). Rows
+  // sharing the same day/minute get INCREMENTING seconds in file order —
+  // deterministic, so re-importing the same file reproduces identical
+  // timestamps (dedup still catches true duplicates), while two DISTINCT
+  // same-day rows get different seconds and never collapse.
+  // Known residual limit: across DIFFERENT export files of the same data the
+  // per-day row order must match for perfect dedup; the multiset floor in
+  // the importer is the backstop.
+  const clockCounters = {};
+  const nextClock = (key, baseHM) => {
+    const n = clockCounters[key] = (clockCounters[key] ?? -1) + 1;
+    const [h, m] = baseHM.split(':').map(Number);
+    const total = m * 60 + n;
+    const hh = String((h + Math.floor(total / 3600)) % 24).padStart(2, '0');
+    const mm = String(Math.floor(total / 60) % 60).padStart(2, '0');
+    const ss = String(total % 60).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  };
+
   return rows.flatMap((row, i) => {
 
     // ── Make Cloud Pocket format ─────────────────────────────────────────────
@@ -290,9 +310,13 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       const timeKey  = (timeCol && timeCol !== dateCol) ? timeCol : null;
       const timeHit  = timeKey ? String(row[timeKey] || '').match(/(\d{1,2}):(\d{2})/) : null;
       // Midday fallback so a missing clock can never straddle a day boundary.
+      // Seconds are synthetic either way (the source is minute-precision at
+      // best) → incrementing per day/minute so distinct rows never share a
+      // second-precision dedup key.
       const timePart = timeHit ? `${timeHit[1].padStart(2, '0')}:${timeHit[2]}` : '12:00';
+      const clockKey = timeHit ? `${dateStr}T${timePart}` : dateStr;
       const occurred_at = dateStr
-        ? `${dateStr}T${timePart}:00+07:00`
+        ? `${dateStr}T${nextClock(clockKey, timePart)}+07:00`
         : new Date().toISOString();
 
       // Skip ALL Move Money rows — internal pocket transfers
@@ -352,7 +376,9 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       _pocket:    null,
       _txtype:    null,
       title:      desc || '(ไม่มีชื่อ)',
-      occurred_at: dateStr ? `${dateStr}T12:00:00+07:00` : new Date().toISOString(),
+      // Synthetic incrementing seconds (see clock comment above) — generic
+      // bank CSVs are date-only, so noon + per-day row counter.
+      occurred_at: dateStr ? `${dateStr}T${nextClock(`g|${dateStr}`, '12:00')}+07:00` : new Date().toISOString(),
       amount,
       category,
       type,
@@ -901,12 +927,19 @@ function txnKey(t) {
   // Normalise to UTC before slicing: rows we build for insert carry a
   // '+07:00' offset while Supabase hands them back as UTC, so the raw strings
   // never matched and dedup let every re-import through.
+  //
+  // v3 (audit round 3) — near-collision-proof key, mirrored EXACTLY by
+  // import_transactions v3 in SQL:
+  //   second-precision timestamp | round(amount*100) | title-80 | note
+  // (was: minute | amount | title-40 — two genuinely distinct txns sharing
+  // a minute+amount+title collided across separate export files).
   const raw = t.occurred_at || '';
   const d = new Date(raw);
-  const date = isNaN(d) ? raw.substring(0, 16) : d.toISOString().substring(0, 16);
+  const ts = isNaN(d) ? raw.substring(0, 19) : d.toISOString().substring(0, 19);
   const amt  = Math.round(Number(t.amount) * 100);
-  const title = (t.title || '').trim().substring(0, 40);
-  return `${date}|${amt}|${title}`;
+  const title = (t.title || '').trim().substring(0, 80);
+  const note  = String(t.note ?? '').trim();
+  return `${ts}|${amt}|${title}|${note}`;
 }
 
 /** Get keys of existing transactions in a date range for dedup. */
@@ -914,7 +947,7 @@ export async function getExistingTxnKeys({ startDate, endDate, scope } = {}) {
   if (!supabase) return new Set();
   const buildQuery = () => {
     let q = supabase.from('transactions')
-      .select('occurred_at, amount, title, scope')
+      .select('occurred_at, amount, title, note, scope')
       .gte('occurred_at', startDate)
       .lt('occurred_at', endDate)
       .order('occurred_at', { ascending: false });
@@ -936,7 +969,7 @@ export async function getExistingTxnKeyCounts({ startDate, endDate, scope } = {}
   if (!supabase) return new Map();
   const buildQuery = () => {
     let q = supabase.from('transactions')
-      .select('occurred_at, amount, title, scope')
+      .select('occurred_at, amount, title, note, scope')
       .gte('occurred_at', startDate)
       .lt('occurred_at', endDate)
       .order('occurred_at', { ascending: false });
