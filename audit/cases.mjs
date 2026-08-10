@@ -633,8 +633,11 @@ section('R4 · B3 · two-tier classifier (auditor counterexamples i–iv)');
     occurred_at: `2026-08-05T05:00:0${i}.000Z`,
   }));
   const c1 = classifyImportRows(newParse, legacyLedger);
-  check('(i) old-file re-import → 0 inserts (1 exact dup + 2 ambiguous, default skip)',
-    c1.toImport.length === 0 && c1.duplicates.length === 1 && c1.ambiguous.length === 2,
+  // Round-5 semantics: the :00 exact match is synthetic-vs-:00 → AMBIGUOUS
+  // too (was auto-dup in round 4). Still 0 inserts by default — but nothing
+  // is silent any more.
+  check('(i) old-file re-import → 0 inserts (ALL 3 surfaced as ambiguous, default skip)',
+    c1.toImport.length === 0 && c1.duplicates.length === 0 && c1.ambiguous.length === 3,
     `toImport=${c1.toImport.length} dup=${c1.duplicates.length} amb=${c1.ambiguous.length}`);
 
   // (ii) two partial exports with distinct same-day txns: ledger has coffee A
@@ -653,11 +656,14 @@ section('R4 · B3 · two-tier classifier (auditor counterexamples i–iv)');
   check('(ii) user-include path (force) imports the ambiguous row',
     c2b.toImport.length === 2 && c2b.ambiguous.length === 0);
 
-  // (iii) v4.16-format ledger, same file re-imported → pure exact dedup,
-  // zero ambiguity noise.
+  // (iii) v4.16-format ledger, same file re-imported → 0 inserts. Round-5
+  // semantics: :01/:02 exact matches auto-dedup (existing seconds ≠ 0), the
+  // :00 first-row match is surfaced as ambiguous (its ledger twin carries
+  // the unknowable :00 signature).
   const c3 = classifyImportRows(newParse, newParse.map(r => ({ ...r })));
-  check('(iii) same-file re-import still exact-dedups (no ambiguity)',
-    c3.toImport.length === 0 && c3.duplicates.length === 3 && c3.ambiguous.length === 0);
+  check('(iii) same-file re-import → 0 inserts (2 auto-dup + 1 surfaced :00 row)',
+    c3.toImport.length === 0 && c3.duplicates.length === 2 && c3.ambiguous.length === 1,
+    `dup=${c3.duplicates.length} amb=${c3.ambiguous.length}`);
 
   // (iv) real-timestamp rows never enter tier-2 even when a legacy :00 row
   // shares their minute+amount+title.
@@ -667,13 +673,16 @@ section('R4 · B3 · two-tier classifier (auditor counterexamples i–iv)');
     c4.toImport.length === 1 && c4.ambiguous.length === 0);
 
   // tier-1 consumption starves tier-2 (multiset honesty): a :00 batch row
-  // that exact-matches must use up the legacy row so tier-2 can't reuse it.
+  // that exact-matches consumes the ledger row (round 5: as an AMBIGUITY,
+  // since both clocks are synthetic) so tier-2 can't double-spend it — the
+  // :01 row then imports instead of matching the same ledger row twice.
   const c5 = classifyImportRows(
     [mk({ id: 'x0', _synthetic: true, occurred_at: '2026-08-06T05:00:00.000Z' }),
      mk({ id: 'x1', _synthetic: true, occurred_at: '2026-08-06T05:00:01.000Z' })],
     ledger2);
   check('tier-1 match consumes the legacy row (tier-2 cannot double-spend it)',
-    c5.duplicates.length === 1 && c5.ambiguous.length === 0 && c5.toImport.length === 1,
+    c5.duplicates.length === 0 && c5.ambiguous.length === 1
+    && c5.ambiguous[0].row.id === 'x0' && c5.toImport.length === 1 && c5.toImport[0].id === 'x1',
     `dup=${c5.duplicates.length} amb=${c5.ambiguous.length} import=${c5.toImport.length}`);
 
   // SQL ≡ JS: the RPC's counting formula (rn_exact/exact counts; consumed =
@@ -689,15 +698,19 @@ section('R4 · B3 · two-tier classifier (auditor counterexamples i–iv)');
     const t1 = rows.map(r => {
       if (r._force) return { r, cls: 'ins' };
       const k = txnKey(r); const n = (rnE.get(k) || 0) + 1; rnE.set(k, n);
-      return { r, cls: n <= (exact.get(k) || 0) ? 'dup' : null };
+      if (n <= (exact.get(k) || 0)) {
+        // v5: synthetic-vs-:00 exact matches are ambiguous, not auto-dup
+        return { r, cls: (r._synthetic && txnSecond(r) === 0) ? 'amb' : 'dup', matched: true };
+      }
+      return { r, cls: null };
     });
     const consumed = new Map();
-    for (const t of t1) if (t.cls === 'dup' && txnSecond(t.r) === 0) {
+    for (const t of t1) if (t.matched && txnSecond(t.r) === 0) {
       const m = txnMinuteKey(t.r); consumed.set(m, (consumed.get(m) || 0) + 1);
     }
     const rnM = new Map();
     for (const t of t1) {
-      if (t.cls) { out[t.cls === 'ins' ? 'ins' : 'dup'].push(t.r); continue; }
+      if (t.cls) { out[t.cls].push(t.r); continue; }
       if (t.r._synthetic) {
         const m = txnMinuteKey(t.r); const n = (rnM.get(m) || 0) + 1; rnM.set(m, n);
         if (n <= Math.max(0, (legacy.get(m) || 0) - (consumed.get(m) || 0))) { out.amb.push(t.r); continue; }
@@ -723,6 +736,128 @@ section('R4 · B3 · two-tier classifier (auditor counterexamples i–iv)');
   const p = parseCSV('Date,Description,Amount\n05/08/2026,กาแฟ,-65\n');
   const [pr] = mapRowsToTransactions(p.rows, detectKBankColumns(p.headers), 'personal');
   check('parser rows carry _synthetic: true', pr._synthetic === true);
+}
+
+// ════════════════════════════════ ROUND 5 ════════════════════════════════
+
+const { assignRowIds } = await import('../src/lib/api/finance.js');
+
+section('R5 · Bug 1 · per-row identity (_rid) for every source incl. PDF');
+{
+  // PDF-shaped rows: parseKBankPDF emits NO _rowIdx (the round-5 bug).
+  const pdfRows = [
+    { _synthetic: true, title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:01.000Z', scope: 'personal' },
+    { _synthetic: true, title: 'ข้าวเที่ยง', amount: -120, note: null, occurred_at: '2026-08-06T06:30:00.000Z', scope: 'personal' },
+  ];
+  const beforeKeys = new Set(pdfRows.map(r => r._rowIdx));
+  check('BEFORE: PDF rows all keyed to undefined (one decision hit every row)',
+    beforeKeys.size === 1 && beforeKeys.has(undefined));
+
+  const withIds = assignRowIds(pdfRows);
+  check('AFTER: assignRowIds gives unique immutable _rid per row',
+    new Set(withIds.map(r => r._rid)).size === 2);
+
+  // Integration (i): one ambiguous + one clean PDF row → INDEPENDENT calls.
+  const ledger = [{ title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z' }];
+  const cls = classifyImportRows(withIds, ledger);
+  check('(i) clean PDF row imports while the ambiguous one waits for the user',
+    cls.toImport.length === 1 && cls.toImport[0].title === 'ข้าวเที่ยง'
+    && cls.ambiguous.length === 1 && cls.ambiguous[0].row.title === 'กาแฟ');
+  const decided = new Set([cls.ambiguous[0].row._rid]);   // tick ONLY that row
+  check('(i) decision Set keyed by _rid touches exactly one row',
+    decided.has(withIds[0]._rid) && !decided.has(withIds[1]._rid));
+}
+
+section('R5 · Bug 2 · classification follows the SELECTED batch');
+{
+  const ledger = [{ id: 'A', title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z' }];
+  const preview = assignRowIds([
+    { _synthetic: true, title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z', scope: 'personal' },  // consumer
+    { _synthetic: true, title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:01.000Z', scope: 'personal' },  // :01 row
+  ]);
+
+  const fullCls = classifyImportRows(preview, ledger);
+  check('(setup) full-preview classification: :01 row looks importable',
+    fullCls.toImport.length === 1 && fullCls.toImport[0]._rid === 1);
+
+  // User deselects the consumer → classify the SELECTED batch only.
+  const selectedCls = classifyImportRows([preview[1]], ledger);
+  check('(ii) deselecting the consumer re-classifies the :01 row as AMBIGUOUS (shown, not silently skipped)',
+    selectedCls.toImport.length === 0 && selectedCls.ambiguous.length === 1
+    && selectedCls.ambiguous[0].row._rid === 1 && selectedCls.ambiguous[0].existing.id === 'A');
+  check('(ii) shown != executed divergence is real without the fix',
+    fullCls.toImport.some(r => r._rid === 1) && selectedCls.ambiguous.some(a => a.row._rid === 1),
+    'CSVImporter now derives the UI AND the execution plan from the same selection-driven useMemo');
+}
+
+section('R5 · Bug 3 · synthetic exact matches are never silent');
+{
+  // Two distinct ONE-ROW exports: both files synthesize :00 for their only
+  // same-day row. v4 tier-1 silently skipped the second — REJECTED. v5
+  // routes synthetic-vs-:00 exact matches to AMBIGUOUS.
+  const ledgerFromFile1 = [{ id: 'A', title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z' }];
+  const file2 = assignRowIds([
+    { _synthetic: true, title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z', scope: 'personal' },
+  ]);
+  const cls = classifyImportRows(file2, ledgerFromFile1);
+  check('(iii) second one-row export → AMBIGUOUS decision, no auto-skip',
+    cls.duplicates.length === 0 && cls.ambiguous.length === 1 && cls.toImport.length === 0);
+
+  // Real-source timestamps keep automatic exact-dup (no _synthetic flag).
+  const realDup = classifyImportRows(
+    [{ title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z' }],
+    ledgerFromFile1);
+  check('real-timestamp exact match still auto-dedups', realDup.duplicates.length === 1);
+}
+
+section('R5 · Bug 2b/4 · execution-time ambiguity round-trips to a decision');
+{
+  // (iv) Ambiguity first discovered at EXECUTION: preview classified against
+  // an empty ledger, then a concurrent import lands a :00 row before the
+  // authoritative run.
+  const row = assignRowIds([
+    { _synthetic: true, title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z', scope: 'personal' },
+  ])[0];
+  const previewCls = classifyImportRows([row], []);   // ledger empty at preview
+  check('(iv) preview time: row is importable (no ambiguity shown)',
+    previewCls.toImport.length === 1);
+
+  const concurrent = [{ id: 'C', title: 'กาแฟ', amount: -65, note: null, occurred_at: '2026-08-06T05:00:00.000Z' }];
+  const execCls = classifyImportRows([row], concurrent);   // authoritative re-run
+  check('(iv) execution time: the SAME algorithm discovers the ambiguity → decision step reopens',
+    execCls.ambiguous.length === 1 && execCls.ambiguous[0].existing.id === 'C');
+
+  const forced = classifyImportRows([{ ...row, _force: true }], concurrent);
+  check('(iv) user approves → force bypasses both tiers and the row imports',
+    forced.toImport.length === 1 && forced.ambiguous.length === 0);
+
+  // RPC v5 return-shape round-trip: ord maps back to the caller's _rid.
+  __config.rpcHandlers.import_transactions = (args) => ({
+    data: {
+      inserted: 0, dup_skipped: 0,
+      ambiguous: [{
+        ord: 1,
+        incoming: { occurred_at: row.occurred_at, title: row.title, amount: row.amount, note: null },
+        existing: { occurred_at: concurrent[0].occurred_at, title: concurrent[0].title, amount: concurrent[0].amount, note: null },
+      }],
+    },
+    error: null,
+  });
+  const res5 = await importTransactionsBatch({ scope: 'personal', month: '2026-08', wipe: false, dedup: true, rows: [row] });
+  check('(iv) RPC v5 ambiguous ord → caller row identity (_rid intact)',
+    res5.ambiguous.length === 1 && res5.ambiguous[0].row?._rid === row._rid
+    && res5.ambiguous[0].existing?.title === 'กาแฟ');
+
+  __config.rpcHandlers.import_transactions = () => ({ data: 7, error: null });   // v3 shape
+  const res3 = await importTransactionsBatch({ scope: 'personal', month: '2026-08', wipe: false, dedup: true, rows: [row] });
+  check('older v3 int return still normalised', res3.inserted === 7 && res3.ambiguous.length === 0);
+
+  __config.rpcHandlers.import_transactions = () => ({ data: { inserted: 2, dup_skipped: 1, ambiguous_skipped: 1 }, error: null });   // v4 shape
+  const res4 = await importTransactionsBatch({ scope: 'personal', month: '2026-08', wipe: false, dedup: true, rows: [row] });
+  check('older v4 count-only return still normalised (count surfaces, no round-trip rows)',
+    res4.inserted === 2 && res4.dupSkipped === 1 && res4.ambiguousSkipped === 1 && res4.ambiguous.length === 0);
+
+  delete __config.rpcHandlers.import_transactions;
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);

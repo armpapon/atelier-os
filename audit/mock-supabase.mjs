@@ -21,6 +21,9 @@ export const __config = {
   // e.g. { accounts: ['balance_anchor_at'] } → any read/write touching that
   // column errors with PGRST204, like PostgREST before the migration runs.
   missingColumns: {},
+  // { fn_name: (args) => ({ data, error }) } — simulate a DEPLOYED RPC
+  // (round 5: used to exercise the v5/v4/v3 return-shape normalisation).
+  rpcHandlers: {},
 };
 
 const UNIQUES = {
@@ -184,8 +187,10 @@ class Query {
 
 export const supabase = {
   from(table) { return new Query(table); },
-  rpc(name, _args) {
+  rpc(name, args) {
     __stats.rpcCalls.push(name);
+    const handler = __config.rpcHandlers[name];
+    if (handler) return Promise.resolve(handler(args));
     // Migrations not run → every function is missing.
     return Promise.resolve({
       data: null,
