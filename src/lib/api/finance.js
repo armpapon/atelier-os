@@ -342,6 +342,9 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
         _pocket:  pocket,
         _txtype:  txType,
         _cp_bal:  cpBalCol ? parseAmount(row[cpBalCol]) : null,
+        // Statement rows carry SYNTHETIC seconds — flag them so the two-tier
+        // import classifier can match them against legacy :00-stored rows.
+        _synthetic: true,
         title,
         occurred_at,
         amount,
@@ -375,6 +378,7 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       _rowIdx:    i,
       _pocket:    null,
       _txtype:    null,
+      _synthetic: true,   // date-only source — whole clock is synthetic
       title:      desc || '(ไม่มีชื่อ)',
       // Synthetic incrementing seconds (see clock comment above) — generic
       // bank CSVs are date-only, so noon + per-day row counter.
@@ -663,10 +667,21 @@ export async function createAccount(input) {
   if (!user) throw new Error('Not logged in');
   // INVARIANT (audit round 2): every write of `balance` stamps
   // balance_anchor_at — the balance is a statement of truth "as of now".
-  // Falls back without the column while the migration is unrun.
-  const row = { ...input, user_id: user.id, balance_anchor_at: new Date().toISOString() };
+  // Round 4 adds PROVENANCE (balance_anchor_source) so an audit can tell a
+  // human-attested anchor from a mechanical one.
+  // Fallback chain while migrations are unrun: with source → without source
+  // → without anchor at all.
+  const row = {
+    ...input, user_id: user.id,
+    balance_anchor_at: new Date().toISOString(),
+    balance_anchor_source: 'user',
+  };
   let { data, error } = await supabase
     .from('accounts').insert(row).select().single();
+  if (error && isColumnMissing(error)) {
+    delete row.balance_anchor_source;
+    ({ data, error } = await supabase.from('accounts').insert(row).select().single());
+  }
   if (error && isColumnMissing(error)) {
     delete row.balance_anchor_at;
     ({ data, error } = await supabase.from('accounts').insert(row).select().single());
@@ -720,10 +735,18 @@ export async function reassignTransactionsAccount(fromAccountId, toAccountId) {
 export async function setAccountBalanceAnchor(id, balance) {
   if (!supabase) throw new Error('Supabase not configured');
   const anchorAt = new Date().toISOString();
-  const { data, error } = await supabase
+  // source='user': the human read this number off the real bank app — the
+  // highest-trust provenance (see audit_account_balances.sql).
+  let { data, error } = await supabase
+    .from('accounts')
+    .update({ balance, balance_anchor_at: anchorAt, balance_anchor_source: 'user' })
+    .eq('id', id).select().single();
+  if (!error) return data;
+  if (!isColumnMissing(error)) throw error;
+  ({ data, error } = await supabase
     .from('accounts')
     .update({ balance, balance_anchor_at: anchorAt })
-    .eq('id', id).select().single();
+    .eq('id', id).select().single());
   if (!error) return data;
   if (!isColumnMissing(error)) throw error;
   return updateAccount(id, { balance });
@@ -841,11 +864,18 @@ export async function bulkUpsertAccountsByPocket(pockets) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
 
-  // Fetch existing accounts — anchor column first, legacy select as fallback.
+  // Fetch existing accounts — full meta first, then anchor-only, then legacy.
   let anchorSupported = true;
+  let sourceSupported = true;
   let { data: existing, error: fetchErr } = await supabase
-    .from('accounts').select('id, name, scope, balance, balance_anchor_at')
+    .from('accounts').select('id, name, scope, balance, balance_anchor_at, balance_anchor_source')
     .eq('user_id', user.id);
+  if (fetchErr && isColumnMissing(fetchErr)) {
+    sourceSupported = false;
+    ({ data: existing, error: fetchErr } = await supabase
+      .from('accounts').select('id, name, scope, balance, balance_anchor_at')
+      .eq('user_id', user.id));
+  }
   if (fetchErr && isColumnMissing(fetchErr)) {
     anchorSupported = false;
     ({ data: existing, error: fetchErr } = await supabase
@@ -873,10 +903,12 @@ export async function bulkUpsertAccountsByPocket(pockets) {
           // Legacy behaviour while the migration is unrun.
           toUpdate.push({ id: found.id, patch: { balance: p.latestBalance } });
         } else if (shouldApplyImportedBalance(found.balance_anchor_at, p.latestDate)) {
-          toUpdate.push({ id: found.id, patch: {
+          const patch = {
             balance: p.latestBalance,
             balance_anchor_at: p.latestDate,   // CP Bal was true at the file's last txn
-          } });
+          };
+          if (sourceSupported) patch.balance_anchor_source = 'import';
+          toUpdate.push({ id: found.id, patch });
         }
         // else: older statement file — balance and anchor stay untouched.
       }
@@ -891,6 +923,7 @@ export async function bulkUpsertAccountsByPocket(pockets) {
         is_active: true,
       };
       if (anchorSupported) row.balance_anchor_at = p.latestDate || new Date().toISOString();
+      if (anchorSupported && sourceSupported) row.balance_anchor_source = 'import';
       toInsert.push(row);
     }
   }
@@ -1005,10 +1038,120 @@ export function multisetDedupRows(rows, existingCounts, keyFn = txnKey) {
   return keep;
 }
 
+// ── Two-tier import identity (audit round 4) ─────────────────────────────────
+// Rows from CSV/PDF statements carry SYNTHETIC seconds (the sources are
+// date- or minute-precision). Pre-v4.16 the app stored ALL such rows at
+// :00 seconds; v4.16+ stores :00/:01/:02… by row order. Exact second-key
+// dedup alone would therefore re-import every non-first row of an OLD file
+// (duplicates), and a minute-only fallback alone silently DROPS genuinely
+// distinct rows. The two-tier classifier keeps both honest:
+//   tier-1  exact second-key multiset  → DUPLICATE (auto-skip)
+//   tier-2  only for still-unmatched SYNTHETIC rows: minute-key multiset
+//           against remaining existing rows with the legacy :00 signature
+//           → AMBIGUOUS: never decided silently — surfaced to the user
+//           (default: skip), or force-imported when the user opts in.
+// Real-timestamp rows (no _synthetic flag) never enter tier-2.
+
+/** Minute-truncated variant of txnKey — tier-2 legacy matching. */
+export function txnMinuteKey(t) {
+  const raw = t.occurred_at || '';
+  const d = new Date(raw);
+  const ts = isNaN(d) ? raw.substring(0, 16) : d.toISOString().substring(0, 16);
+  const amt  = Math.round(Number(t.amount) * 100);
+  const title = (t.title || '').trim().substring(0, 80);
+  const note  = String(t.note ?? '').trim();
+  return `${ts}|${amt}|${title}|${note}`;
+}
+
+/** UTC second-of-minute of a row's timestamp (0 = legacy signature). */
+export function txnSecond(t) {
+  const d = new Date(t.occurred_at || '');
+  return isNaN(d) ? null : d.getUTCSeconds();
+}
+
+/**
+ * Fetch the existing rows an import batch must be classified against.
+ * Returns raw rows (paginated past the PostgREST cap) — the classifier
+ * builds its own maps.
+ */
+export async function getExistingRowsForDedup({ startDate, endDate, scope } = {}) {
+  if (!supabase) return [];
+  const buildQuery = () => {
+    let q = supabase.from('transactions')
+      .select('id, occurred_at, amount, title, note, scope')
+      .gte('occurred_at', startDate)
+      .lt('occurred_at', endDate)
+      .order('occurred_at', { ascending: false });
+    if (scope) q = q.eq('scope', scope);
+    return q;
+  };
+  return fetchAllPages(buildQuery);
+}
+
+/**
+ * Two-tier classification (pure; mirrored by import_transactions v4 SQL).
+ *   rows: batch rows ({_synthetic, _force} respected)
+ *   existingRows: ledger rows in the same scope+range
+ * Returns { toImport, duplicates, ambiguous } where ambiguous entries are
+ * { row, existing } pairs (existing = the ledger row it may duplicate).
+ * Multiset semantics throughout: every match consumes its ledger row, and
+ * a :00 row consumed by tier-1 is no longer available to tier-2.
+ */
+export function classifyImportRows(rows, existingRows) {
+  const exact = new Map();          // exactKey → count
+  const legacy = new Map();         // minuteKey → array of :00 ledger rows
+  for (const e of existingRows || []) {
+    const k = txnKey(e);
+    exact.set(k, (exact.get(k) || 0) + 1);
+    if (txnSecond(e) === 0) {
+      const mk = txnMinuteKey(e);
+      if (!legacy.has(mk)) legacy.set(mk, []);
+      legacy.get(mk).push(e);
+    }
+  }
+
+  const out = { toImport: [], duplicates: [], ambiguous: [] };
+  for (const r of rows || []) {
+    if (r._force) { out.toImport.push(r); continue; }
+
+    // tier-1: exact second-key multiset
+    const k = txnKey(r);
+    const c = exact.get(k) || 0;
+    if (c > 0) {
+      exact.set(k, c - 1);
+      if (txnSecond(r) === 0) {
+        const mk = txnMinuteKey(r);
+        const list = legacy.get(mk);
+        if (list?.length) list.pop();   // that ledger row is spoken for
+      }
+      out.duplicates.push(r);
+      continue;
+    }
+
+    // tier-2: synthetic rows only, against remaining legacy :00 rows
+    if (r._synthetic) {
+      const mk = txnMinuteKey(r);
+      const list = legacy.get(mk);
+      if (list?.length) {
+        out.ambiguous.push({ row: r, existing: list.pop() });
+        continue;
+      }
+    }
+
+    out.toImport.push(r);
+  }
+  return out;
+}
+
 /**
  * Atomic wipe+insert of one scope+month batch via the import_transactions
  * RPC (single transaction + per-user/month advisory lock + server-side
- * dedup under the lock). Returns the inserted row count.
+ * dedup under the lock).
+ * v4: rows carry `synthetic` (statement rows with made-up seconds) and
+ * `force` (user resolved an ambiguity as "import"); the RPC runs the same
+ * two-tier classifier as classifyImportRows and returns
+ *   { inserted, dup_skipped, ambiguous_skipped }
+ * (a v3 deployment returns a bare int — normalised here).
  * Throws the raw error when the RPC is missing — the importer catches it
  * with isRpcMissing() and falls back to the legacy multi-call path.
  */
@@ -1022,12 +1165,21 @@ export async function importTransactionsBatch({ scope, month, wipe, dedup, rows 
     type:        r.type ?? null,
     note:        r.note ?? null,
     account_id:  r.account_id ?? null,
+    synthetic:   !!r._synthetic,
+    force:       !!r._force,
   }));
   const { data, error } = await supabase.rpc('import_transactions', {
     p_scope: scope, p_month: month, p_wipe: !!wipe, p_rows: payload, p_dedup: !!dedup,
   });
   if (error) throw error;
-  return Number(data) || 0;
+  if (data && typeof data === 'object') {
+    return {
+      inserted:         Number(data.inserted) || 0,
+      dupSkipped:       Number(data.dup_skipped) || 0,
+      ambiguousSkipped: Number(data.ambiguous_skipped) || 0,
+    };
+  }
+  return { inserted: Number(data) || 0, dupSkipped: 0, ambiguousSkipped: 0 };
 }
 
 /** Delete all transactions in a month (used for clean re-import). */

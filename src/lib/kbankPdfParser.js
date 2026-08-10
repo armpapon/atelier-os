@@ -146,6 +146,7 @@ export async function parseKBankPDF(arrayBuffer, password = '', scope = 'persona
     const minuteKey = `${isoDate}T${timeStr}`;
     const secN = minuteCounters[minuteKey] = (minuteCounters[minuteKey] ?? -1) + 1;
     transactions.push({
+      _synthetic: true,   // statement is minute-precision; seconds are made up
       title: detail,
       occurred_at: `${isoDate}T${timeStr}:${String(secN % 60).padStart(2, '0')}+07:00`,
       amount,
