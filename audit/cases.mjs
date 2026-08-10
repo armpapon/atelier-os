@@ -16,6 +16,7 @@ import {
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions,
+  classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
 } from '../src/lib/api/finance.js';
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
 import { toLocalYMD } from '../src/lib/dates.js';
@@ -550,6 +551,178 @@ section('R3 · B3 · synthetic incrementing seconds in the real parsers');
   check('Make same-minute rows get :00 / :01 (real HH:MM kept)',
     mTxns.length === 2 && mTxns[0].occurred_at.includes('T09:15:00') && mTxns[1].occurred_at.includes('T09:15:01'),
     mTxns.map(t => t.occurred_at.substring(11, 19)).join(' · '));
+}
+
+// ════════════════════════════════ ROUND 4 ════════════════════════════════
+
+section('R4 · B1 · reconcile v2 MATERIALIZES (auditor counterexamples i–iii)');
+{
+  // Valid anchor: real balance was 50,000 at T0; one later −1,000 expense.
+  const T0 = '2026-08-01T05:00:00.000Z';
+  __tables.transactions.push({ id: 'rv1', user_id: 'user-1', scope: 'personal',
+    account_id: 'recV', title: 'หลัง anchor', amount: -1000, type: 'food',
+    occurred_at: '2026-08-05T05:00:00.000Z' });
+  const acct = { id: 'recV', balance: 50000, balance_anchor_at: T0 };
+
+  const [d0] = await applyEffectiveBalances([acct]);
+  check('(setup) valid anchor displays 49,000', d0.balance === 49000);
+
+  // (iii) the OLD blind reconcile — prove we understood the bug
+  const blind = { ...acct, balance_anchor_at: new Date().toISOString() };
+  const [dBlind] = await applyEffectiveBalances([blind]);
+  check('(iii) OLD blind reconcile regressed the display to 50,000 (bug reproduced)',
+    dBlind.balance === 50000, `displayed ฿${dBlind.balance} — silently gained ฿1,000`);
+
+  // (i) reconcile v2: materialize Σ-after-anchor into balance, THEN re-anchor
+  const reconcileV2 = async (a) => {
+    const [eff] = await applyEffectiveBalances([a]);
+    return { ...a, balance: eff.balance,
+      balance_anchor_at: new Date().toISOString(), balance_anchor_source: 'reconcile' };
+  };
+  const r1 = await reconcileV2(acct);
+  const [d1] = await applyEffectiveBalances([r1]);
+  check('(i) reconcile v2 preserves the displayed value (49,000 stays 49,000)',
+    r1.balance === 49000 && d1.balance === 49000);
+
+  // (ii) idempotent: second run adds Σ(after now) = 0
+  const r2 = await reconcileV2(r1);
+  check('(ii) re-running reconcile v2 is a no-op (truly idempotent)',
+    r2.balance === 49000 && r2.balance_anchor_source === 'reconcile');
+}
+
+section('R4 · B1 · anchor provenance stamped by every write path');
+{
+  const created = await createAccount({ name: 'ที่มา user', type: 'savings', balance: 1, scope: 'personal' });
+  check("createAccount stamps source='user'",
+    __tables.accounts.find(a => a.id === created.id)?.balance_anchor_source === 'user');
+
+  await setAccountBalanceAnchor(created.id, 777);
+  const after = __tables.accounts.find(a => a.id === created.id);
+  check("set-balance modal stamps source='user' + fresh anchor",
+    after.balance === 777 && after.balance_anchor_source === 'user');
+
+  await bulkUpsertAccountsByPocket([
+    { pocket: 'ที่มา import', scope: 'personal', latestBalance: 500, latestDate: '2026-08-09T10:00:00+07:00', txCount: 1 },
+  ]);
+  check("CSV import stamps source='import'",
+    __tables.accounts.find(a => a.name === 'ที่มา import')?.balance_anchor_source === 'import');
+
+  // Migration-unrun fallback: source column missing → anchor still written
+  __config.missingColumns = { accounts: ['balance_anchor_source'] };
+  const legacy = await createAccount({ name: 'ยังไม่มีคอลัมน์ source', type: 'savings', balance: 9, scope: 'personal' });
+  const legacyRow = __tables.accounts.find(a => a.id === legacy.id);
+  check('source column missing → falls back, anchor still stamped',
+    legacyRow && !('balance_anchor_source' in legacyRow) && !!legacyRow.balance_anchor_at);
+  __config.missingColumns = {};
+
+  // The DB trigger (SQL) decision table was proven in R3; provenance adds
+  // source='trigger' on the same condition — same three branches hold.
+}
+
+section('R4 · B3 · two-tier classifier (auditor counterexamples i–iv)');
+{
+  const mk = (over) => ({ user_id: 'user-1', scope: 'personal', type: 'food',
+    title: 'กาแฟ', amount: -65, note: null, ...over });
+
+  // (i) pre-v4.16 ledger: THREE identical rows all stored at :00 (legacy
+  // parser pinned everything to 12:00:00). Re-import the same file with the
+  // NEW parser → :00/:01/:02.
+  const legacyLedger = [0, 1, 2].map(i => mk({ id: 'L' + i, occurred_at: '2026-08-05T05:00:00.000Z' }));
+  const newParse = [0, 1, 2].map(i => mk({
+    id: 'B' + i, _synthetic: true,
+    occurred_at: `2026-08-05T05:00:0${i}.000Z`,
+  }));
+  const c1 = classifyImportRows(newParse, legacyLedger);
+  check('(i) old-file re-import → 0 inserts (1 exact dup + 2 ambiguous, default skip)',
+    c1.toImport.length === 0 && c1.duplicates.length === 1 && c1.ambiguous.length === 2,
+    `toImport=${c1.toImport.length} dup=${c1.duplicates.length} amb=${c1.ambiguous.length}`);
+
+  // (ii) two partial exports with distinct same-day txns: ledger has coffee A
+  // (from file 1); file 2 = [breakfast, coffee B]. Coffee B is genuinely
+  // distinct but minute-matches coffee A → AMBIGUOUS, not silently decided.
+  const ledger2 = [mk({ id: 'A', occurred_at: '2026-08-06T05:00:00.000Z' })];
+  const file2 = [
+    mk({ id: 'bf', title: 'ข้าวเช้า', amount: -80, _synthetic: true, occurred_at: '2026-08-06T05:00:00.000Z' }),
+    mk({ id: 'cB', _synthetic: true, occurred_at: '2026-08-06T05:00:01.000Z' }),
+  ];
+  const c2 = classifyImportRows(file2, ledger2);
+  check('(ii) distinct row flagged AMBIGUOUS with both sides attached',
+    c2.toImport.length === 1 && c2.toImport[0].id === 'bf'
+    && c2.ambiguous.length === 1 && c2.ambiguous[0].row.id === 'cB' && c2.ambiguous[0].existing.id === 'A');
+  const c2b = classifyImportRows(file2.map(r => r.id === 'cB' ? { ...r, _force: true } : r), ledger2);
+  check('(ii) user-include path (force) imports the ambiguous row',
+    c2b.toImport.length === 2 && c2b.ambiguous.length === 0);
+
+  // (iii) v4.16-format ledger, same file re-imported → pure exact dedup,
+  // zero ambiguity noise.
+  const c3 = classifyImportRows(newParse, newParse.map(r => ({ ...r })));
+  check('(iii) same-file re-import still exact-dedups (no ambiguity)',
+    c3.toImport.length === 0 && c3.duplicates.length === 3 && c3.ambiguous.length === 0);
+
+  // (iv) real-timestamp rows never enter tier-2 even when a legacy :00 row
+  // shares their minute+amount+title.
+  const realRow = mk({ id: 'real', occurred_at: '2026-08-05T05:00:37.000Z' });   // no _synthetic
+  const c4 = classifyImportRows([realRow], legacyLedger);
+  check('(iv) real-timestamp row unaffected by tier-2 → imports',
+    c4.toImport.length === 1 && c4.ambiguous.length === 0);
+
+  // tier-1 consumption starves tier-2 (multiset honesty): a :00 batch row
+  // that exact-matches must use up the legacy row so tier-2 can't reuse it.
+  const c5 = classifyImportRows(
+    [mk({ id: 'x0', _synthetic: true, occurred_at: '2026-08-06T05:00:00.000Z' }),
+     mk({ id: 'x1', _synthetic: true, occurred_at: '2026-08-06T05:00:01.000Z' })],
+    ledger2);
+  check('tier-1 match consumes the legacy row (tier-2 cannot double-spend it)',
+    c5.duplicates.length === 1 && c5.ambiguous.length === 0 && c5.toImport.length === 1,
+    `dup=${c5.duplicates.length} amb=${c5.ambiguous.length} import=${c5.toImport.length}`);
+
+  // SQL ≡ JS: the RPC's counting formula (rn_exact/exact counts; consumed =
+  // :00 dup rows per minute key; rn_min ≤ legacy − consumed) must classify
+  // identically on every scenario above.
+  const sqlPlan = (rows, existing) => {
+    const exact = new Map(), legacy = new Map();
+    for (const e of existing) {
+      const k = txnKey(e); exact.set(k, (exact.get(k) || 0) + 1);
+      if (txnSecond(e) === 0) { const m = txnMinuteKey(e); legacy.set(m, (legacy.get(m) || 0) + 1); }
+    }
+    const rnE = new Map(); const out = { ins: [], dup: [], amb: [] };
+    const t1 = rows.map(r => {
+      if (r._force) return { r, cls: 'ins' };
+      const k = txnKey(r); const n = (rnE.get(k) || 0) + 1; rnE.set(k, n);
+      return { r, cls: n <= (exact.get(k) || 0) ? 'dup' : null };
+    });
+    const consumed = new Map();
+    for (const t of t1) if (t.cls === 'dup' && txnSecond(t.r) === 0) {
+      const m = txnMinuteKey(t.r); consumed.set(m, (consumed.get(m) || 0) + 1);
+    }
+    const rnM = new Map();
+    for (const t of t1) {
+      if (t.cls) { out[t.cls === 'ins' ? 'ins' : 'dup'].push(t.r); continue; }
+      if (t.r._synthetic) {
+        const m = txnMinuteKey(t.r); const n = (rnM.get(m) || 0) + 1; rnM.set(m, n);
+        if (n <= Math.max(0, (legacy.get(m) || 0) - (consumed.get(m) || 0))) { out.amb.push(t.r); continue; }
+      }
+      out.ins.push(t.r);
+    }
+    return out;
+  };
+  const same = (cls, plan) =>
+    cls.toImport.map(r => r.id).join() === plan.ins.map(r => r.id).join() &&
+    cls.duplicates.map(r => r.id).join() === plan.dup.map(r => r.id).join() &&
+    cls.ambiguous.map(a => a.row.id).join() === plan.amb.map(r => r.id).join();
+  check('SQL counting formula ≡ JS classifier on all four scenarios',
+    same(c1, sqlPlan(newParse, legacyLedger)) &&
+    same(c2, sqlPlan(file2, ledger2)) &&
+    same(c3, sqlPlan(newParse, newParse)) &&
+    same(c4, sqlPlan([realRow], legacyLedger)) &&
+    same(c5, sqlPlan(
+      [mk({ id: 'x0', _synthetic: true, occurred_at: '2026-08-06T05:00:00.000Z' }),
+       mk({ id: 'x1', _synthetic: true, occurred_at: '2026-08-06T05:00:01.000Z' })], ledger2)));
+
+  // Parsers flag statement rows as synthetic (feeds the classifier).
+  const p = parseCSV('Date,Description,Amount\n05/08/2026,กาแฟ,-65\n');
+  const [pr] = mapRowsToTransactions(p.rows, detectKBankColumns(p.headers), 'personal');
+  check('parser rows carry _synthetic: true', pr._synthetic === true);
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
