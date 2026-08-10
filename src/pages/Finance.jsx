@@ -280,7 +280,9 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
       const typeChanged = isEdit && form.type !== initialTxn.type;
       let amount;
       if (isTransferEdit) {
-        amount = abs * (Number(initialTxn.amount) < 0 ? -1 : 1);
+        // Amount is LOCKED for transfer legs (the field is read-only below):
+        // the two legs must stay mirrored, and this popup only sees one leg.
+        amount = Number(initialTxn.amount);
       } else if (isEdit && !typeChanged) {
         amount = abs * (Number(initialTxn.amount) < 0 ? -1 : 1);
       } else {
@@ -410,7 +412,23 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
               ? (Number(initialTxn.amount) < 0 ? '— โอนออก (-)' : '— รับโอน (+)')
               : (isIncome ? '— รายรับ (+)' : '— รายจ่าย (-)')}
           </span>
-          <input className="input" type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0.00" required />
+          {isTransferEdit ? (
+            // Amount LOCKED for transfer legs — editing one side alone would
+            // desync the mirrored pair (+90,000 / −80,000).
+            <div
+              title="แก้ยอดโอนไม่ได้ — ลบแล้วโอนใหม่แทน เพื่อให้สองฝั่งตรงกันเสมอ"
+              style={{
+                padding: '9px 12px', borderRadius: 'var(--radius-field)',
+                background: 'var(--fill)', color: 'var(--text-muted)',
+                fontSize: 14, fontVariantNumeric: 'tabular-nums', cursor: 'not-allowed',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+              <span>฿{Math.abs(Number(initialTxn.amount)).toLocaleString('th', { maximumFractionDigits: 2 })}</span>
+              <span style={{ fontSize: 11 }}>🔒 ล็อกให้สองฝั่งตรงกัน</span>
+            </div>
+          ) : (
+            <input className="input" type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0.00" required />
+          )}
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันที่</span>
