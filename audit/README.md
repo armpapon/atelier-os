@@ -1,14 +1,14 @@
 # Audit evidence harness
 
 Executable acceptance evidence for the independent finance audit
-(rounds 1–11, closed in v4.14 – v4.24).
+(rounds 1–11 + the closing follow-up, v4.14 – v4.25).
 
 ## Run it
 
 ```bash
 npm install          # once — needs the repo's own devDependencies
 node audit/evidence.mjs   # pure-logic evidence (155 checks)
-npm run test:ui           # MOUNTED CSVImporter orchestration tests (32, rounds 6–11)
+npm run test:ui           # MOUNTED CSVImporter orchestration tests (34, rounds 6–11)
 ```
 
 `npm run test:ui` renders the real `CSVImporter` under jsdom (vitest +
@@ -26,6 +26,13 @@ The mock also emulates the v8 foreign key
 the "delete an imported transaction" acceptance case runs for real, and the
 round-9 receipt retention purge (own rows, `created_at` older than 90 days,
 never this call's key).
+
+The closing follow-up (Z1–Z2) pins the quota boundary. Z1 calibrates against a
+successful run to learn how large the FINAL record is, then sets the quota one
+byte under it: the pre-flight must refuse before a single account shell is
+created, which it can only do if it measured account ids at their real width.
+Z2 shows the placeholder never escapes — it is replaced as soon as the shells
+exist, and a record still holding it reads back as `account_id: null`.
 
 Round-11 cases (Y1–Y3) cover the tab's GRIP on the record: ownership released
 in one place and only when the owned session cannot still be needed (Y1 walks

@@ -1242,3 +1242,108 @@ describe('CSVImporter session ownership + honest aborts (round 11)', () => {
     expect(storedRaw()).toBeNull();
   });
 });
+
+// ── Round-11 follow-up ─────────────────────────────────────────────────────
+// The pre-flight has to measure the payload that actually has to fit. It is
+// written before the account shells exist, so the only field that differs from
+// the final record is rows[].account_id (null → an account uuid) — which is
+// exactly the field that can push the final write over quota.
+
+const MAKE_CSV_2_POCKETS =
+  'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
+  '05/08/2026,09:15,Cashbox,Payment,-65,1000,ชา กาแฟ,,ร้านกาแฟ\n' +
+  '05/08/2026,10:00,Wallet,Payment,-500,7000,อื่นๆ,,ของบ้าน\n';
+
+describe('CSVImporter quota boundary (round-11 follow-up)', () => {
+
+  it('(Z1) the record that must fit does NOT fit: the pre-flight refuses before a single account shell exists', async () => {
+    // ── Phase 1 · calibrate ────────────────────────────────────────────────
+    // Run the import with storage wide open and record the largest payload it
+    // writes. That is the FINAL record — rows carrying real account ids — i.e.
+    // precisely what has to fit for the import to be recoverable.
+    installImportRpcV8();
+    let widest = 0;
+    const realSet = Storage.prototype.setItem;
+    let spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (k, v) {
+      if (String(k).startsWith(SLOT_PREFIX)) widest = Math.max(widest, String(v).length);
+      return realSet.call(this, k, v);
+    });
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container, MAKE_CSV_2_POCKETS);
+    fireEvent.click(importButton());
+    await screen.findByText('Import สำเร็จ!');
+    spy.mockRestore();
+    expect(widest).toBeGreaterThan(0);
+    const accountIds = __tables.accounts.map(a => a.id);
+    expect(accountIds).toHaveLength(2);
+
+    // ── Phase 2 · the boundary ─────────────────────────────────────────────
+    cleanup();
+    for (const k of Object.keys(__tables)) __tables[k] = [];
+    window.localStorage.clear();
+    resetSim();
+    installImportRpcV8();
+
+    // Quota sits ONE byte under the record that has to fit. v4.24's pre-flight
+    // measured the same rows with `account_id: null` — smaller — so it passed,
+    // both shells were created, and only then did the real write blow up.
+    const budget = widest - 1;
+    spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (k, v) {
+      if (String(v).length > budget) throw new DOMException('exceeded the quota', 'QuotaExceededError');
+      return realSet.call(this, k, v);
+    });
+
+    const { container: c2 } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(c2, MAKE_CSV_2_POCKETS);
+    fireEvent.click(importButton());
+    await screen.findByText(/บันทึกจุดกู้คืนไม่ได้ \(พื้นที่เก็บข้อมูลเต็ม\)/);
+
+    expect(__tables.accounts).toHaveLength(0);        // ← the follow-up: ZERO shells
+    expect(simCalls).toHaveLength(0);                 // and nothing was sent
+    expect(__tables.transactions).toHaveLength(0);
+    expect(storedRaw()).toBeNull();
+    // With nothing created, the clean-slate wording is literally true again.
+    expect(screen.getByText(/ยังไม่ได้นำเข้าอะไรทั้งสิ้น/)).toBeTruthy();
+    expect(screen.queryByText(/เตรียมบัญชีไว้แล้ว/)).toBeNull();
+    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();     // plan intact
+
+    spy.mockRestore();
+    fireEvent.click(importButton());
+    await screen.findByText('Import สำเร็จ!');
+    expect(__tables.accounts.map(a => a.name).sort()).toEqual(['Cashbox', 'Wallet']);
+    expect(__tables.transactions).toHaveLength(2);
+  });
+
+  it('(Z2) the pre-flight record reserves the account ids at full width and never leaks the placeholder', async () => {
+    // Fail the group so the pre-flight record stays on disk to be inspected.
+    installImportRpcV8({ failPredicate: (call) => call === 1 });
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container, MAKE_CSV_2_POCKETS);
+    fireEvent.click(importButton());
+    await screen.findByText(/Import ไม่สำเร็จ/);
+
+    // By the time the run reaches the RPC the placeholders are gone: the ids
+    // write happens as soon as the shells exist, still before the first call.
+    const stored = storedRecord();
+    const ids = __tables.accounts.map(a => a.id);
+    expect(ids).toHaveLength(2);
+    expect(stored.rows.map(r => r.account_id).sort()).toEqual([...ids].sort());
+    expect(JSON.stringify(stored)).not.toContain('00000000-0000-0000-0000-000000000000');
+
+    // And a record still holding the placeholder (an abort between the two
+    // writes) reads back as `account_id: null`, never as an account.
+    const slot = slotKeys()[0];
+    const padded = JSON.parse(window.localStorage.getItem(slot));
+    padded.rows = padded.rows.map(r => ({ ...r, account_id: '00000000-0000-0000-0000-000000000000' }));
+    window.localStorage.setItem(slot, JSON.stringify(padded));
+
+    reload();
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/ยังไม่ได้นำเข้า — กรุณานำเข้าใหม่/);
+    expect(__tables.transactions).toHaveLength(0);
+  });
+});

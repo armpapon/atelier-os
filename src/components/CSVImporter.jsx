@@ -60,6 +60,22 @@ const SESSION_MAX_AGE_MS = 60 * 24 * 3600 * 1000;
 // "resume disabled, verify manually" — never a half-written record.
 const SESSION_MAX_CHARS = 512 * 1024;
 
+// ── Round-11 follow-up · the size test must measure what actually has to fit ─
+// The pre-flight record is written BEFORE the account shells exist, so the
+// only field that differs from the FINAL record is rows[].account_id
+// (null → an account uuid). Everything else — groups, pockets, debtLinks,
+// createAccts/makeFmt, doneGroups, sideEffects — is byte-identical, and
+// at/startedAt are fixed-width epoch numbers. Writing `null` there measured a
+// smaller payload than the one that really has to fit, so a record could pass
+// the pre-flight and then fail after the shells had been created. The
+// pre-flight now stands a nil-UUID in every slot a real id will occupy: the
+// measured payload is at least as large as the final one, and a quota failure
+// surfaces before anything at all is created. It is scrubbed back to null on
+// read, so it can never be mistaken for an account.
+const ACCOUNT_ID_SIZE_PAD = '00000000-0000-0000-0000-000000000000';
+const unpadAccountId = (r) =>
+  (r && r.account_id === ACCOUNT_ID_SIZE_PAD ? { ...r, account_id: null } : r);
+
 /**
  * The recovery record could NOT be written. Round-10 case 4 / round-11: this
  * always ABORTS the run — never a silent no-op, whatever the reason.
@@ -93,7 +109,9 @@ function normalizeSession(s) {
       dedup: g.dedup === undefined || g.dedup === null ? true : !!g.dedup,
     }));
   if (!groups.length) return null;
-  const rows = Array.isArray(s.rows) ? s.rows : [];
+  // A record written by the pre-flight (before the shells existed) carries the
+  // size placeholder — never let it out as if it were a real account id.
+  const rows = (Array.isArray(s.rows) ? s.rows : []).map(unpadAccountId);
   const startedAt = Number.isFinite(s.startedAt) ? s.startedAt : null;
   return {
     ...s, v: SESSION_RECORD_V, groups, rows,
@@ -599,6 +617,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // record must outlive a release. Dup-only groups leave committedRef empty,
   // so committedRef alone is not a sound answer.
   const outcomesSeenRef = useRef(false);
+  // Account shells prepared by THIS attempt. They hold no balance, no anchor
+  // and no transaction, and a retry reuses them — but an abort must still say
+  // so rather than implying the server was never touched.
+  const shellsReadyRef = useRef(0);
   const noteOutcomes = (res) => {
     if (!res) return;
     if (res.inserted?.length || res.insertedCount > 0
@@ -615,9 +637,16 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
    */
   const recordAbortMessage = (err) => {
     const reason = abortReason(err);
+    const tail = 'กรุณาเพิ่มพื้นที่ว่างของเบราว์เซอร์ (หรือออกจากโหมดไม่ระบุตัวตน) แล้วกด Import อีกครั้ง';
     if (!sessionMayHaveReceipts()) {
-      return `บันทึกจุดกู้คืนไม่ได้ (${reason}) — ยังไม่ได้นำเข้าอะไรทั้งสิ้น `
-        + 'กรุณาเพิ่มพื้นที่ว่างของเบราว์เซอร์ (หรือออกจากโหมดไม่ระบุตัวตน) แล้วกด Import อีกครั้ง';
+      // Belt and braces: with the full-size pre-flight this should be
+      // unreachable, but if a shell ever does exist, say so.
+      if (shellsReadyRef.current > 0) {
+        return `บันทึกจุดกู้คืนไม่ได้ (${reason}) — ยังไม่ได้นำเข้ารายการใดเลย `
+          + `แต่ระบบเตรียมบัญชีไว้แล้ว ${shellsReadyRef.current} บัญชี `
+          + '(บัญชีเปล่า ไม่มียอดและไม่มีรายการ — จะถูกใช้ซ้ำเมื่อ Import ใหม่) ' + tail;
+      }
+      return `บันทึกจุดกู้คืนไม่ได้ (${reason}) — ยังไม่ได้นำเข้าอะไรทั้งสิ้น ` + tail;
     }
     const live = [...committedRef.current.values()].filter(v => v !== null).length
       + unmappedRef.current.size;
@@ -680,6 +709,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     storedSessionRef.current = null;
     if (!keepImportKey) importKeyRef.current = null;
     outcomesSeenRef.current = false;
+    shellsReadyRef.current = 0;
     sessionStartedAtRef.current = null;
     setOwnedKey(null);
     // A kept record is handed straight back to the picker — released, never
@@ -1050,7 +1080,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     try {
       importKeyRef.current = rec.key;
       const byGroup = new Map();
-      for (const r of rec.rows) {
+      for (const raw of rec.rows) {
+        const r = unpadAccountId(raw);   // never send a size placeholder as an id
         const k = `${r.scope}|${r.month}`;
         if (!byGroup.has(k)) byGroup.set(k, []);
         byGroup.get(k).push(r);
@@ -1165,6 +1196,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
     setImporting(true); setError(null);
     try {
+      shellsReadyRef.current = 0;
       if (!importKeyRef.current) {
         importKeyRef.current = (globalThis.crypto?.randomUUID?.()
           ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -1233,36 +1265,44 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         debt_id: sug.debt.id, debtName: sug.debt.name,
         pay_month: `${sug.ym}-01`, amount: sug.amount, _rid: sug.txn._rid,
       }));
-      const buildRecord = (pocketMap) => ({
+      const willCreateAccounts = !!(createAccts && makeFmt);
+      const buildRecord = (pocketMap, { padIds = false } = {}) => ({
         v: SESSION_RECORD_V, key: importKeyRef.current,
         at: Date.now(),
         startedAt: sessionRecordRef.current?.startedAt
           ?? sessionStartedAtRef.current ?? Date.now(),
         groups: [...planGroups.values()],
-        rows: pocketMap.size
-          ? sessionRows.map(r => ({ ...r, account_id: pocketMap.get(r._pocket) || null }))
+        rows: (pocketMap.size || padIds)
+          ? sessionRows.map(r => ({
+              ...r,
+              account_id: pocketMap.get(r._pocket)
+                || (padIds && r._pocket ? ACCOUNT_ID_SIZE_PAD : null),
+            }))
           : sessionRows,
-        pockets: (createAccts && makeFmt) ? extractAccountsFromMapped(plan) : [],
-        createAccts: !!(createAccts && makeFmt), makeFmt: !!makeFmt,
+        pockets: willCreateAccounts ? extractAccountsFromMapped(plan) : [],
+        createAccts: willCreateAccounts, makeFmt: !!makeFmt,
         debtLinks: sessionDebtLinks,
         doneGroups: [], sideEffects: { accounts: false, debts: false },
       });
-      // HARD pre-flight: the real payload, before anything leaves the client.
-      persistSession(buildRecord(new Map()));
+      // HARD pre-flight: the FULL-SIZE payload — account ids stood in at their
+      // real width — before anything leaves the client or is created for it.
+      persistSession(buildRecord(new Map(), { padIds: willCreateAccounts }));
 
       // Step 2 (round-6 B2): accounts — create linkable SHELLS only, and only
       // for pockets present in the executed plan (selection-respecting).
       // Balance/anchor mutations are deferred to finalizeImport, after every
       // transaction group has succeeded.
       let pocketIdMap = new Map();
-      if (createAccts && makeFmt) {
+      if (willCreateAccounts) {
         const planPockets = extractAccountsFromMapped(plan);
         if (planPockets.length) {
           pocketIdMap = await bulkUpsertAccountsByPocket(planPockets, { mode: 'ensure' });
+          shellsReadyRef.current = pocketIdMap.size;
         }
+        // Same discipline: the ids must be recorded before the RPC can use
+        // them — and this write also replaces the size placeholders.
+        persistSession(buildRecord(pocketIdMap));
       }
-      // Same discipline: the ids must be recorded before the RPC can use them.
-      if (pocketIdMap.size) persistSession(buildRecord(pocketIdMap));
 
       // Retry safety: rows already committed in this session are never
       // re-sent (v6 receipts make even a lost response recoverable).
