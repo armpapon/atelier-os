@@ -77,10 +77,33 @@
 --      "recovered": bool }   -- true = at least part of this answer was
 --                            --        reconstructed from receipts
 --
+--  ── RECEIPT RETENTION (round 9, F2) ────────────────────────────────────────
+--  Receipts are unbounded bookkeeping: without a policy the table grows for
+--  ever. Policy: OPPORTUNISTIC PURGE — every non-probe call deletes the
+--  CALLER'S OWN receipts older than RETENTION_DAYS = 90, excluding this call's
+--  own import_key. No cron, no extension, no privileged job: the purge rides
+--  on the import the user is already running and is bounded by RLS to that
+--  user's rows.
+--
+--  Why age alone is safe (no "is this session finished?" test is needed):
+--  a receipt is only ever consulted by a client that still holds the import
+--  key of an IN-FLIGHT session. An in-flight session is minutes old — a page
+--  reload, a retry, a recovery read. 90 days is four orders of magnitude
+--  beyond any plausible in-flight window, and created_at is stamped when the
+--  receipt is written, so nothing that a client could still be recovering can
+--  fall inside the window. The client adds its own belt: it refuses to
+--  reconstruct a stored session older than 60 days (CSVImporter.jsx,
+--  SESSION_MAX_AGE_MS), leaving a 30-day margin in which "the probe found
+--  zero outcomes" can only mean "nothing committed" and never "the receipts
+--  were purged". The purge is also skipped entirely when p_probe is true — a
+--  recovery read must not write.
+--
 --  SECURITY INVOKER → RLS applies. Fully idempotent OVER v7: the table gains
 --  its new columns with ADD COLUMN IF NOT EXISTS, existing receipts backfill
 --  to outcome='inserted', and the constraints are added only when absent.
---  Safe to re-run (replaces v1–v7).
+--  The round-9 retention purge + its index are ADDITIVE over v8 and equally
+--  idempotent — re-running this file on a v8 database changes nothing else.
+--  Safe to re-run (replaces v1–v8).
 --
 --  Suggested tab name: loop_import_transactions_rpc_v8
 -- ============================================================================
@@ -144,6 +167,11 @@ begin
   end if;
 end
 $mig$;
+
+-- Round-9 F2: keeps the opportunistic retention purge (user_id + created_at)
+-- an index scan instead of a table scan on every import call.
+create index if not exists import_receipts_user_created_idx
+  on public.import_receipts (user_id, created_at);
 
 alter table public.import_receipts enable row level security;
 drop policy if exists "own rows" on public.import_receipts;
@@ -238,6 +266,16 @@ begin
   v_wipe := coalesce(p_wipe, false) and not v_seen and not v_probe;
 
   if not v_probe then
+    -- ══ RETENTION (round-9 F2) — opportunistic, own rows only ══════════════
+    -- Age-based at 90 days, and this call's key is excluded outright, so a
+    -- session that is still in flight can never be touched. Skipped on a
+    -- probe: a recovery read must not write. See the header for the full
+    -- reasoning.
+    delete from import_receipts ir
+     where ir.user_id = v_uid
+       and ir.created_at < now() - interval '90 days'
+       and (p_import_key is null or ir.import_key is distinct from p_import_key);
+
     if v_wipe then
       delete from transactions t
       where t.user_id = v_uid

@@ -14,6 +14,8 @@
 //      processed, then merged into the reconstruction;
 //   5. every processed ord gets a receipt (upsert), in the same "transaction".
 //   p_probe = read-only reconstruction: never wipes, processes or writes.
+//   Round-9 F2: a non-probe call first purges the caller's OWN receipts older
+//   than RETENTION_DAYS (90), excluding this call's key.
 // Failure scripting:
 //   failPredicate(call, args)           → fail BEFORE any state mutation
 //   postCommitFailPredicate(call, args) → mutate state fully, then return a
@@ -23,6 +25,7 @@ import { __tables, __config } from './mock-supabase.mjs';
 
 let seq = 0;
 export const simCalls = [];
+export const RETENTION_MS = 90 * 24 * 3600 * 1000;
 
 export function resetSim() { seq = 0; simCalls.length = 0; }
 
@@ -66,6 +69,13 @@ export function installImportRpcV8({ failPredicate, postCommitFailPredicate } = 
         dup_skipped: dupOut, ambiguous: ambOut }, error: null };
     }
 
+    // ── RETENTION (round-9 F2) — own rows, age-based, never this key ──────
+    const cutoff = Date.now() - RETENTION_MS;
+    __tables.import_receipts = __tables.import_receipts.filter(r =>
+      !(r.user_id === uid
+        && r.created_at != null && Date.parse(r.created_at) < cutoff
+        && (key == null || r.import_key !== key)));
+
     // ── STEP 3+4 — a receipt proves the month was already wiped once ──────
     const wipeEff = !!args.p_wipe && !seen;
     if (wipeEff) {
@@ -81,7 +91,10 @@ export function installImportRpcV8({ failPredicate, postCommitFailPredicate } = 
       if (!key) return;
       const ex = receiptOf(ord);
       if (ex) { ex.outcome = outcome; ex.transaction_id = transaction_id; ex.detail = detail; }
-      else __tables.import_receipts.push({ user_id: uid, import_key: key, ord, transaction_id, outcome, detail });
+      else __tables.import_receipts.push({
+        user_id: uid, import_key: key, ord, transaction_id, outcome, detail,
+        created_at: new Date().toISOString(),   // retention clock (round-9 F2)
+      });
     };
 
     const toProcess = payload.filter(r => {
