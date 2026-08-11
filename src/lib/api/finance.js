@@ -60,6 +60,30 @@ export function isRpcMissing(err) {
     || /could not find the function|function .* does not exist/i.test(msg);
 }
 
+/**
+ * Round-8 B2. Did the SERVER answer, definitively, that nothing was written?
+ *
+ * The importer must never discard its recovery state on an error that could
+ * hide a committed write. Only an error that PROVES the statement was
+ * rejected qualifies: a PostgREST error code, or a Postgres SQLSTATE — both
+ * mean the request reached Postgres, was parsed and refused, and its
+ * transaction rolled back. Anything without such a code (fetch failure,
+ * timeout, abort, gateway 5xx/504, offline) is outcome-UNKNOWN: the write may
+ * well have committed with only the response lost, so the caller keeps its
+ * import key and its in-flight ords and resolves them with a recovery read.
+ */
+export function isDefinitiveServerError(err) {
+  if (!err) return false;
+  const code = String(err.code || '');
+  if (!code) return false;
+  const msg = String(err.message || '');
+  if (/failed to fetch|networkerror|network error|timeout|timed out|aborted|econn|socket hang up/i.test(msg)) {
+    return false;
+  }
+  // PGRSTnnn (PostgREST) or a 5-character SQLSTATE (e.g. 23505, 42501, P0001).
+  return /^PGRST\d+$/.test(code) || /^[0-9A-Z]{5}$/.test(code);
+}
+
 /** Postgres 42703 / PostgREST PGRST204 = column does not exist (yet). */
 export function isColumnMissing(err) {
   if (!err) return false;
@@ -1205,7 +1229,7 @@ export function classifyImportRows(rows, existingRows) {
  * Throws the raw error when the RPC is missing — the importer catches it
  * with isRpcMissing() and falls back to the legacy multi-call path.
  */
-export async function importTransactionsBatch({ scope, month, wipe, dedup, rows, importKey = null }) {
+export async function importTransactionsBatch({ scope, month, wipe, dedup, rows, importKey = null, probe = false }) {
   if (!supabase) throw new Error('Supabase not configured');
   const payload = rows.map((r, i) => ({
     // v6: ord is CLIENT-ASSIGNED (= the importer's session-unique _rid), so
@@ -1224,8 +1248,14 @@ export async function importTransactionsBatch({ scope, month, wipe, dedup, rows,
   const args = {
     p_scope: scope, p_month: month, p_wipe: !!wipe, p_rows: payload, p_dedup: !!dedup,
   };
+  const keyed = importKey ? { ...args, p_import_key: importKey } : args;
   let { data, error } = await supabase.rpc('import_transactions',
-    importKey ? { ...args, p_import_key: importKey } : args);
+    probe ? { ...keyed, p_probe: true } : keyed);
+  if (error && probe) {
+    // A probe is a READ. Never degrade it to a signature that would process
+    // the payload (pre-v8 deployments have no p_probe) — surface the error.
+    throw error;
+  }
   if (error && importKey && isRpcMissing(error)) {
     // v5 deployment (no p_import_key parameter) — degrade gracefully: the
     // client-side committed-row tracking still makes in-session retries safe.
@@ -1253,9 +1283,12 @@ export async function importTransactionsBatch({ scope, month, wipe, dedup, rows,
       dupSkipped:       Number(data.dup_skipped) || 0,
       ambiguous,
       ambiguousSkipped: ambiguous.length || Number(data.ambiguous_skipped) || 0,
+      // v8: true = all or part of this answer was reconstructed from receipts
+      // (the group had already committed). Pre-v8 deployments omit it.
+      recovered:        !!data.recovered,
     };
   }
-  return { inserted: [], insertedCount: Number(data) || 0, dupSkipped: 0, ambiguous: [], ambiguousSkipped: 0 };
+  return { inserted: [], insertedCount: Number(data) || 0, dupSkipped: 0, ambiguous: [], ambiguousSkipped: 0, recovered: false };
 }
 
 /** Delete all transactions in a month (used for clean re-import). */
