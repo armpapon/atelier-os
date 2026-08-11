@@ -57,6 +57,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // ── CSV ────────────────────────────────────────────────────────────────────
   const handleCSVFile = (file) => {
     if (!file) return;
+    if (importing || hasUnfinishedCommittedWork) {
+      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อนเริ่มไฟล์ใหม่');
+      return;
+    }
     setFileName(file.name);
     setError(null);
 
@@ -88,6 +92,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   };
 
   const handleColChange = (key, val) => {
+    if (importing || hasUnfinishedCommittedWork) {
+      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อนเปลี่ยน mapping');
+      return;
+    }
     const newMap = { ...colMap, [key]: val };
     setColMap(newMap);
     const txns = assignRowIds(mapRowsToTransactions(rows, newMap, defaultScope));
@@ -99,6 +107,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // ── PDF ────────────────────────────────────────────────────────────────────
   const handlePDFParse = async () => {
     if (!pdfFile) return;
+    if (importing || hasUnfinishedCommittedWork) {
+      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อนเริ่มไฟล์ใหม่');
+      return;
+    }
     setPdfParsing(true); setError(null);
     try {
       const buf  = await pdfFile.arrayBuffer();
@@ -271,12 +283,71 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // from the final aggregated results.
   const importKeyRef = useRef(null);
   const committedRef = useRef(new Map());
+  // Reactive mirror of committedRef.size — drives the exit gates (round 7).
+  const [committedCount, setCommittedCount] = useState(0);
+  const syncCommitted = () => setCommittedCount(committedRef.current.size);
+  // Side effects (account apply + debt links) that failed after commit and
+  // still await a successful retry — surfaced on the done screen.
+  const [pendingSideEffects, setPendingSideEffects] = useState(null);
+  const [sideEffectsDone, setSideEffectsDone] = useState(false);
+  const sideEffectsDoneRef = useRef(false);
+  const markSideEffects = (pending) => {
+    setPendingSideEffects(pending);
+    sideEffectsDoneRef.current = !pending;
+    setSideEffectsDone(!pending);
+  };
+
+  // Round-7 B4: THE gate. True whenever rows are committed but their
+  // finalisation (side effects) has not fully completed — every exit path
+  // respects it, and the session refs are never cleared while it holds.
+  const hasUnfinishedCommittedWork = committedCount > 0 && !sideEffectsDone;
+
   const resetImportSession = () => {
+    // Never destroy recovery state while committed work is unfinished.
+    if (committedRef.current.size > 0 && !sideEffectsDoneRef.current) return false;
     importKeyRef.current = null;
     committedRef.current = new Map();
     pendingStatsRef.current = null;
+    setCommittedCount(0);
+    markSideEffects(null);
+    sideEffectsDoneRef.current = false;
+    setSideEffectsDone(false);
     setServerAmbiguous([]); setServerIncluded(new Set());
     setImportStats(null);
+    return true;
+  };
+
+  // ── Side-effect passes (both idempotent — safe to re-run on retry) ───────
+  // Account apply: a plain state write (balance + anchor + source) guarded
+  // by the never-rewind rule; running it twice writes the same values.
+  const applyAccountPass = async (pockets) => {
+    try {
+      if (pockets?.length) await bulkUpsertAccountsByPocket(pockets, { mode: 'apply' });
+      return null;
+    } catch (e) {
+      return { pockets, count: pockets.length, message: e.message || String(e) };
+    }
+  };
+  // Debt links: recordDebtPayment is insert-or-noop on the UNIQUE
+  // (debt_id, pay_month) — via the RPC or the ON CONFLICT DO NOTHING
+  // fallback — so a retried link can never double a payment row or the
+  // months_paid counter.
+  const applyDebtLinkPass = async (links) => {
+    let ok = 0;
+    const failed = [];
+    for (const l of links) {
+      try {
+        await recordDebtPayment({
+          debt_id: l.debt_id, pay_month: l.pay_month,
+          amount_paid: l.amount, transaction_id: l.transaction_id,
+          notes: 'auto-linked from import',
+        });
+        ok++;
+      } catch (e) {
+        failed.push({ ...l, message: e.message || String(e) });
+      }
+    }
+    return { ok, failed };
   };
 
   // ── Finalise: post-success side effects + stats + done screen ────────────
@@ -284,41 +355,35 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // has succeeded. Side-effect policy (round-6 B2/B3): account balance
   // mutations and debt links derive exclusively from rows that actually
   // inserted, using exact ids — never from the preview, never via re-query.
+  // Round-7 B2/B3: failures here are NOT swallowed — they surface on the
+  // done screen with a retry that re-runs only the failed pass.
   const finalizeImport = async (S) => {
     const committed = committedRef.current;
     const insertedTotal = [...committed.values()].filter(v => v !== null).length + (S.noMapInserted || 0);
 
     // B2: apply pocket balances AFTER full success, from inserted rows only.
-    let accountsWarning = null;
+    let accountFail = null;
     if (createAccts && makeFmt) {
-      try {
-        const insertedPlanRows = S.plan.filter(r => committed.has(r._rid));
-        const pockets = extractAccountsFromMapped(insertedPlanRows);
-        if (pockets.length) await bulkUpsertAccountsByPocket(pockets, { mode: 'apply' });
-      } catch (e) {
-        accountsWarning = 'อัปเดตยอดบัญชีไม่สำเร็จ (รายการนำเข้าแล้ว): ' + (e.message || e);
-      }
+      const insertedPlanRows = S.plan.filter(r => committed.has(r._rid));
+      const pockets = extractAccountsFromMapped(insertedPlanRows);
+      accountFail = await applyAccountPass(pockets);
     }
 
-    // B3: debt links ONLY for suggestions whose row really inserted, with the
-    // exact transaction_id from the receipt/RETURNING mapping.
-    let debtLinked = 0;
-    for (const sug of activeSuggestions) {
-      const tid = committed.get(sug.txn._rid);
-      if (!tid) continue;   // skipped/dup/ambiguous/deselected or no exact id → no link
-      try {
-        await recordDebtPayment({
-          debt_id: sug.debt.id,
-          pay_month: sug.ym + '-01',
-          amount_paid: sug.amount,
-          transaction_id: tid,
-          notes: 'auto-linked from import',
-        });
-        debtLinked++;
-      } catch (_) { /* swallow individual link failures */ }
-    }
+    // B3: debt links ONLY for suggestions whose row really inserted, with
+    // the exact transaction_id from the receipt/RETURNING mapping.
+    const links = activeSuggestions
+      .map(sug => ({
+        debt_id: sug.debt.id, debtName: sug.debt.name,
+        pay_month: `${sug.ym}-01`, amount: sug.amount,
+        transaction_id: committed.get(sug.txn._rid),
+      }))
+      .filter(l => l.transaction_id);   // not inserted / no exact id → no link
+    const { ok: debtLinked, failed: debtFails } = await applyDebtLinkPass(links);
 
-    if (accountsWarning) setError(accountsWarning);
+    markSideEffects((accountFail || debtFails.length)
+      ? { accounts: accountFail, debtFails }
+      : null);
+
     setImportStats({
       inserted: insertedTotal, skipped: S.dupSkipped, debtLinked,
       ambiguousSkipped: S.ambiguousSkipped, ambiguousImported: S.ambiguousImported,
@@ -327,6 +392,27 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     });
     setStep('done');
     onImported?.();
+  };
+
+  // Round-7: re-run ONLY the failed side-effect pass(es) from the done
+  // screen. Both passes are idempotent (see comments above).
+  const retrySideEffects = async () => {
+    if (importing) return;
+    const P = pendingSideEffects;
+    if (!P) return;
+    setImporting(true);
+    try {
+      const accountFail = P.accounts ? await applyAccountPass(P.accounts.pockets) : null;
+      let stillFailed = [];
+      if (P.debtFails?.length) {
+        const { ok, failed } = await applyDebtLinkPass(P.debtFails);
+        stillFailed = failed;
+        if (ok) setImportStats(s => s ? { ...s, debtLinked: (s.debtLinked || 0) + ok } : s);
+      }
+      markSideEffects((accountFail || stillFailed.length)
+        ? { accounts: accountFail, debtFails: stillFailed }
+        : null);
+    } finally { setImporting(false); }
   };
 
   const handleImport = async () => {
@@ -412,11 +498,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           for (const m of res.inserted) {
             committedRef.current.set(m.ord, m.transaction_id);
           }
+          syncCommitted();
           if (!res.inserted.length && res.insertedCount > 0) {
             // Pre-v6 deployment: no mapping — mark the group's non-ambiguous
             // rows committed (null id) so a retry cannot re-send them.
             const ambOrds = new Set(res.ambiguous.map(a => a.ord));
             for (const r of rows) if (!ambOrds.has(r._rid)) committedRef.current.set(r._rid, null);
+            syncCommitted();
             noMapInserted += res.insertedCount;
           }
           dupSkipped += res.dupSkipped;
@@ -461,6 +549,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           // The insert is a single atomic statement; RETURNING preserves row
           // order, giving the exact _rid → transaction_id mapping.
           rowsIns.forEach((tr, i) => committedRef.current.set(toImport[i]._rid, tr.id));
+          syncCommitted();
         }
       }
 
@@ -524,11 +613,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               for (const r of rows) committedRef.current.set(r._rid, null);
               S.noMapInserted = (S.noMapInserted || 0) + res.insertedCount;
             }
+            syncCommitted();
           }
         } else {
           const cleanRows = approved.map(({ _rid, _synthetic, _force, ...r }) => r);
           const rowsIns = (await bulkCreateTransactions(cleanRows)) || [];
           rowsIns.forEach((tr, i) => committedRef.current.set(approved[i]._rid, tr.id));
+          syncCommitted();
         }
       }
 
@@ -554,11 +645,34 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   const personalTot  = preview.filter(r => r.scope === 'personal').length;
   const familyTot    = preview.filter(r => r.scope === 'family').length;
 
-  // Round-6 B4: the modal may not be dismissed while an import is in flight
-  // or while the resolve step holds undecided execution-time ambiguities —
-  // closing there would abandon committed rows without their side effects.
-  const closeBlocked = importing || step === 'resolve';
-  const tryClose = () => { if (!closeBlocked) onClose(); };
+  // Round-6 B4 + round-7 B4: the modal may not be dismissed while an import
+  // is in flight, while the resolve step holds undecided ambiguities, or —
+  // NEW — while committed rows still await finalisation after a partial
+  // failure. Chosen flow (stated in the audit reply): pre-done states are
+  // hard-disabled (the resume action is the Import/Confirm button right
+  // there); on the DONE screen with pending side effects, exits route to an
+  // explicit recovery confirm.
+  const closeBlocked = importing || step === 'resolve'
+    || (hasUnfinishedCommittedWork && step !== 'done');
+  const tryClose = () => {
+    if (importing || step === 'resolve') return;
+    if (hasUnfinishedCommittedWork) {
+      if (step === 'done'
+          && confirm('มีงานปิดท้ายที่ยังไม่สำเร็จ (อัปเดตยอดบัญชี/ผูกงวดหนี้) — ปิดหน้าต่างโดยไม่ทำต่อหรือไม่?')) {
+        onClose();
+      }
+      return;   // pre-done: blocked — กด Import/ยืนยัน เพื่อทำต่อให้จบ
+    }
+    onClose();
+  };
+  // Esc follows the same gate as every other exit.
+  const tryCloseRef = useRef(tryClose);
+  tryCloseRef.current = tryClose;
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') tryCloseRef.current(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -1207,10 +1321,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
           {step === 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, padding: '40px 0' }}>
-              <div style={{ fontSize: 52 }}>✅</div>
+              <div style={{ fontSize: 52 }}>{pendingSideEffects ? '🟡' : '✅'}</div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', marginBottom: 14 }}>
-                  Import สำเร็จ!
+                  {pendingSideEffects ? 'นำเข้ารายการสำเร็จ — เหลืองานปิดท้าย' : 'Import สำเร็จ!'}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, maxWidth: 480 }}>
                   {importStats?.inserted > 0 && (
@@ -1241,7 +1355,48 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   </div>
                 )}
               </div>
-              <button className="btn btn--primary" onClick={onClose}>ปิดและดูรายการ</button>
+
+              {/* Round-7 B2/B3: finalisation failures are shown HERE, never
+                  swallowed — retry re-runs only the failed pass(es), both of
+                  which are idempotent. */}
+              {pendingSideEffects && (
+                <div style={{
+                  width: 480, maxWidth: '100%',
+                  background: tint('--warning', 10), border: '1px solid var(--warning)',
+                  borderRadius: 'var(--radius-card)', padding: '14px 18px',
+                  display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left',
+                }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
+                    ⚠️ นำเข้ารายการสำเร็จ แต่ยังมีงานปิดท้ายไม่สำเร็จ
+                  </div>
+                  {pendingSideEffects.accounts && (
+                    <div style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>
+                      · ยังอัปเดตยอดบัญชีไม่สำเร็จ {pendingSideEffects.accounts.count} บัญชี
+                      <span style={{ color: 'var(--text-muted)' }}> — {pendingSideEffects.accounts.message}</span>
+                    </div>
+                  )}
+                  {pendingSideEffects.debtFails?.length > 0 && (
+                    <div style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>
+                      · ผูกงวดหนี้ไม่สำเร็จ {pendingSideEffects.debtFails.length} รายการ
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {' '}({pendingSideEffects.debtFails.map(f => f.debtName).join(', ')})
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                    ลองใหม่ได้ปลอดภัย — ทั้งสองงานทำซ้ำแล้วไม่เบิ้ล (ยอดบัญชีเป็นการตั้งค่า, งวดหนี้กันซ้ำด้วย unique key)
+                  </div>
+                  <button className="btn btn--primary" onClick={retrySideEffects} disabled={importing}
+                    style={{ alignSelf: 'flex-start' }}>
+                    {importing ? 'กำลังลองใหม่...' : '↻ ลองอีกครั้ง'}
+                  </button>
+                </div>
+              )}
+
+              <button className="btn btn--primary" onClick={tryClose}
+                style={pendingSideEffects ? { opacity: 0.7 } : undefined}>
+                ปิดและดูรายการ
+              </button>
             </div>
           )}
         </div>
@@ -1249,7 +1404,12 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         {/* Footer */}
         {step === 'preview' && (
           <div style={{ padding: '14px 26px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0, background: 'var(--surface)' }}>
-            <button className="btn btn--ghost" onClick={resetUpload}>← กลับ</button>
+            <button className="btn btn--ghost" onClick={resetUpload}
+              disabled={importing || hasUnfinishedCommittedWork}
+              title={(importing || hasUnfinishedCommittedWork)
+                ? 'กลับไม่ได้ — มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ กด Import เพื่อทำต่อให้จบ'
+                : 'กลับไปเลือกไฟล์'}
+              style={(importing || hasUnfinishedCommittedWork) ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}>← กลับ</button>
             <button className="btn btn--primary" disabled={importing || sel.length === 0} onClick={handleImport}
               style={{ minWidth: 200, justifyContent: 'center' }}>
               {importing
