@@ -792,7 +792,7 @@ describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
 
     // The browser notifies tab A. A surfaces it — and must NOT be locked by it.
     fireStorageEvent(slotB);
-    await within(A).findByText(/มีการนำเข้าค้างอยู่หลายชุด/);
+    await within(A).findByText(/มีการนำเข้าค้างที่ยังไม่ได้เลือกกู้คืน/);
     expect(within(A).getByRole('button', { name: /เลือกกู้คืนชุดนี้/ })).toBeTruthy();
 
     window.alert.mockClear();
@@ -846,7 +846,7 @@ describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
       <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
 
     // Two records → adopt NEITHER, list BOTH.
-    await screen.findByText(/มีการนำเข้าค้างอยู่หลายชุด · 2 ชุด/);
+    await screen.findByText(/มีการนำเข้าค้างที่ยังไม่ได้เลือกกู้คืน · 2 ชุด/);
     expect(screen.queryByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ })).toBeNull();
     const picks = screen.getAllByRole('button', { name: /เลือกกู้คืนชุดนี้/ });
     expect(picks).toHaveLength(2);
@@ -1056,5 +1056,189 @@ describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
     await screen.findByText(/ไม่ทราบเวลาของการนำเข้าค้างนี้ — ยืนยันผลให้ไม่ได้/);
     expect(screen.queryByText(/ยังไม่ได้นำเข้า — กรุณานำเข้าใหม่/)).toBeNull();
     expect(storedRaw()).toBeTruthy();
+  });
+});
+
+// ── Round 11 ───────────────────────────────────────────────────────────────
+// The recovery record is only as good as the tab's grip on it. One blocker
+// (ownership outliving its session) and two ways the abort path lied.
+
+/** A definitive pre-commit rejection: the server answered, nothing was written. */
+const DEFINITIVE_ERROR = { code: '23505', message: 'duplicate key value violates unique constraint' };
+
+/** Make localStorage.setItem throw for anything bigger than a token probe. */
+function breakStorage({ minLength = 0 } = {}) {
+  const real = Storage.prototype.setItem;
+  return vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (k, v) {
+    if (String(v).length <= minLength) return real.call(this, k, v);
+    throw new DOMException('exceeded the quota', 'QuotaExceededError');
+  });
+}
+
+describe('CSVImporter session ownership + honest aborts (round 11)', () => {
+
+  it('(Y1) definitive failure → Back → new file: the second session is recorded and recoverable (v4.23 left it invisible)', async () => {
+    installImportRpcV8({
+      failPredicate: (call) => call === 1, failError: DEFINITIVE_ERROR,   // K1 rejected outright
+      postCommitFailPredicate: (call) => call === 2,                      // K2 commits, response lost
+    });
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+
+    // (1)+(2) K1 is recorded before the first call; the call is definitively rejected.
+    await uploadCsv(container, 'Date,Description,Amount\n05/08/2026,ของรอบแรก,-65\n');
+    fireEvent.click(importButton());
+    await screen.findByText(/Import ไม่สำเร็จ/);
+    expect(__tables.transactions).toHaveLength(0);
+    expect(__tables.import_receipts).toHaveLength(0);
+    const k1Slots = slotKeys();
+    expect(k1Slots).toHaveLength(1);
+
+    // (3) Back is open — nothing committed, no unanswered write. Releasing here
+    // deletes K1's record on purpose: the server provably holds no receipt for
+    // it, so keeping it would only show a phantom pending import.
+    const back = screen.getByRole('button', { name: /← กลับ/ });
+    expect(back.disabled).toBe(false);
+    fireEvent.click(back);
+    await waitFor(() => expect(slotKeys()).toHaveLength(0));
+
+    // (4) A new file → K2. v4.23 still "owned" K1, so persistSession returned
+    // silently and this whole import went unrecorded.
+    fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [
+      new File(['Date,Description,Amount\n09/09/2026,ของรอบสอง,-42\n'], 'two.csv', { type: 'text/csv' })] } });
+    await screen.findByText(/ตัวเลือก IMPORT/);
+    fireEvent.click(importButton());
+
+    // (5) K2 commits and loses its response.
+    await screen.findByText(/Import ไม่สำเร็จ/);
+    expect(__tables.transactions.map(t => t.title)).toEqual(['ของรอบสอง']);
+    const k2Slots = slotKeys();
+    expect(k2Slots).toHaveLength(1);
+    expect(k2Slots[0]).not.toBe(k1Slots[0]);          // its OWN slot, not K1's
+    const k2 = storedRecord();
+    expect(k2.rows.map(r => r.title)).toEqual(['ของรอบสอง']);
+    expect(k2.groups[0].month).toBe('2026-09');
+
+    // (6) Reload: K2 is there and recovers. v4.23 showed nothing at all.
+    reload();
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(__tables.transactions).toHaveLength(1);    // nothing re-inserted
+    expect(storedRaw()).toBeNull();
+  });
+
+  it('(Y1b) a released session whose group DID answer keeps its record — handed back to the picker, never deleted', async () => {
+    // Group 1 answers with an AMBIGUITY: a receipt is written while
+    // committedRef stays empty — so committedRef alone cannot decide whether
+    // the server holds state. Group 2 is then definitively rejected.
+    installImportRpcV8({ failPredicate: (call) => call === 2, failError: DEFINITIVE_ERROR });
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Description,Amount\n' +
+      '05/07/2026,ค่าเน็ต,-599\n' +
+      '05/08/2026,ค่าหนังสือ,-300\n');
+
+    // A legacy :00 row appears AFTER the preview classified → the July row can
+    // only be found ambiguous at execution time.
+    await waitFor(() => {});
+    __tables.transactions.push({ id: 'tx-prior', user_id: 'user-1', scope: 'personal',
+      title: 'ค่าเน็ต', amount: -599, note: null, type: 'bills', category: 'บิล',
+      occurred_at: new Date('2026-07-05T12:00:00+07:00').toISOString() });
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import ไม่สำเร็จ/);
+    expect(__tables.import_receipts.map(r => r.outcome)).toEqual(['ambiguous']);  // receipts exist…
+    expect(__tables.transactions).toHaveLength(1);                                 // …nothing inserted
+    const slot = slotKeys()[0];
+    expect(slot).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /← กลับ/ }));
+    // Released, NOT discarded: the server may hold receipts for this key.
+    await waitFor(() => expect(slotKeys()).toEqual([slot]));
+    await screen.findByText(/มีการนำเข้าค้างที่ยังไม่ได้เลือกกู้คืน/);
+    expect(screen.getByRole('button', { name: /เลือกกู้คืนชุดนี้/ }).disabled).toBe(false);
+
+    // And it can be picked back up.
+    fireEvent.click(screen.getByRole('button', { name: /เลือกกู้คืนชุดนี้/ }));
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+  });
+
+  it('(Y2) the writability probe was a proxy: a full-record write that fails must leave ZERO account shells behind', async () => {
+    installImportRpcV8();
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
+      '05/08/2026,09:15,Cashbox,Payment,-65,1000,ชา กาแฟ,,ร้านกาแฟ\n' +
+      '05/08/2026,10:00,Wallet,Payment,-500,7000,อื่นๆ,,ของบ้าน\n');
+    expect(screen.getByText(/💼 บัญชี \/ Cloud Pockets · 2/)).toBeTruthy();
+
+    // A 1-byte probe would sail through this; the real record cannot.
+    const spy = breakStorage({ minLength: 8 });
+    expect(window.localStorage.setItem('probe-sized', '1')).toBeUndefined();   // short write: fine
+
+    fireEvent.click(importButton());
+    await screen.findByText(/บันทึกจุดกู้คืนไม่ได้ \(พื้นที่เก็บข้อมูลเต็ม\) — ยังไม่ได้นำเข้าอะไรทั้งสิ้น/);
+
+    // v4.23 created the shells first and only then failed writing the record.
+    expect(__tables.accounts).toHaveLength(0);
+    expect(simCalls).toHaveLength(0);
+    expect(__tables.transactions).toHaveLength(0);
+    expect(storedRaw()).toBeNull();
+    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();     // plan intact
+
+    spy.mockRestore();
+    fireEvent.click(importButton());
+    await screen.findByText('Import สำเร็จ!');
+    expect(__tables.accounts.map(a => a.name).sort()).toEqual(['Cashbox', 'Wallet']);
+    expect(__tables.transactions).toHaveLength(2);
+  });
+
+  it('(Y3) after a partial commit the abort must NOT claim a clean slate — it names what landed and keeps the session pending', async () => {
+    installImportRpcV8();
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Description,Amount\n' +
+      '05/08/2026,กาแฟ,-65\n' +
+      '06/08/2026,ข้าวเที่ยง,-120\n');
+
+    // A legacy :00 row lands AFTER the preview classified → 'กาแฟ' can only be
+    // found ambiguous at execution time, while 'ข้าวเที่ยง' commits.
+    await waitFor(() => {});
+    __tables.transactions.push({ id: 'tx-prior', user_id: 'user-1', scope: 'personal',
+      title: 'กาแฟ', amount: -65, note: null, type: 'food', category: 'อาหาร',
+      occurred_at: new Date('2026-08-05T12:00:00+07:00').toISOString() });
+
+    fireEvent.click(importButton());
+    await screen.findByText(/พบรายการกำกวมตอนบันทึกจริง · 1 รายการ/);
+    expect(__tables.transactions.map(t => t.title).sort()).toEqual(['กาแฟ', 'ข้าวเที่ยง'].sort());
+    const slotBefore = slotKeys()[0];
+    const recordBefore = window.localStorage.getItem(slotBefore);
+
+    // Storage dies exactly at the force-decision patch.
+    const spy = breakStorage();
+    fireEvent.click(screen.getAllByRole('checkbox')
+      .find(c => c.closest('label')?.textContent.includes('ในระบบ')));
+    fireEvent.click(screen.getByRole('button', { name: /ยืนยัน/ }));
+
+    await screen.findByText(/มี 1 รายการที่บันทึกลงระบบไปแล้ว/);
+    // v4.23 printed the clean-slate copy here — with a row already in the ledger.
+    expect(screen.queryByText(/ยังไม่ได้นำเข้าอะไรทั้งสิ้น/)).toBeNull();
+    expect(screen.getByText(/งานนี้ยังไม่จบ/)).toBeTruthy();
+    expect(screen.getByText(/ไม่ได้ล้างทิ้ง/)).toBeTruthy();
+    // Nothing was forced through, and the session is still pending + intact.
+    expect(__tables.transactions.filter(t => t.title === 'กาแฟ')).toHaveLength(1);
+    expect(window.localStorage.getItem(slotBefore)).toBe(recordBefore);
+    expect(screen.getByRole('button', { name: /ยืนยัน/ })).toBeTruthy();   // still on resolve
+
+    spy.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: /ยืนยัน/ }));
+    await screen.findByText('Import สำเร็จ!');
+    expect(__tables.transactions.filter(t => t.title === 'กาแฟ')).toHaveLength(2);
+    expect(storedRaw()).toBeNull();
   });
 });

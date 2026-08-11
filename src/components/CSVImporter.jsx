@@ -1624,7 +1624,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
                   <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', fontWeight: 600, color: 'var(--warning)' }}>
-                    มีการนำเข้าค้างอยู่หลายชุด · {allSessions.length} ชุด — เลือกชุดที่จะกู้คืน
+                    มีการนำเข้าค้างที่ยังไม่ได้เลือกกู้คืน · {allSessions.length} ชุด — เลือกชุดที่จะกู้คืน
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
                     {ownedKey

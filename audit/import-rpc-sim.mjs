@@ -29,7 +29,7 @@ export const RETENTION_MS = 90 * 24 * 3600 * 1000;
 
 export function resetSim() { seq = 0; simCalls.length = 0; }
 
-export function installImportRpcV8({ failPredicate, postCommitFailPredicate } = {}) {
+export function installImportRpcV8({ failPredicate, postCommitFailPredicate, failError } = {}) {
   let call = 0;
   __config.rpcHandlers.import_transactions = (args) => {
     call++;
@@ -39,7 +39,10 @@ export function installImportRpcV8({ failPredicate, postCommitFailPredicate } = 
       // run was started with, not re-derived defaults.
       wipe: !!args.p_wipe, dedup: !!args.p_dedup, probe, n: (args.p_rows || []).length });
     if (failPredicate?.(call, args)) {
-      return { data: null, error: { code: '500', message: 'simulated network failure' } };
+      // Default: a bare 5xx — NOT definitive, so the client must keep the
+      // recovery state. `failError` scripts a definitive rejection instead
+      // (round 11 needs a pre-commit error the client can prove rolled back).
+      return { data: null, error: failError ?? { code: '500', message: 'simulated network failure' } };
     }
 
     const uid = 'user-1';
