@@ -10,11 +10,12 @@ const MAX_ROWS = 1000;
 let idSeq = 1;
 
 export const __tables = {
-  transactions:  [],
-  debts:         [],
-  debt_payments: [],
-  budgets:       [],
-  accounts:      [],
+  transactions:    [],
+  debts:           [],
+  debt_payments:   [],
+  budgets:         [],
+  accounts:        [],
+  import_receipts: [],
 };
 
 export const __config = {

@@ -1,14 +1,22 @@
 # Audit evidence harness
 
 Executable acceptance evidence for the independent finance audit
-(rounds 1 + 2, closed in v4.14 / v4.15).
+(rounds 1–6, closed in v4.14 – v4.19).
 
 ## Run it
 
 ```bash
-npm install          # once — needs the repo's own devDependencies (esbuild via vite)
-node audit/evidence.mjs
+npm install          # once — needs the repo's own devDependencies
+node audit/evidence.mjs   # pure-logic evidence (114 checks)
+npm run test:ui           # MOUNTED CSVImporter orchestration tests (round 6)
 ```
+
+`npm run test:ui` renders the real `CSVImporter` under jsdom (vitest +
+Testing Library, config in `audit/ui/vitest.config.mjs`) against the same
+mock PostgREST, with the import RPC simulated at v6 semantics (receipts,
+ord→id mapping) and scriptable per-call failures — covering retry
+idempotency, selection-driven account side effects, exact-id debt links and
+the modal close guard, none of which pure-logic tests can reach.
 
 Exit code `0` = every check passed. Run under different timezones to verify
 device-TZ independence:

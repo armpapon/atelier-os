@@ -850,12 +850,22 @@ section('R5 · Bug 2b/4 · execution-time ambiguity round-trips to a decision');
 
   __config.rpcHandlers.import_transactions = () => ({ data: 7, error: null });   // v3 shape
   const res3 = await importTransactionsBatch({ scope: 'personal', month: '2026-08', wipe: false, dedup: true, rows: [row] });
-  check('older v3 int return still normalised', res3.inserted === 7 && res3.ambiguous.length === 0);
+  check('older v3 int return still normalised', res3.insertedCount === 7 && res3.ambiguous.length === 0);
 
   __config.rpcHandlers.import_transactions = () => ({ data: { inserted: 2, dup_skipped: 1, ambiguous_skipped: 1 }, error: null });   // v4 shape
   const res4 = await importTransactionsBatch({ scope: 'personal', month: '2026-08', wipe: false, dedup: true, rows: [row] });
   check('older v4 count-only return still normalised (count surfaces, no round-trip rows)',
-    res4.inserted === 2 && res4.dupSkipped === 1 && res4.ambiguousSkipped === 1 && res4.ambiguous.length === 0);
+    res4.insertedCount === 2 && res4.dupSkipped === 1 && res4.ambiguousSkipped === 1 && res4.ambiguous.length === 0);
+
+  // v6 mapping shape (round 6): inserted becomes [{ord, transaction_id}]
+  __config.rpcHandlers.import_transactions = (args) => ({
+    data: { v: 6, inserted: [{ ord: row._rid, transaction_id: 'tx-777' }], dup_skipped: 0, ambiguous: [] },
+    error: null,
+  });
+  const res6 = await importTransactionsBatch({ scope: 'personal', month: '2026-08', wipe: false, dedup: true, rows: [row], importKey: 'k-1' });
+  check('v6 mapping return: ord → transaction_id, insertedCount derived',
+    res6.inserted.length === 1 && res6.inserted[0].ord === row._rid
+    && res6.inserted[0].transaction_id === 'tx-777' && res6.insertedCount === 1);
 
   delete __config.rpcHandlers.import_transactions;
 }

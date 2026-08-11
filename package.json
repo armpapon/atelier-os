@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:ui": "vitest run --config audit/ui/vitest.config.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
@@ -16,7 +17,12 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.3",
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11"
+    "jsdom": "^29.1.1",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   }
 }
