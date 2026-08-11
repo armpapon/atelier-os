@@ -25,6 +25,9 @@ export const __config = {
   // { fn_name: (args) => ({ data, error }) } — simulate a DEPLOYED RPC
   // (round 5: used to exercise the v5/v4/v3 return-shape normalisation).
   rpcHandlers: {},
+  // Scripted table-op failures (round 7): { 'update:accounts': 2 } fails the
+  // next 2 UPDATEs on accounts with a 500, then behaves normally.
+  opFailures: {},
 };
 
 const UNIQUES = {
@@ -117,6 +120,12 @@ class Query {
 
     const badCol = this._missingCol();
     if (badCol) return { data: null, error: columnError(badCol) };
+
+    const opKey = `${this.op}:${this.table}`;
+    if ((__config.opFailures[opKey] || 0) > 0) {
+      __config.opFailures[opKey]--;
+      return { data: null, error: { code: '500', message: `simulated ${opKey} failure` } };
+    }
 
     if (this.op === 'insert' || this.op === 'upsert') {
       if (this.op === 'upsert') {

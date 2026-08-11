@@ -870,5 +870,50 @@ section('R5 · Bug 2b/4 · execution-time ambiguity round-trips to a decision');
   delete __config.rpcHandlers.import_transactions;
 }
 
+// ════════════════════════════════ ROUND 7 ════════════════════════════════
+
+section('R7 · case 6 · sim/RPC v7 wipe semantics (receipts FIRST, no re-wipe)');
+{
+  const { installImportRpcV7, resetSim, simCalls } = await import('./import-rpc-sim.mjs');
+  resetSim();
+  __tables.transactions = __tables.transactions.filter(t => bangkokMonth(t.occurred_at) !== '2026-09');
+  __tables.import_receipts.length = 0;
+  installImportRpcV7();
+
+  // Old data in the target month.
+  __tables.transactions.push({ id: 'old-sep', user_id: 'user-1', scope: 'personal',
+    title: 'ของเก่า ก.ย.', amount: -999, type: 'food', note: null,
+    occurred_at: '2026-09-01T05:00:00.000Z' });
+
+  const rows = [
+    { _rid: 901, _synthetic: true, title: 'กาแฟ', amount: -65, note: null, category: 'อาหาร', type: 'food', occurred_at: '2026-09-05T12:00:00+07:00', scope: 'personal' },
+    { _rid: 902, _synthetic: true, title: 'ข้าวเที่ยง', amount: -120, note: null, category: 'อาหาร', type: 'food', occurred_at: '2026-09-06T12:00:00+07:00', scope: 'personal' },
+  ];
+  const sepRows = () => __tables.transactions.filter(t => bangkokMonth(t.occurred_at) === '2026-09');
+
+  // First call: wipe clears the month BEFORE insert; receipts written.
+  const r1 = await importTransactionsBatch({ scope: 'personal', month: '2026-09', wipe: true, dedup: true, rows, importKey: 'K-wipe' });
+  check('wipe clears the month before insert', sepRows().length === 2
+    && !sepRows().some(t => t.title === 'ของเก่า ก.ย.') && r1.insertedCount === 2);
+  check('receipts written with the inserts', __tables.import_receipts.length === 2);
+
+  // Retry (same key, same ords) — the v6 bug would re-wipe and leave the
+  // month EMPTY; v7 must return the mappings without touching the month.
+  const r2 = await importTransactionsBatch({ scope: 'personal', month: '2026-09', wipe: true, dedup: true, rows, importKey: 'K-wipe' });
+  check('retry with receipts = recovery READ: month intact, no re-wipe',
+    sepRows().length === 2 && r2.insertedCount === 2
+    && r2.inserted.every(m => m.transaction_id));
+  check('recovered mappings equal the original ords',
+    JSON.stringify(r2.inserted.map(m => m.ord).sort()) === JSON.stringify([901, 902]));
+
+  // Non-retry path unchanged: a DIFFERENT group (other ords) under the same
+  // key still processes normally (receipts are group-scoped).
+  const r3 = await importTransactionsBatch({ scope: 'personal', month: '2026-09', wipe: false, dedup: true,
+    rows: [{ _rid: 903, _synthetic: true, title: 'ชาเย็น', amount: -30, note: null, category: 'อาหาร', type: 'food', occurred_at: '2026-09-07T12:00:00+07:00', scope: 'personal' }],
+    importKey: 'K-wipe' });
+  check('other-group call with same key is NOT short-circuited', r3.insertedCount === 1 && sepRows().length === 3);
+  check('sim recorded wipe flags faithfully', simCalls.filter(c => c.wipe).length === 2);
+}
+
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
 process.exit(fail ? 1 : 0);
