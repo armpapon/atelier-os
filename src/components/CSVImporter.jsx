@@ -10,26 +10,98 @@ import {
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
-// ── Round-8 B2: the outcome-unknown session, survivable across reloads ──────
+// ── Round-8 B2 / round-9 M2: the COMPLETE import session, survivable across
+//    reloads ────────────────────────────────────────────────────────────────
 // A post-commit response loss leaves rows (and receipts) on the server that
-// this tab never heard about. The import key + the ords that were in flight
-// are the ONLY things needed to ask the server what really happened, so they
-// live outside React state as well: a reload must not be able to orphan a
-// committed import.
+// this tab never heard about. Round 8 persisted only the group that happened
+// to be in flight, so after a reload `stats.plan` was empty, earlier groups
+// were invisible, the account/debt side effects could not be reconstructed and
+// force-imported ambiguities lost their category/type/account.
+//
+// v2 of the record therefore persists the WHOLE job:
+//   { v, key, at, startedAt,
+//     groups:  [{ scope, month, wipe, ords[] }]      — every group, not one
+//     rows:    [{ _rid, scope, month, occurred_at, title, amount, category,
+//                 type, note, account_id, _pocket, _cp_bal, _synthetic,
+//                 _force }]                          — enough to FINISH the job
+//     pockets: [...]  createAccts, makeFmt           — the account plan
+//     debtLinks: [{ debt_id, debtName, pay_month, amount, _rid }]
+//     doneGroups: ['scope|month'], sideEffects: { accounts, debts } }
+// It is written as the plan is finalised, updated as each group and each
+// side-effect stage completes, and dropped ONLY on authoritative full
+// completion or an explicit informed discard.
 const SESSION_LS_KEY = 'loop:import-session';
+const SESSION_RECORD_V = 2;
+// Server-side receipts are purged after 90 days (migration_add_import_rpc.sql,
+// round-9 retention). Refuse to reconstruct a record older than 60 days: with a
+// 30-day margin below the purge horizon, "the probe resolved zero outcomes" can
+// only ever mean "nothing committed", never "the receipts were purged".
+const SESSION_MAX_AGE_MS = 60 * 24 * 3600 * 1000;
+// Guard rail, not a quota: ~500 KB of JSON is far more than any real statement
+// (a 5 000-row import is ≈ 1 MB of payload, and Make exports are in the low
+// hundreds). Beyond it the row payloads are dropped and the record degrades to
+// "resume disabled, verify manually" — never a half-written record.
+const SESSION_MAX_CHARS = 512 * 1024;
+
+/** Shape sanity check + degraded flag. Returns null for anything unusable. */
+function normalizeSession(s) {
+  if (!s?.key || !Array.isArray(s.groups)) return null;
+  const groups = s.groups.filter(g =>
+    g && g.scope && /^\d{4}-\d{2}$/.test(String(g.month || '')) &&
+    Array.isArray(g.ords) && g.ords.length);
+  if (!groups.length) return null;
+  const rows = Array.isArray(s.rows) ? s.rows : [];
+  return {
+    ...s, v: SESSION_RECORD_V, groups, rows,
+    // No row payload ⇒ the job cannot be finished from storage: probe-only.
+    degraded: !!s.degraded || rows.length === 0,
+    doneGroups: Array.isArray(s.doneGroups) ? s.doneGroups : [],
+    debtLinks:  Array.isArray(s.debtLinks)  ? s.debtLinks  : [],
+    pockets:    Array.isArray(s.pockets)    ? s.pockets    : [],
+  };
+}
 
 function readStoredImportSession() {
-  try {
-    const raw = globalThis.localStorage?.getItem(SESSION_LS_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (!s?.key || !Array.isArray(s.ords) || !s.ords.length) return null;
-    if (!s.scope || !s.month) return null;
-    return s;
-  } catch { return null; }
+  let raw = null;
+  try { raw = globalThis.localStorage?.getItem(SESSION_LS_KEY); } catch { return null; }
+  if (!raw) return null;
+  let s;
+  try { s = JSON.parse(raw); } catch { return null; }   // corrupt → ignore safely
+  if (!s || typeof s !== 'object') return null;
+  if (s.v === SESSION_RECORD_V) return normalizeSession(s);
+  // v4.21 shipped an UNVERSIONED single-group record { key, ords, scope,
+  // month }. It still names real receipts, so it is upgraded rather than
+  // thrown away — but it carries no row payload, so it lands degraded
+  // (probe-only, resume disabled).
+  if (!s.v && s.key && Array.isArray(s.ords) && s.ords.length && s.scope && s.month) {
+    return normalizeSession({
+      v: SESSION_RECORD_V, key: s.key, at: s.at ?? Date.now(), startedAt: s.at ?? Date.now(),
+      groups: [{ scope: s.scope, month: s.month, wipe: false, ords: s.ords }],
+      rows: [], pockets: [], debtLinks: [], createAccts: false, makeFmt: false,
+      degraded: true, doneGroups: [], sideEffects: {},
+    });
+  }
+  return null;   // unknown version / malformed → ignore safely
 }
-function writeStoredImportSession(s) {
-  try { globalThis.localStorage?.setItem(SESSION_LS_KEY, JSON.stringify(s)); } catch { /* storage disabled */ }
+
+/**
+ * Write the record, degrading rather than corrupting. Returns what was
+ * actually stored (null = nothing could be stored) so the in-memory mirror
+ * never claims more than localStorage holds.
+ */
+function writeStoredImportSession(rec) {
+  const put = (r) => {
+    const json = JSON.stringify(r);
+    if (json.length > SESSION_MAX_CHARS) return false;
+    globalThis.localStorage?.setItem(SESSION_LS_KEY, json);
+    return true;
+  };
+  try {
+    if (put(rec)) return rec;
+    const lite = { ...rec, rows: [], pockets: [], degraded: true };
+    if (put(lite)) return lite;
+    return null;   // even the plan alone will not fit — write NOTHING
+  } catch { return null; }   // storage disabled / quota
 }
 function clearStoredImportSession() {
   try { globalThis.localStorage?.removeItem(SESSION_LS_KEY); } catch { /* storage disabled */ }
@@ -79,13 +151,28 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   const fileRef    = useRef();
   const pdfFileRef = useRef();
 
+  // ── Round-9 M3: ONE gate in front of every action that starts new work ────
+  // A stored session is unfinished work too: letting a new file through would
+  // hand the next write a fresh plan and overwrite the only record of the
+  // rows that are already on the server.
+  const blockNewWork = (what) => {
+    if (importing) { alert('กำลังบันทึกอยู่ — รอให้เสร็จก่อน' + what); return true; }
+    if (storedSessionRef.current) {
+      alert('มีการนำเข้าค้างอยู่จากครั้งก่อน — กด "ตรวจสอบผลอีกครั้ง" ให้จบ '
+        + 'หรือกด "ทิ้งการกู้คืนนี้" ก่อน' + what);
+      return true;
+    }
+    if (hasUnfinishedCommittedWork) {
+      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อน' + what);
+      return true;
+    }
+    return false;
+  };
+
   // ── CSV ────────────────────────────────────────────────────────────────────
   const handleCSVFile = (file) => {
     if (!file) return;
-    if (importing || hasUnfinishedCommittedWork) {
-      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อนเริ่มไฟล์ใหม่');
-      return;
-    }
+    if (blockNewWork('เริ่มไฟล์ใหม่')) return;
     setFileName(file.name);
     setError(null);
 
@@ -117,10 +204,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   };
 
   const handleColChange = (key, val) => {
-    if (importing || hasUnfinishedCommittedWork) {
-      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อนเปลี่ยน mapping');
-      return;
-    }
+    if (blockNewWork('เปลี่ยน mapping')) return;
     const newMap = { ...colMap, [key]: val };
     setColMap(newMap);
     const txns = assignRowIds(mapRowsToTransactions(rows, newMap, defaultScope));
@@ -132,10 +216,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // ── PDF ────────────────────────────────────────────────────────────────────
   const handlePDFParse = async () => {
     if (!pdfFile) return;
-    if (importing || hasUnfinishedCommittedWork) {
-      alert('มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ — กด Import/ยืนยัน เพื่อทำต่อให้จบก่อนเริ่มไฟล์ใหม่');
-      return;
-    }
+    if (blockNewWork('เริ่มไฟล์ใหม่')) return;
     setPdfParsing(true); setError(null);
     try {
       const buf  = await pdfFile.arrayBuffer();
@@ -308,6 +389,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // from the final aggregated results.
   const importKeyRef = useRef(null);
   const committedRef = useRef(new Map());
+  // Round-9 F1: ords committed by a PRE-v6 deployment that returned no
+  // mapping. They sit in committedRef with a null value like an FK-nulled
+  // (deleted) row does, but they mean the opposite — "inserted, id unknown" —
+  // so the non-null-mapping policy must be able to tell the two apart.
+  const unmappedRef = useRef(new Set());
   // Reactive mirror of committedRef.size — drives the exit gates (round 7).
   const [committedCount, setCommittedCount] = useState(0);
   const syncCommitted = () => setCommittedCount(committedRef.current.size);
@@ -334,44 +420,82 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // A network/timeout/gateway error clears NOTHING: the rows may be live.
   const [pendingRecovery, setPendingRecovery] = useState(null);
   const pendingRecoveryRef = useRef(null);
+
+  // ── Round-9 M2/M3: the persisted session record ──────────────────────────
+  // storedSession = a record found in localStorage that has NOT yet been
+  // recovered or explicitly discarded. It gates every action that would start
+  // new work (M3), and it is the only route back to those rows.
+  const [storedSession, setStoredSession] = useState(() => readStoredImportSession());
+  const storedSessionRef = useRef(storedSession);
+  const [recovering, setRecovering] = useState(false);
+  // What the recovery probe actually found: null | {kind:'none'|'partial'
+  // |'degraded'|'stale', …}. 'none' and 'partial' must NEVER reach the done
+  // screen (round-9 M1).
+  const [recoveryReport, setRecoveryReport] = useState(null);
+  const sessionRecordRef = useRef(storedSession);
+
+  /** Persist the complete record. Refuses to clobber a DIFFERENT session. */
+  const persistSession = (rec) => {
+    const blocking = storedSessionRef.current;
+    if (blocking && blocking.key !== rec.key) return;   // M3: never implicitly
+    sessionRecordRef.current = writeStoredImportSession(rec);
+  };
+  const patchSession = (patch) => {
+    const cur = sessionRecordRef.current;
+    if (!cur) return;
+    persistSession({ ...cur, ...patch, at: Date.now() });
+  };
+  const dropStoredSession = () => {
+    clearStoredImportSession();
+    sessionRecordRef.current = null;
+    storedSessionRef.current = null;
+    setStoredSession(null);
+    setRecoveryReport(null);
+  };
+
   const beginPendingRecovery = (info) => {
     pendingRecoveryRef.current = info;
     setPendingRecovery(info);
-    // Only the RPC path leaves receipts behind, so only it is recoverable
-    // after a reload; the legacy insert path still raises the in-memory gate.
-    if (info.scope && info.month) writeStoredImportSession({ ...info, at: Date.now() });
   };
+  // Round 9: this clears the IN-MEMORY marker only. The persisted record has
+  // its own, longer life — it survives every group and every side-effect
+  // stage and is dropped only on full completion or an informed discard.
   const clearPendingRecovery = () => {
     pendingRecoveryRef.current = null;
     setPendingRecovery(null);
-    clearStoredImportSession();
   };
   /** Error path: clear ONLY when the server proved nothing committed. */
   const settlePendingRecovery = (err) => {
     if (isDefinitiveServerError(err)) clearPendingRecovery();
   };
 
-  // Round-7 B4 + round-8 B2: THE gate. True whenever rows are committed but
-  // their finalisation (side effects) has not fully completed, OR the outcome
-  // of a write is still unknown — every exit path respects it, and the
-  // session refs are never cleared while it holds.
-  const hasUnfinishedCommittedWork =
+  // Round-7 B4 + round-8 B2: unfinished work THIS page load knows about.
+  const inMemoryUnfinished =
     (committedCount > 0 && !sideEffectsDone) || !!pendingRecovery;
+  // Round-9 M3: THE gate for starting new work. A stored session belongs in
+  // it — otherwise a new file could be dropped before recovery and the next
+  // write would overwrite the only record of the committed rows.
+  const hasUnfinishedCommittedWork = inMemoryUnfinished || !!storedSession;
 
   const resetImportSession = () => {
-    // Never destroy recovery state while committed work is unfinished or a
-    // write's outcome is unknown — the key is the only way back to the rows.
+    // Never destroy recovery state while committed work is unfinished, a
+    // write's outcome is unknown, or a stored session awaits recovery — the
+    // key is the only way back to the rows.
     if (pendingRecoveryRef.current) return false;
+    if (storedSessionRef.current) return false;
     if (committedRef.current.size > 0 && !sideEffectsDoneRef.current) return false;
     importKeyRef.current = null;
     committedRef.current = new Map();
+    unmappedRef.current = new Set();
     pendingStatsRef.current = null;
+    sessionRecordRef.current = null;
     setCommittedCount(0);
     markSideEffects(null);
     sideEffectsDoneRef.current = false;
     setSideEffectsDone(false);
     setServerAmbiguous([]); setServerIncluded(new Set());
     setImportStats(null);
+    setRecoveryReport(null);
     return true;
   };
 
@@ -417,33 +541,46 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // done screen with a retry that re-runs only the failed pass.
   const finalizeImport = async (S) => {
     const committed = committedRef.current;
+    const unmapped  = unmappedRef.current;
+    // ── Round-9 F1: NON-NULL MAPPING POLICY ────────────────────────────────
+    // A receipt whose transaction_id is NULL means the imported transaction
+    // was deleted afterwards (FK ON DELETE SET NULL). Such a row must not
+    // feed a balance anchor or a debt link — `committed.has()` could not see
+    // the difference. The only nulls that still count as live are the pre-v6
+    // "inserted but unmapped" ords tracked in unmappedRef.
+    const isLive = (rid) => committed.get(rid) != null || unmapped.has(rid);
+    const skippedDeleted = [...committed.keys()]
+      .filter(rid => committed.get(rid) == null && !unmapped.has(rid)).length;
     const insertedTotal = [...committed.values()].filter(v => v !== null).length + (S.noMapInserted || 0);
 
-    // B2: apply pocket balances AFTER full success, from inserted rows only.
+    // B2: apply pocket balances AFTER full success, from LIVE inserted rows.
     let accountFail = null;
-    if (createAccts && makeFmt) {
-      const insertedPlanRows = S.plan.filter(r => committed.has(r._rid));
+    if (S.createAccts) {
+      const insertedPlanRows = (S.plan || []).filter(r => isLive(r._rid));
       const pockets = extractAccountsFromMapped(insertedPlanRows);
       accountFail = await applyAccountPass(pockets);
     }
 
     // B3: debt links ONLY for suggestions whose row really inserted, with
-    // the exact transaction_id from the receipt/RETURNING mapping.
-    const links = activeSuggestions
-      .map(sug => ({
-        debt_id: sug.debt.id, debtName: sug.debt.name,
-        pay_month: `${sug.ym}-01`, amount: sug.amount,
-        transaction_id: committed.get(sug.txn._rid),
-      }))
-      .filter(l => l.transaction_id);   // not inserted / no exact id → no link
+    // the exact transaction_id from the receipt/RETURNING mapping. After a
+    // reload the suggestions come from the persisted record (M2) — the
+    // in-memory `activeSuggestions` is empty there.
+    const links = (S.debtLinks || [])
+      .map(l => ({ ...l, transaction_id: committed.get(l._rid) }))
+      .filter(l => l.transaction_id);   // not inserted / deleted → no link
     const { ok: debtLinked, failed: debtFails } = await applyDebtLinkPass(links);
 
-    markSideEffects((accountFail || debtFails.length)
+    const pending = (accountFail || debtFails.length)
       ? { accounts: accountFail, debtFails }
-      : null);
+      : null;
+    markSideEffects(pending);
+    // The record dies ONLY here — authoritative full completion. While a side
+    // effect is still outstanding it stays, so a reload can finish the job.
+    if (pending) patchSession({ sideEffects: { accounts: !accountFail, debts: !debtFails.length } });
+    else dropStoredSession();
 
     setImportStats({
-      inserted: insertedTotal, skipped: S.dupSkipped, debtLinked,
+      inserted: insertedTotal, skipped: S.dupSkipped, debtLinked, skippedDeleted,
       ambiguousSkipped: S.ambiguousSkipped, ambiguousImported: S.ambiguousImported,
       accountsCreated: S.accountsCreated,
       wipedMonths: S.wipeExecuted ? S.monthArr.length : 0,
@@ -467,9 +604,12 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         stillFailed = failed;
         if (ok) setImportStats(s => s ? { ...s, debtLinked: (s.debtLinked || 0) + ok } : s);
       }
-      markSideEffects((accountFail || stillFailed.length)
+      const stillPending = (accountFail || stillFailed.length)
         ? { accounts: accountFail, debtFails: stillFailed }
-        : null);
+        : null;
+      markSideEffects(stillPending);
+      if (stillPending) patchSession({ sideEffects: { accounts: !accountFail, debts: !stillFailed.length } });
+      else dropStoredSession();
       // Round-8 follow-up 1: the retry writes the SAME account balances and
       // debt payments the primary path writes, so it must refresh Finance the
       // same way. Without this the done screen said "สำเร็จ" while the page
@@ -479,58 +619,109 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     } finally { setImporting(false); }
   };
 
-  // ── Round-8 B2: cross-reload recovery ────────────────────────────────────
+  // ── Round-8 B2 + round-9 M1/M2: cross-reload recovery ────────────────────
   // A stored session means a write was declared and never authoritatively
-  // answered. Offer a recovery READ (p_probe: pure reconstruction from the v8
-  // receipts — no wipe, no insert) and resume the flow from what it reports.
-  const [storedSession, setStoredSession] = useState(() => readStoredImportSession());
-  const [recovering, setRecovering] = useState(false);
+  // answered. The recovery READ (p_probe: pure reconstruction from the v8
+  // receipts — no wipe, no insert) runs over EVERY group of the session, and
+  // the number of resolved outcomes decides what may be claimed:
+  //   0 resolved       → nothing committed. NOT a success, no finalisation.
+  //   < total resolved → part committed. Stays pending; resume finishes it.
+  //   = total resolved → the whole job is described; finalise for real.
+  const totalOrds = (rec) => (rec?.groups || []).reduce((n, g) => n + g.ords.length, 0);
+
+  /** Rebuild the finalisation input from the PERSISTED record (M2). */
+  const statsFromRecord = (rec, extra = {}) => ({
+    dupSkipped: 0, ambiguousSkipped: 0, ambiguousImported: 0, noMapInserted: 0,
+    usedRpc: true, wipeExecuted: false,
+    monthArr: rec.groups.map(g => g.month),
+    plan: rec.rows || [],
+    accountsCreated: 0,
+    // A degraded record has no rows/pockets → no side effects may be invented.
+    createAccts: !!rec.createAccts && !rec.degraded,
+    debtLinks: rec.degraded ? [] : (rec.debtLinks || []),
+    ...extra,
+  });
 
   const recoverStoredSession = async () => {
     if (recovering || importing) return;
-    const S0 = storedSession;
-    if (!S0) return;
+    const rec = storedSessionRef.current;
+    if (!rec) return;
+    if (Date.now() - (rec.at || 0) > SESSION_MAX_AGE_MS) {
+      // Older than the receipt retention margin — a probe could read "zero"
+      // from a purge and mislead. Say so instead of guessing.
+      setRecoveryReport({ kind: 'stale', total: totalOrds(rec), resolved: 0 });
+      return;
+    }
     setRecovering(true); setError(null);
     try {
-      // The payload is gone (reload) — only the ords are needed to read back
-      // receipts, and p_probe guarantees stubs can never be processed.
-      const res = await importTransactionsBatch({
-        scope: S0.scope, month: S0.month, wipe: false, dedup: true,
-        rows: S0.ords.map(o => ({ _rid: o, scope: S0.scope })),
-        importKey: S0.key, probe: true,
-      });
-      importKeyRef.current = S0.key;
-      // transaction_id may be NULL: the FK nulls the mapping when an imported
-      // transaction is deleted afterwards. Keep the ord (it is processed, so
-      // it must never be re-sent) and let finalisation skip the null.
-      for (const m of res.inserted) committedRef.current.set(m.ord, m.transaction_id ?? null);
+      importKeyRef.current = rec.key;
+      const total = totalOrds(rec);
+      let resolved = 0, dupSkipped = 0;
+      const amb = [];
+      for (const g of rec.groups) {
+        // Only the ords are needed to read back receipts, and p_probe
+        // guarantees these stubs can never be processed. `force` is never set
+        // on a probe — a forced row would REOPEN its ambiguity receipt.
+        const res = await importTransactionsBatch({
+          scope: g.scope, month: g.month, wipe: false, dedup: true,
+          rows: g.ords.map(o => ({ _rid: o, scope: g.scope })),
+          importKey: rec.key, probe: true,
+        });
+        // transaction_id may be NULL: the FK nulls the mapping when an
+        // imported transaction is deleted afterwards. Keep the ord (it is
+        // processed, so it must never be re-sent) and let finalisation skip it.
+        for (const m of res.inserted) committedRef.current.set(m.ord, m.transaction_id ?? null);
+        resolved += res.inserted.length + res.dupSkipped + res.ambiguous.length;
+        dupSkipped += res.dupSkipped;
+        for (const a of res.ambiguous) amb.push({ group: g, a });
+      }
       syncCommitted();
-      clearPendingRecovery();
-      setStoredSession(null);
 
-      const stats = {
-        dupSkipped: res.dupSkipped, ambiguousSkipped: 0, ambiguousImported: 0,
-        noMapInserted: 0, usedRpc: true, wipeExecuted: false,
-        monthArr: [S0.month], plan: [], accountsCreated: 0,
-      };
-      if (res.ambiguous.length) {
-        // The decision UI reappears identically — rows rebuilt from the
-        // persisted `incoming` snapshot, so approving one still imports it.
+      if (resolved === 0) {
+        // ── M1 ── The server has NO outcome under this key: the request never
+        // committed. Saying "Import สำเร็จ" here was the round-9 blocker.
+        committedRef.current = new Map();
+        unmappedRef.current = new Set();
+        syncCommitted();
+        setRecoveryReport({ kind: 'none', total, resolved: 0 });
+        return;
+      }
+      if (rec.degraded) {
+        // Probe-only record (upgraded v1, or rows dropped by the size guard):
+        // the outcome can be reported, but the job cannot be finished from it.
+        setRecoveryReport({
+          kind: 'degraded', total, resolved,
+          inserted: [...committedRef.current.values()].filter(v => v != null).length,
+          dup: dupSkipped, ambiguous: amb.length,
+        });
+        return;
+      }
+      if (resolved < total) {
+        // ── M1 ── Part of the job landed. Still pending — never a success.
+        setRecoveryReport({
+          kind: 'partial', total, resolved,
+          inserted: [...committedRef.current.values()].filter(v => v != null).length,
+          dup: dupSkipped, ambiguous: amb.length,
+        });
+        return;
+      }
+
+      clearPendingRecovery();
+      const stats = statsFromRecord(rec, { dupSkipped });
+      if (amb.length) {
+        // The decision UI reappears identically — and the row is the PERSISTED
+        // one (M2), so a force-import keeps its category / type / account_id
+        // instead of the sparse {title, amount, date} snapshot.
         pendingStatsRef.current = stats;
-        setServerAmbiguous(res.ambiguous.map(a => ({
-          row: {
-            _rid: a.ord, scope: S0.scope,
-            title: a.incoming?.title ?? '(ไม่มีชื่อ)',
-            occurred_at: a.incoming?.occurred_at,
-            amount: Number(a.incoming?.amount),
-            note: a.incoming?.note ?? null,
-            category: null, type: null, account_id: null,
-          },
+        setServerAmbiguous(amb.map(({ group, a }) => ({
+          row: rowFromRecord(rec, a, group),
           incoming: a.incoming, existing: a.existing,
         })));
         setServerIncluded(new Set());
+        setRecoveryReport(null);
         setStep('resolve');
       } else {
+        setRecoveryReport(null);
         await finalizeImport(stats);
       }
     } catch (err) {
@@ -538,8 +729,129 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     } finally { setRecovering(false); }
   };
 
+  /** The full stored row for an ambiguity, falling back to the snapshot. */
+  const rowFromRecord = (rec, a, group) => {
+    const stored = (rec.rows || []).find(r => r._rid === a.ord);
+    if (stored) return { ...stored };
+    return {
+      _rid: a.ord, scope: group?.scope ?? 'personal',
+      title: a.incoming?.title ?? '(ไม่มีชื่อ)',
+      occurred_at: a.incoming?.occurred_at,
+      amount: Number(a.incoming?.amount),
+      note: a.incoming?.note ?? null,
+      category: null, type: null, account_id: null,
+    };
+  };
+
+  /**
+   * Round-9 M1 (partial) — finish the job from the persisted record. Every
+   * group is re-sent WHOLE under the same import key: settled ords are
+   * reconstructed by the RPC (never re-inserted) and unsettled ords are
+   * processed, so one response per group describes that group completely and
+   * nothing can be double-counted.
+   */
+  const resumeStoredSession = async () => {
+    if (importing || recovering) return;
+    const rec = sessionRecordRef.current || storedSessionRef.current;
+    if (!rec || rec.degraded || !rec.rows?.length) return;
+    setImporting(true); setError(null);
+    try {
+      importKeyRef.current = rec.key;
+      const byGroup = new Map();
+      for (const r of rec.rows) {
+        const k = `${r.scope}|${r.month}`;
+        if (!byGroup.has(k)) byGroup.set(k, []);
+        byGroup.get(k).push(r);
+      }
+      let dupSkipped = 0, noMapInserted = 0;
+      const discovered = [];
+      const done = new Set(rec.doneGroups || []);
+      for (const [k, rows] of byGroup) {
+        const [sc, ym] = k.split('|');
+        beginPendingRecovery({ key: rec.key, ords: rows.map(r => r._rid), scope: sc, month: ym });
+        let res;
+        try {
+          res = await importTransactionsBatch({
+            // wipe stays OFF: a resume can only ever follow a call that
+            // already wiped-and-filled, or one that never ran at all.
+            scope: sc, month: ym, wipe: false, dedup: true,
+            rows, importKey: rec.key,
+          });
+        } catch (e) { settlePendingRecovery(e); throw e; }
+        clearPendingRecovery();
+        for (const m of res.inserted) committedRef.current.set(m.ord, m.transaction_id);
+        if (!res.inserted.length && res.insertedCount > 0) {
+          const ambOrds = new Set(res.ambiguous.map(a => a.ord));
+          for (const r of rows) if (!ambOrds.has(r._rid)) {
+            committedRef.current.set(r._rid, null);
+            unmappedRef.current.add(r._rid);
+          }
+          noMapInserted += res.insertedCount;
+        }
+        syncCommitted();
+        dupSkipped += res.dupSkipped;
+        for (const a of res.ambiguous) {
+          discovered.push({ row: rowFromRecord(rec, a, { scope: sc }), incoming: a.incoming, existing: a.existing });
+        }
+        done.add(k);
+        patchSession({ doneGroups: [...done] });
+      }
+
+      const stats = statsFromRecord(rec, { dupSkipped, noMapInserted });
+      setRecoveryReport(null);
+      if (discovered.length) {
+        pendingStatsRef.current = stats;
+        setServerAmbiguous(discovered);
+        setServerIncluded(new Set());
+        setStep('resolve');
+        return;
+      }
+      await finalizeImport(stats);
+    } catch (err) {
+      setError('ทำต่อไม่สำเร็จ: ' + (err.message || String(err)) +
+        ' — กดทำต่อซ้ำได้เลย ระบบจะทำเฉพาะส่วนที่ยังไม่สำเร็จ (ไม่มีการเบิ้ล)');
+    } finally { setImporting(false); }
+  };
+
+  /** Human-readable identity of the stored session, for the discard confirm. */
+  const describeStoredSession = (rec) => {
+    let when = '(ไม่ทราบเวลา)';
+    try {
+      when = new Date(rec.at || Date.now())
+        .toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    } catch { /* locale unavailable */ }
+    const groups = (rec.groups || [])
+      .map(g => `${g.scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว'} ${g.month} (${g.ords.length} รายการ)`)
+      .join(', ');
+    const known = [...committedRef.current.values()].filter(v => v != null).length;
+    const knownTxt = committedRef.current.size || recoveryReport
+      ? `ตรวจสอบแล้ว: บันทึกลงระบบไปแล้ว ${known} รายการ`
+      : 'ยังไม่ได้ตรวจสอบ — ไม่ทราบว่ามีรายการใดถูกบันทึกไปแล้วหรือไม่';
+    return 'ทิ้งการกู้คืนนี้?\n\n'
+      + `นำเข้าเมื่อ: ${when}\n`
+      + `กลุ่มที่ค้าง: ${groups}\n`
+      + `${knownTxt}\n\n`
+      + 'ถ้าทิ้ง ระบบจะไม่ตรวจสอบผลให้อีก และคุณต้องไปตรวจสอบรายการในหน้า Finance เอง';
+  };
+
+  /** Explicit, informed discard — the ONLY way to drop an unresolved record. */
+  const discardStoredSession = () => {
+    const rec = storedSessionRef.current;
+    if (!rec) return;
+    if (!confirm(describeStoredSession(rec))) return;
+    committedRef.current = new Map();
+    unmappedRef.current = new Set();
+    syncCommitted();
+    importKeyRef.current = null;
+    clearPendingRecovery();
+    dropStoredSession();
+  };
+
   const handleImport = async () => {
     if (importing) return;                    // single-flight
+    // M3: an unrecovered session must be resolved first — starting new work
+    // here would overwrite the only record of its committed rows.
+    if (storedSessionRef.current) return;
     const selectedRows = preview.filter((_, i) => selected.has(i));
     if (!selectedRows.length) return;
 
@@ -600,6 +912,32 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       let noMapInserted = 0;        // v5/v3 responses: count only, no mapping
       const discovered = [];        // ambiguities found at execution time
 
+      // ── Round-9 M2: persist the COMPLETE session BEFORE the first write ──
+      // Every group (not just the one in flight), every row payload needed to
+      // finish the job, the pocket plan and the accepted debt suggestions. A
+      // reload at ANY point from here on can reconstruct the whole import.
+      const planGroups = new Map();   // 'scope|ym' → { scope, month, wipe, ords }
+      const sessionRows = [];
+      for (const r of plan) {
+        const ym = bangkokMonth(r.occurred_at);
+        if (!ym) continue;
+        const k = `${r.scope}|${ym}`;
+        if (!planGroups.has(k)) planGroups.set(k, { scope: r.scope, month: ym, wipe: !!wipeMonth, ords: [] });
+        planGroups.get(k).ords.push(r._rid);
+        sessionRows.push({
+          _rid: r._rid, scope: r.scope, month: ym,
+          occurred_at: r.occurred_at, title: r.title, amount: r.amount,
+          category: r.category ?? null, type: r.type ?? null, note: r.note ?? null,
+          account_id: pocketIdMap.get(r._pocket) || null,
+          _pocket: r._pocket ?? null, _cp_bal: r._cp_bal ?? null,
+          _synthetic: !!r._synthetic, _force: !!r._force,
+        });
+      }
+      const sessionDebtLinks = activeSuggestions.map(sug => ({
+        debt_id: sug.debt.id, debtName: sug.debt.name,
+        pay_month: `${sug.ym}-01`, amount: sug.amount, _rid: sug.txn._rid,
+      }));
+
       // Step 3 (preferred): atomic import per (scope, month) via the RPC.
       let usedRpc = false;
       try {
@@ -611,6 +949,17 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           if (!groups.has(key)) groups.set(key, []);
           groups.get(key).push(r);
         }
+        persistSession({
+          v: SESSION_RECORD_V, key: importKeyRef.current,
+          at: Date.now(), startedAt: sessionRecordRef.current?.startedAt ?? Date.now(),
+          groups: [...planGroups.values()],
+          rows: sessionRows,
+          pockets: (createAccts && makeFmt) ? extractAccountsFromMapped(plan) : [],
+          createAccts: !!(createAccts && makeFmt), makeFmt: !!makeFmt,
+          debtLinks: sessionDebtLinks,
+          doneGroups: [], sideEffects: { accounts: false, debts: false },
+        });
+        const doneGroups = new Set();
         for (const [key, rows] of groups) {
           const [sc, ym] = key.split('|');
           // B2: declare the write BEFORE it happens — if the answer never
@@ -635,7 +984,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
             // Pre-v6 deployment: no mapping — mark the group's non-ambiguous
             // rows committed (null id) so a retry cannot re-send them.
             const ambOrds = new Set(res.ambiguous.map(a => a.ord));
-            for (const r of rows) if (!ambOrds.has(r._rid)) committedRef.current.set(r._rid, null);
+            for (const r of rows) if (!ambOrds.has(r._rid)) {
+              committedRef.current.set(r._rid, null);
+              unmappedRef.current.add(r._rid);   // inserted-but-unmapped ≠ deleted
+            }
             syncCommitted();
             noMapInserted += res.insertedCount;
           }
@@ -644,10 +996,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
             if (a.row) discovered.push({ row: a.row, incoming: a.incoming, existing: a.existing });
             else ambiguousSkipped++;   // v4 count-only: cannot round-trip
           }
+          doneGroups.add(key);
+          patchSession({ doneGroups: [...doneGroups] });
         }
         usedRpc = true;
       } catch (err) {
         if (!isRpcMissing(err)) throw err;
+        // The RPC is not installed: the legacy path leaves NO receipts, so a
+        // persisted record would promise a recovery that cannot happen.
+        dropStoredSession();
       }
 
       let wipeExecuted = usedRpc && wipeMonth;
@@ -696,6 +1053,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         dupSkipped, ambiguousSkipped, ambiguousImported, noMapInserted,
         usedRpc, wipeExecuted, monthArr, plan,
         accountsCreated: pocketIdMap.size,
+        // Carried explicitly so finalisation works identically whether it runs
+        // now or after a reload, where component state is gone (round-9 M2).
+        createAccts: !!(createAccts && makeFmt),
+        debtLinks: sessionDebtLinks,
       };
 
       if (discovered.length) {
@@ -756,7 +1117,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
             clearPendingRecovery();
             for (const m of res.inserted) committedRef.current.set(m.ord, m.transaction_id);
             if (!res.inserted.length && res.insertedCount > 0) {
-              for (const r of rows) committedRef.current.set(r._rid, null);
+              for (const r of rows) {
+                committedRef.current.set(r._rid, null);
+                unmappedRef.current.add(r._rid);   // inserted-but-unmapped ≠ deleted
+              }
               S.noMapInserted = (S.noMapInserted || 0) + res.insertedCount;
             }
             syncCommitted();
@@ -802,11 +1166,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // hard-disabled (the resume action is the Import/Confirm button right
   // there); on the DONE screen with pending side effects, exits route to an
   // explicit recovery confirm.
+  //
+  // Round-9 M3 note: a STORED session does not block closing. Closing destroys
+  // nothing — the record lives in localStorage and the recovery banner comes
+  // back on the next open. Only in-memory unfinished work locks the exits.
   const closeBlocked = importing || recovering || step === 'resolve'
-    || (hasUnfinishedCommittedWork && step !== 'done');
+    || (inMemoryUnfinished && step !== 'done');
   const tryClose = () => {
     if (importing || recovering || step === 'resolve') return;
-    if (hasUnfinishedCommittedWork) {
+    if (inMemoryUnfinished) {
       if (step === 'done'
           && confirm('มีงานปิดท้ายที่ยังไม่สำเร็จ (อัปเดตยอดบัญชี/ผูกงวดหนี้) — ปิดหน้าต่างโดยไม่ทำต่อหรือไม่?')) {
         onClose();
@@ -880,29 +1248,87 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           {step === 'upload' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
 
-              {/* Round-8 B2: a write from a previous page load was never
-                  authoritatively answered — offer the recovery read. */}
+              {/* Round-8 B2 + round-9 M1/M2/M3: a write from a previous page
+                  load was never authoritatively answered. The probe reads the
+                  truth for EVERY group; what it finds decides what is said —
+                  a success screen is never shown on a guess. */}
               {storedSession && (
                 <div style={{
-                  width: 420, background: tint('--warning', 10), border: '1px solid var(--warning)',
+                  width: 420,
+                  background: tint(recoveryReport?.kind === 'none' ? '--loss' : '--warning', 10),
+                  border: `1px solid var(${recoveryReport?.kind === 'none' ? '--loss' : '--warning'})`,
                   borderRadius: 'var(--radius-card)', padding: '14px 18px',
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                    มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง
+                  <div style={{
+                    fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', fontWeight: 600,
+                    color: `var(${recoveryReport?.kind === 'none' ? '--loss' : '--warning'})`,
+                  }}>
+                    {recoveryReport?.kind === 'none'     ? 'ยังไม่ได้นำเข้า — กรุณานำเข้าใหม่'
+                     : recoveryReport?.kind === 'partial' ? 'นำเข้าไปแล้วบางส่วน — ยังไม่จบ'
+                     : recoveryReport?.kind === 'degraded' ? 'ตรวจสอบได้ แต่ทำต่ออัตโนมัติไม่ได้'
+                     : recoveryReport?.kind === 'stale'    ? 'การนำเข้าค้างนี้เก่าเกินกว่าจะตรวจสอบได้'
+                     : 'มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง'}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                    ครั้งก่อนส่งข้อมูลไปแล้วแต่ไม่ได้รับคำตอบจากเซิร์ฟเวอร์ ({storedSession.ords.length} รายการ ·
-                    เดือน {storedSession.month}) — กดตรวจสอบเพื่ออ่านผลจริงจากเซิร์ฟเวอร์
-                    (เป็นการอ่านอย่างเดียว ไม่มีการบันทึกซ้ำ)
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn--primary" onClick={recoverStoredSession} disabled={recovering}>
-                      {recovering ? 'กำลังตรวจสอบ...' : '↻ ตรวจสอบผลอีกครั้ง'}
-                    </button>
-                    <button className="btn btn--ghost" disabled={recovering}
-                      onClick={() => { setStoredSession(null); clearStoredImportSession(); }}>
-                      ไม่ต้องตรวจ
+
+                  {!recoveryReport && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      ครั้งก่อนส่งข้อมูลไปแล้วแต่ไม่ได้รับคำตอบจากเซิร์ฟเวอร์
+                      ({totalOrds(storedSession)} รายการ · {storedSession.groups.length} กลุ่ม ·
+                      เดือน {storedSession.groups.map(g => g.month).join(', ')}) —
+                      กดตรวจสอบเพื่ออ่านผลจริงจากเซิร์ฟเวอร์
+                      (เป็นการอ่านอย่างเดียว ไม่มีการบันทึกซ้ำ)
+                    </div>
+                  )}
+
+                  {/* M1 — ZERO outcomes: nothing committed. Say exactly that. */}
+                  {recoveryReport?.kind === 'none' && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      ตรวจสอบกับเซิร์ฟเวอร์แล้ว — ไม่พบรายการใดถูกบันทึกเลยจากการนำเข้าครั้งนั้น
+                      ({recoveryReport.total} รายการ) แปลว่า<strong>ยังไม่ได้นำเข้า</strong>
+                      {' '}กรุณานำเข้าไฟล์ใหม่อีกครั้ง
+                    </div>
+                  )}
+
+                  {/* M1 — PARTIAL: still pending, resume finishes it. */}
+                  {recoveryReport?.kind === 'partial' && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      บันทึกไปแล้ว {recoveryReport.resolved} จาก {recoveryReport.total} รายการ
+                      (ลงระบบจริง {recoveryReport.inserted} · ซ้ำ/ข้าม {recoveryReport.dup}
+                      {recoveryReport.ambiguous > 0 ? ` · กำกวม ${recoveryReport.ambiguous}` : ''}) —
+                      ยัง<strong>ไม่จบ</strong> กด "ทำต่อให้จบ" เพื่อส่งเฉพาะส่วนที่เหลือ (ไม่มีการเบิ้ล)
+                    </div>
+                  )}
+
+                  {recoveryReport?.kind === 'degraded' && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      บันทึกไปแล้ว {recoveryReport.resolved} จาก {recoveryReport.total} รายการ
+                      (ลงระบบจริง {recoveryReport.inserted}) — แต่ไม่ได้เก็บรายละเอียดของแถวไว้
+                      จึงทำต่อให้อัตโนมัติไม่ได้ กรุณาตรวจสอบยอดบัญชี/งวดหนี้ในหน้า Finance เอง
+                    </div>
+                  )}
+
+                  {recoveryReport?.kind === 'stale' && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      ข้อมูลใบเสร็จการนำเข้าเก็บไว้ 90 วัน — รายการค้างนี้เก่ากว่านั้น
+                      ระบบจึงยืนยันผลให้ไม่ได้ กรุณาตรวจสอบรายการในหน้า Finance เอง
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {!recoveryReport && (
+                      <button className="btn btn--primary" onClick={recoverStoredSession} disabled={recovering}>
+                        {recovering ? 'กำลังตรวจสอบ...' : '↻ ตรวจสอบผลอีกครั้ง'}
+                      </button>
+                    )}
+                    {recoveryReport?.kind === 'partial' && (
+                      <button className="btn btn--primary" onClick={resumeStoredSession} disabled={importing || recovering}>
+                        {importing ? 'กำลังทำต่อ...' : '▸ ทำต่อให้จบ'}
+                      </button>
+                    )}
+                    <button className="btn btn--ghost" disabled={recovering || importing}
+                      onClick={discardStoredSession}>
+                      {recoveryReport?.kind === 'none' ? 'เข้าใจแล้ว — ล้างและเริ่มใหม่' : 'ทิ้งการกู้คืนนี้'}
                     </button>
                   </div>
                 </div>
@@ -1526,7 +1952,18 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   {importStats?.wipedMonths > 0 && (
                     <StatChip label="เดือนที่ล้าง" value={importStats.wipedMonths} accent="var(--loss)" />
                   )}
+                  {/* Round-9 F1: rows whose transaction was deleted after the
+                      import — excluded from balances and debt links. */}
+                  {importStats?.skippedDeleted > 0 && (
+                    <StatChip label="ข้ามเพราะรายการถูกลบ" value={importStats.skippedDeleted} accent="var(--ink-3)" />
+                  )}
                 </div>
+                {importStats?.skippedDeleted > 0 && (
+                  <div style={{ marginTop: 14, color: 'var(--ink-3)', fontSize: 12, lineHeight: 1.55, maxWidth: 480 }}>
+                    มี {importStats.skippedDeleted} รายการที่นำเข้าไปแล้วแต่ถูกลบทีหลัง —
+                    ไม่ได้นำไปอัปเดตยอดบัญชีและไม่ได้ผูกงวดหนี้
+                  </div>
+                )}
                 {importStats?.inserted === 0 && importStats?.skipped > 0 && (
                   <div style={{ marginTop: 14, color: 'var(--ink-3)', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
                     ทุกรายการเป็นรายการที่มีอยู่แล้ว — ไม่ได้เพิ่มอะไรใหม่
