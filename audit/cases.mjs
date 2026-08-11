@@ -17,6 +17,7 @@ import {
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
+  isDefinitiveServerError,
 } from '../src/lib/api/finance.js';
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
 import { toLocalYMD } from '../src/lib/dates.js';
@@ -872,13 +873,13 @@ section('R5 · Bug 2b/4 · execution-time ambiguity round-trips to a decision');
 
 // ════════════════════════════════ ROUND 7 ════════════════════════════════
 
-section('R7 · case 6 · sim/RPC v7 wipe semantics (receipts FIRST, no re-wipe)');
+section('R7 · case 6 · sim/RPC v8 wipe semantics (receipts FIRST, no re-wipe)');
 {
-  const { installImportRpcV7, resetSim, simCalls } = await import('./import-rpc-sim.mjs');
+  const { installImportRpcV8, resetSim, simCalls } = await import('./import-rpc-sim.mjs');
   resetSim();
   __tables.transactions = __tables.transactions.filter(t => bangkokMonth(t.occurred_at) !== '2026-09');
   __tables.import_receipts.length = 0;
-  installImportRpcV7();
+  installImportRpcV8();
 
   // Old data in the target month.
   __tables.transactions.push({ id: 'old-sep', user_id: 'user-1', scope: 'personal',
@@ -913,6 +914,149 @@ section('R7 · case 6 · sim/RPC v7 wipe semantics (receipts FIRST, no re-wipe)'
     importKey: 'K-wipe' });
   check('other-group call with same key is NOT short-circuited', r3.insertedCount === 1 && sepRows().length === 3);
   check('sim recorded wipe flags faithfully', simCalls.filter(c => c.wipe).length === 2);
+}
+
+// ════════════════════════════════ ROUND 8 ════════════════════════════════
+
+section('R8 · B1 · v8 receipts describe EVERY row → complete response recovery');
+{
+  const { installImportRpcV8, resetSim } = await import('./import-rpc-sim.mjs');
+  resetSim();
+  __tables.import_receipts.length = 0;
+  __tables.transactions = __tables.transactions.filter(t => bangkokMonth(t.occurred_at) !== '2026-10');
+
+  // A legacy :00 ledger row makes the synthetic incoming row AMBIGUOUS.
+  __tables.transactions.push({ id: 'oct-legacy', user_id: 'user-1', scope: 'personal',
+    title: 'กาแฟ', amount: -65, note: null, type: 'food',
+    occurred_at: '2026-10-05T05:00:00.000Z' });
+
+  const R = (rid, title, amount, iso) => ({ _rid: rid, _synthetic: true, title, amount, note: null,
+    category: 'อาหาร', type: 'food', occurred_at: iso, scope: 'personal' });
+  const ambRow   = R(801, 'กาแฟ', -65, '2026-10-05T12:00:00+07:00');
+  const cleanRow = R(802, 'ข้าวเที่ยง', -120, '2026-10-06T12:00:00+07:00');
+  const KEY = 'K-r8-mixed';
+  const oct = () => __tables.transactions.filter(t => bangkokMonth(t.occurred_at) === '2026-10');
+  const rc  = () => __tables.import_receipts.filter(r => r.import_key === KEY);
+
+  // Call 1 commits (1 insert + 1 execution-time ambiguity) and LOSES its response.
+  installImportRpcV8({ postCommitFailPredicate: (c) => c === 1 });
+  let lost = null;
+  try {
+    await importTransactionsBatch({ scope: 'personal', month: '2026-10', wipe: false, dedup: true,
+      rows: [ambRow, cleanRow], importKey: KEY });
+  } catch (e) { lost = e; }
+  check('mixed clean+ambiguous call commits, then the response is lost', !!lost);
+  check('a receipt exists for EVERY processed ord, not just the inserted one', rc().length === 2);
+  check('the ambiguous receipt persists the {incoming, existing} snapshot',
+    rc().find(r => r.ord === 801)?.outcome === 'ambiguous'
+    && rc().find(r => r.ord === 801)?.detail?.existing?.title === 'กาแฟ'
+    && rc().find(r => r.ord === 801)?.detail?.incoming?.amount === -65);
+  check('the inserted receipt carries the exact transaction id',
+    rc().find(r => r.ord === 802)?.outcome === 'inserted'
+    && !!rc().find(r => r.ord === 802)?.transaction_id);
+
+  // Retry, same key. v7 answered { inserted:[802], ambiguous: [] } — the
+  // ambiguous row was never shown again and never imported.
+  const rec = await importTransactionsBatch({ scope: 'personal', month: '2026-10', wipe: false, dedup: true,
+    rows: [ambRow, cleanRow], importKey: KEY });
+  check('retry short-circuits as a recovery read', rec.recovered === true);
+  check('reconstruction returns the clean row mapping',
+    rec.inserted.length === 1 && rec.inserted[0].ord === 802);
+  check('reconstruction returns the AMBIGUOUS row too (the v7 data loss)',
+    rec.ambiguous.length === 1 && rec.ambiguous[0].ord === 801
+    && rec.ambiguous[0].row?._rid === 801
+    && rec.ambiguous[0].existing?.title === 'กาแฟ');
+  check('the recovery read wrote nothing', oct().length === 2);
+
+  // The user answers the replayed ambiguity → force REOPENS the receipt.
+  const forced = await importTransactionsBatch({ scope: 'personal', month: '2026-10', wipe: false, dedup: true,
+    rows: [{ ...ambRow, _force: true }], importKey: KEY });
+  check('force on a replayed ambiguity actually imports it',
+    forced.inserted.length === 1 && forced.inserted[0].ord === 801 && oct().length === 3);
+  check('its receipt flips ambiguous → inserted', rc().find(r => r.ord === 801)?.outcome === 'inserted');
+
+  const again = await importTransactionsBatch({ scope: 'personal', month: '2026-10', wipe: false, dedup: true,
+    rows: [{ ...ambRow, _force: true }], importKey: KEY });
+  check('a lost response ON the force call replays as a mapping, not a 2nd insert',
+    again.recovered === true && again.inserted.length === 1 && oct().length === 3);
+
+  // A duplicate is receipted too, so its count survives a lost response.
+  const dupRow = R(803, 'กาแฟ', -65, '2026-10-05T12:00:00+07:00');
+  const KEY2 = 'K-r8-dup';
+  const d1 = await importTransactionsBatch({ scope: 'personal', month: '2026-10', wipe: false, dedup: true,
+    rows: [{ ...dupRow, _synthetic: false }], importKey: KEY2 });
+  check('an exact duplicate is skipped and RECEIPTED as dup',
+    d1.dupSkipped === 1
+    && __tables.import_receipts.find(r => r.import_key === KEY2 && r.ord === 803)?.outcome === 'dup');
+  const d2 = await importTransactionsBatch({ scope: 'personal', month: '2026-10', wipe: false, dedup: true,
+    rows: [{ ...dupRow, _synthetic: false }], importKey: KEY2 });
+  check('the dup count is reconstructed on retry (not silently reset to 0)',
+    d2.recovered === true && d2.dupSkipped === 1 && d2.inserted.length === 0);
+}
+
+section('R8 · B1 · edge cases — wipe never repeats, probe is read-only, FK nulls the mapping');
+{
+  const { installImportRpcV8, resetSim } = await import('./import-rpc-sim.mjs');
+  resetSim(); installImportRpcV8();
+  __tables.import_receipts.length = 0;
+  __tables.transactions = __tables.transactions.filter(t => bangkokMonth(t.occurred_at) !== '2026-11');
+  __tables.transactions.push({ id: 'nov-old', user_id: 'user-1', scope: 'personal',
+    title: 'ของเก่า พ.ย.', amount: -999, note: null, type: 'food',
+    occurred_at: '2026-11-02T05:00:00.000Z' });
+
+  const R = (rid, title, amount, iso) => ({ _rid: rid, _synthetic: true, title, amount, note: null,
+    category: 'บิล', type: 'bills', occurred_at: iso, scope: 'personal' });
+  const a = R(811, 'ค่าน้ำ', -100, '2026-11-05T12:00:00+07:00');
+  const b = R(812, 'ค่าไฟ', -200, '2026-11-06T12:00:00+07:00');
+  const KEY = 'K-r8-edge';
+  const nov = () => __tables.transactions.filter(t => bangkokMonth(t.occurred_at) === '2026-11');
+
+  await importTransactionsBatch({ scope: 'personal', month: '2026-11', wipe: true, dedup: false,
+    rows: [a], importKey: KEY });
+  check('wipe executes on the first, unreceipted call',
+    nov().length === 1 && !nov().some(t => t.title === 'ของเก่า พ.ย.'));
+
+  // Client changed its selection between attempts: 811 receipted, 812 new.
+  const w2 = await importTransactionsBatch({ scope: 'personal', month: '2026-11', wipe: true, dedup: false,
+    rows: [a, b], importKey: KEY });
+  check('edge case: the unreceipted ord is processed with wipe FORCED OFF',
+    nov().length === 2 && w2.recovered === true && w2.inserted.length === 2);
+  check('the already-committed ord is not re-inserted',
+    nov().filter(t => t.title === 'ค่าน้ำ').length === 1);
+
+  const probe = await importTransactionsBatch({ scope: 'personal', month: '2026-11', wipe: true, dedup: false,
+    rows: [{ _rid: 811 }, { _rid: 812 }], importKey: KEY, probe: true });
+  check('p_probe reconstructs the full response without writing or wiping',
+    probe.recovered === true && probe.inserted.length === 2 && nov().length === 2);
+
+  // FK: import_receipts.transaction_id → transactions(id) ON DELETE SET NULL.
+  const victim = nov().find(t => t.title === 'ค่าไฟ');
+  await supabase.from('transactions').delete().eq('id', victim.id);
+  const rec812 = __tables.import_receipts.find(r => r.import_key === KEY && r.ord === 812);
+  check('deleting an imported transaction NULLs the receipt mapping (SET NULL, not CASCADE)',
+    !!rec812 && rec812.transaction_id === null && rec812.outcome === 'inserted');
+  const after = await importTransactionsBatch({ scope: 'personal', month: '2026-11', wipe: true, dedup: false,
+    rows: [a, b], importKey: KEY });
+  check('a same-key retry does NOT resurrect the deleted row',
+    nov().length === 1 && !nov().some(t => t.title === 'ค่าไฟ'));
+  check('the retry returns the null mapping instead of a stale id',
+    after.inserted.find(m => m.ord === 812)?.transaction_id === null);
+  check('finalisation skips a null mapping (no debt link can be forged)',
+    after.inserted.filter(m => m.transaction_id).length === 1);
+}
+
+section('R8 · B2 · outcome-unknown errors must never clear the recovery state');
+{
+  check('PostgREST error code is definitive (request reached Postgres, rejected)',
+    isDefinitiveServerError({ code: 'PGRST202', message: 'could not find the function' }) === true);
+  check('SQLSTATE is definitive', isDefinitiveServerError({ code: '23505', message: 'duplicate key' }) === true);
+  check('bare fetch failure is NOT definitive',
+    isDefinitiveServerError({ message: 'Failed to fetch' }) === false);
+  check('gateway timeout (504) is NOT definitive',
+    isDefinitiveServerError({ code: '504', message: 'Gateway Timeout' }) === false);
+  check('a coded error whose message says timeout is NOT definitive',
+    isDefinitiveServerError({ code: '57014', message: 'canceling statement due to statement timeout' }) === false);
+  check('no error object is not definitive', isDefinitiveServerError(null) === false);
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);

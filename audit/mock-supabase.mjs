@@ -161,6 +161,17 @@ class Query {
     if (this.op === 'delete') {
       const rows = this._matched();
       __tables[this.table] = t.filter(r => !rows.includes(r));
+      // Round-8: emulate the DB constraint
+      //   import_receipts.transaction_id → transactions(id) ON DELETE SET NULL
+      // (migration_add_import_rpc.sql v8). Deleting an imported transaction
+      // clears the receipt's mapping without deleting the receipt, so the ord
+      // still counts as processed and a same-key retry cannot resurrect it.
+      if (this.table === 'transactions') {
+        const gone = new Set(rows.map(r => r.id));
+        for (const r of __tables.import_receipts) {
+          if (r.transaction_id != null && gone.has(r.transaction_id)) r.transaction_id = null;
+        }
+      }
       return this._pick(rows);
     }
 
