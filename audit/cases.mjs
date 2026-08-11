@@ -1059,5 +1059,77 @@ section('R8 · B2 · outcome-unknown errors must never clear the recovery state'
   check('no error object is not definitive', isDefinitiveServerError(null) === false);
 }
 
+// ════════════════════════════════ ROUND 10 ═══════════════════════════════
+
+section('R10 · resume fidelity · per-group wipe/dedup are honoured group by group under ONE key');
+{
+  // The server half of the two mounted cases (X2, X3): a resumed session
+  // re-sends every group under the same import key, and the options it sends
+  // per group are the ones the run was STARTED with. The client decides
+  // (CSVImporter.resumeStoredSession); this proves the RPC obeys, and that a
+  // wipe cannot leak from one group to another or repeat on a committed one.
+  const { installImportRpcV8, resetSim, simCalls } = await import('./import-rpc-sim.mjs');
+  resetSim(); installImportRpcV8();
+  __tables.import_receipts.length = 0;
+  __tables.transactions = __tables.transactions.filter(t =>
+    !['2027-01', '2027-02'].includes(bangkokMonth(t.occurred_at)));
+
+  const KEY = 'K-r10-resume';
+  const inMonth = (ym) => __tables.transactions.filter(t => bangkokMonth(t.occurred_at) === ym);
+  const stale = (id, ym) => ({ id, user_id: 'user-1', scope: 'personal', title: 'ของเก่า ' + ym,
+    amount: -999, note: null, type: 'food', occurred_at: `${ym}-02T12:00:00+07:00` });
+  __tables.transactions.push(stale('old-jan', '2027-01'), stale('old-feb', '2027-02'));
+  // An exact copy of the February row: dedup=false must import it anyway.
+  __tables.transactions.push({ id: 'twin-feb', user_id: 'user-1', scope: 'personal',
+    title: 'ค่าหนังสือ', amount: -300, note: null, type: 'shop',
+    occurred_at: '2027-02-05T12:00:00+07:00' });
+
+  const jan = { _rid: 1001, title: 'กาแฟ', amount: -65, note: null, category: 'อาหาร', type: 'food',
+    occurred_at: '2027-01-05T12:00:00+07:00', scope: 'personal' };
+  const feb = { _rid: 1002, title: 'ค่าหนังสือ', amount: -300, note: null, category: 'ช้อปปิ้ง', type: 'shop',
+    occurred_at: '2027-02-05T12:00:00+07:00', scope: 'personal' };
+
+  // Original run: group 1 (January) executes with wipe on / dedup off; group 2
+  // (February) never runs — its call is the one that failed.
+  await importTransactionsBatch({ scope: 'personal', month: '2027-01', wipe: true, dedup: false,
+    rows: [jan], importKey: KEY });
+  check('group 1 wipes its own month exactly once and inserts',
+    inMonth('2027-01').length === 1 && inMonth('2027-01')[0].title === 'กาแฟ');
+  check('group 1 did NOT touch group 2\'s month', inMonth('2027-02').length === 2);
+
+  // ── The resume ──────────────────────────────────────────────────────────
+  // Group 1 already committed → the client sends wipe:false (its receipts also
+  // force it off server-side); group 2 never ran → it sends the PERSISTED
+  // wipe:true / dedup:false.
+  const r1 = await importTransactionsBatch({ scope: 'personal', month: '2027-01', wipe: false, dedup: false,
+    rows: [jan], importKey: KEY });
+  check('resuming a committed group is a pure recovery read (no re-wipe, no re-insert)',
+    r1.recovered === true && inMonth('2027-01').length === 1
+    && r1.inserted.length === 1 && r1.inserted[0].ord === 1001);
+
+  const r2 = await importTransactionsBatch({ scope: 'personal', month: '2027-02', wipe: true, dedup: false,
+    rows: [feb], importKey: KEY });
+  check('the unstarted group still executes its persisted wipe — exactly once, only its own month',
+    inMonth('2027-02').length === 1 && inMonth('2027-02')[0].title === 'ค่าหนังสือ'
+    && !inMonth('2027-02').some(t => t.id === 'twin-feb'));
+  check('the committed group\'s month is untouched by the second wipe',
+    inMonth('2027-01').length === 1 && r2.insertedCount === 1);
+  check('every call rode the SAME import key', new Set(simCalls.map(c => c.key)).size === 1);
+
+  // dedup=false, without a wipe, must still import a row the ledger already
+  // holds — the whole point of switching "ข้ามรายการซ้ำ" off.
+  const KEY2 = 'K-r10-dedup-off';
+  const marchTwin = { _rid: 1003, title: 'ค่าหนังสือ', amount: -300, note: null,
+    category: 'ช้อปปิ้ง', type: 'shop', occurred_at: '2027-02-05T12:00:00+07:00', scope: 'personal' };
+  const offRes = await importTransactionsBatch({ scope: 'personal', month: '2027-02', wipe: false, dedup: false,
+    rows: [marchTwin], importKey: KEY2 });
+  check('dedup=false imports the exact duplicate the persisted intent asked for',
+    offRes.insertedCount === 1 && inMonth('2027-02').length === 2);
+  const onRes = await importTransactionsBatch({ scope: 'personal', month: '2027-02', wipe: false, dedup: true,
+    rows: [{ ...marchTwin, _rid: 1004 }], importKey: 'K-r10-dedup-on' });
+  check('the same row under dedup=true is skipped — so re-deriving the flag really does change the outcome',
+    onRes.insertedCount === 0 && onRes.dupSkipped === 1 && inMonth('2027-02').length === 2);
+}
+
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
 process.exit(fail ? 1 : 0);

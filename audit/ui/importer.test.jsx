@@ -5,7 +5,7 @@
 // wipe-forced-off + ord→id mapping + p_probe) by audit/import-rpc-sim.mjs,
 // with scriptable pre-execution failures AND post-commit response loss.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react';
 import React from 'react';
 
 import { CSVImporter } from '../../src/components/CSVImporter.jsx';
@@ -745,5 +745,316 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     fireEvent.click(screen.getByRole('button', { name: /ทิ้งการกู้คืนนี้/ }));
     await waitFor(() =>
       expect(storedRaw()).toBeNull());
+  });
+});
+
+// ── Round 10 ───────────────────────────────────────────────────────────────
+// Five acceptance cases named by the auditor. Every one of them fails on
+// v4.22 for a different reason: the shared storage key, the resume that
+// re-derives its options, and the staleness clock that any patch resets.
+
+/** Simulate the browser telling this document that another tab wrote. */
+function fireStorageEvent(key) {
+  act(() => {
+    window.dispatchEvent(new StorageEvent('storage', {
+      key, newValue: key ? window.localStorage.getItem(key) : null,
+    }));
+  });
+}
+function slotKeys() {
+  return storedSlots().map(([k]) => k);
+}
+
+describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
+
+  it('(X1) two tabs never share a recovery slot: tab A\'s whole import leaves tab B\'s pending record byte-identical, and B\'s record never locks A', async () => {
+    installImportRpcV8({ postCommitFailPredicate: (call) => call === 1 });
+
+    // Tab A opens first, with nothing pending — it adopts nothing.
+    const { container: A } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+
+    // Tab B opens and loses the response to its only group → record K_B.
+    const { container: B } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    fireEvent.change(B.querySelector('input[type="file"]'), { target: { files: [
+      new File(['Date,Description,Amount\n05/08/2026,กาแฟของแท็บบี,-65\n'], 'b.csv', { type: 'text/csv' })] } });
+    await within(B).findByText(/ตัวเลือก IMPORT/);
+    fireEvent.click(importButton(within(B)));
+    await within(B).findByText(/Import ไม่สำเร็จ/);
+
+    expect(slotKeys()).toHaveLength(1);
+    const [slotB] = slotKeys();
+    expect(slotB.startsWith(SLOT_PREFIX)).toBe(true);          // namespaced, not the shared key
+    const recordB = window.localStorage.getItem(slotB);
+    expect(JSON.parse(recordB).key).toBe(slotB.slice(SLOT_PREFIX.length));
+    expect(__tables.transactions).toHaveLength(1);
+
+    // The browser notifies tab A. A surfaces it — and must NOT be locked by it.
+    fireStorageEvent(slotB);
+    await within(A).findByText(/มีการนำเข้าค้างอยู่หลายชุด/);
+    expect(within(A).getByRole('button', { name: /เลือกกู้คืนชุดนี้/ })).toBeTruthy();
+
+    window.alert.mockClear();
+    fireEvent.change(A.querySelector('input[type="file"]'), { target: { files: [
+      new File(['Date,Description,Amount\n05/09/2026,ของแท็บเอ,-10\n'], 'a.csv', { type: 'text/csv' })] } });
+    await within(A).findByText(/ตัวเลือก IMPORT/);             // NOT blocked by B's record
+    expect(window.alert).not.toHaveBeenCalled();
+
+    fireEvent.click(importButton(within(A)));
+    await within(A).findByText(/Import สำเร็จ!/);
+
+    // v4.22: A's persist overwrote B's record and A's completion deleted it.
+    expect(slotKeys()).toEqual([slotB]);
+    expect(window.localStorage.getItem(slotB)).toBe(recordB);  // byte-identical
+    expect(__tables.transactions.map(t => t.title).sort())
+      .toEqual(['กาแฟของแท็บบี', 'ของแท็บเอ'].sort());
+
+    // B's session is still recoverable after a reload.
+    cleanup();
+    render(<CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(__tables.transactions).toHaveLength(2);             // nothing re-inserted
+    expect(storedRaw()).toBeNull();
+  });
+
+  it('(X1b) several pending records → none is adopted silently; the user picks which one this tab recovers', async () => {
+    installImportRpcV8();
+    __tables.transactions.push(
+      { id: 'tx-k1', user_id: 'user-1', scope: 'personal', title: 'ชุดที่หนึ่ง', amount: -11,
+        note: null, type: 'food', category: 'อาหาร', occurred_at: '2026-08-05T05:00:00.000Z' },
+      { id: 'tx-k2', user_id: 'user-1', scope: 'personal', title: 'ชุดที่สอง', amount: -22,
+        note: null, type: 'food', category: 'อาหาร', occurred_at: '2026-09-05T05:00:00.000Z' });
+    const mkRecord = (key, month, ord, txId) => {
+      __tables.import_receipts.push({ user_id: 'user-1', import_key: key, ord,
+        transaction_id: txId, outcome: 'inserted', detail: null, created_at: new Date().toISOString() });
+      window.localStorage.setItem(SLOT_PREFIX + key, JSON.stringify({
+        v: 3, key, at: Date.now(), startedAt: Date.now(),
+        groups: [{ scope: 'personal', month, wipe: false, dedup: true, ords: [ord] }],
+        rows: [{ _rid: ord, scope: 'personal', month, title: 't' + ord, amount: -1,
+          occurred_at: `${month}-05T12:00:00+07:00` }],
+        pockets: [], debtLinks: [], createAccts: false, makeFmt: false,
+        doneGroups: [], sideEffects: {},
+      }));
+    };
+    mkRecord('key-one', '2026-08', 71, 'tx-k1');
+    mkRecord('key-two', '2026-09', 72, 'tx-k2');
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+
+    // Two records → adopt NEITHER, list BOTH.
+    await screen.findByText(/มีการนำเข้าค้างอยู่หลายชุด · 2 ชุด/);
+    expect(screen.queryByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ })).toBeNull();
+    const picks = screen.getAllByRole('button', { name: /เลือกกู้คืนชุดนี้/ });
+    expect(picks).toHaveLength(2);
+    expect(screen.getByText(/ส่วนตัว 2026-08 \(1 รายการ\)/)).toBeTruthy();
+    expect(screen.getByText(/ส่วนตัว 2026-09 \(1 รายการ\)/)).toBeTruthy();
+
+    fireEvent.click(picks[0]);                       // adopt the older one
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+    // The other one is still listed, and is not touched.
+    expect(screen.getAllByRole('button', { name: /เลือกกู้คืนชุดนี้/ })[0].disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(slotKeys()).toEqual([SLOT_PREFIX + 'key-two']);      // ONLY the adopted slot died
+    expect(container).toBeTruthy();
+  });
+
+  it('(X2) two-group wipe resume wipes exactly ONCE for the group that never ran, and never re-wipes the committed one', async () => {
+    installImportRpcV8({ failPredicate: (call) => call === 2 });   // group 2 fails before mutating
+    // Stale rows in BOTH months — "replace the month" must clear each once.
+    __tables.transactions.push(
+      { id: 'old-jul', user_id: 'user-1', scope: 'personal', title: 'ของเก่า ก.ค.', amount: -777,
+        note: null, type: 'food', category: 'อาหาร', occurred_at: '2026-07-02T05:00:00.000Z' },
+      { id: 'old-aug', user_id: 'user-1', scope: 'personal', title: 'ของเก่า ส.ค.', amount: -888,
+        note: null, type: 'food', category: 'อาหาร', occurred_at: '2026-08-02T05:00:00.000Z' });
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Description,Amount\n' +
+      '05/07/2026,กาแฟ,-65\n' +
+      '05/08/2026,ค่าหนังสือ,-300\n');
+    fireEvent.click(screen.getAllByRole('checkbox')
+      .find(c => c.closest('label')?.textContent.includes('ลบรายการเดิมในเดือนนั้น')));
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import ไม่สำเร็จ/);
+    // July wiped + filled; August untouched (the call failed before mutating).
+    expect(__tables.transactions.map(t => t.title).sort())
+      .toEqual(['กาแฟ', 'ของเก่า ส.ค.'].sort());
+    const stored = storedRecord();
+    expect(stored.groups.map(g => [g.month, g.wipe]).sort())
+      .toEqual([['2026-07', true], ['2026-08', true]]);   // the flag is persisted per group
+
+    reload();                                             // ← the page reload
+    await screen.findByText(/มีการนำเข้าค้างอยู่/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/นำเข้าไปแล้วบางส่วน — ยังไม่จบ/);
+
+    const beforeResume = simCalls.length;
+    fireEvent.click(screen.getByRole('button', { name: /ทำต่อให้จบ/ }));
+    await screen.findByText('Import สำเร็จ!');
+
+    const resumeCalls = simCalls.slice(beforeResume).filter(c => !c.probe);
+    expect(resumeCalls.map(c => [c.month, c.wipe]).sort())
+      .toEqual([['2026-07', false], ['2026-08', true]]);
+    // v4.22 sent wipe:false for BOTH — August kept 'ของเก่า ส.ค.' for ever.
+    expect(__tables.transactions.map(t => t.title).sort())
+      .toEqual(['กาแฟ', 'ค่าหนังสือ'].sort());
+    expect(__tables.transactions.filter(t => t.title === 'กาแฟ')).toHaveLength(1);  // no re-wipe, no dupe
+    expect(new Set(simCalls.map(c => c.key)).size).toBe(1);
+    expect(storedRaw()).toBeNull();
+  });
+
+  it('(X3) dedup=false survives the resume — the unstarted group still sends p_dedup=false and imports the near-duplicate', async () => {
+    installImportRpcV8({ failPredicate: (call) => call === 2 });
+    // An EXACT copy of the August row already sits in the ledger. With
+    // "ข้ามรายการซ้ำ" off the user is deliberately importing it again.
+    __tables.transactions.push(
+      { id: 'dup-aug', user_id: 'user-1', scope: 'personal', title: 'ค่าหนังสือ', amount: -300,
+        note: null, type: 'shop', category: 'ช้อปปิ้ง', occurred_at: '2026-08-05T05:00:00.000Z' });
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Description,Amount\n' +
+      '05/07/2026,กาแฟ,-65\n' +
+      '05/08/2026,ค่าหนังสือ,-300\n');
+    const dedupBox = screen.getAllByRole('checkbox')
+      .find(c => c.closest('label')?.textContent.includes('ข้ามรายการซ้ำ'));
+    expect(dedupBox.checked).toBe(true);
+    fireEvent.click(dedupBox);                            // dedup OFF
+    expect(dedupBox.checked).toBe(false);
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import ไม่สำเร็จ/);
+    const stored = storedRecord();
+    expect(stored.groups.every(g => g.dedup === false)).toBe(true);   // persisted per group
+
+    reload();                                             // ← the page reload
+    await screen.findByText(/มีการนำเข้าค้างอยู่/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/นำเข้าไปแล้วบางส่วน — ยังไม่จบ/);
+
+    const beforeResume = simCalls.length;
+    fireEvent.click(screen.getByRole('button', { name: /ทำต่อให้จบ/ }));
+    await screen.findByText('Import สำเร็จ!');
+
+    const resumed = simCalls.slice(beforeResume).filter(c => !c.probe);
+    expect(resumed.length).toBeGreaterThan(0);
+    expect(resumed.every(c => c.dedup === false)).toBe(true);
+    // v4.22 re-derived dedup:true here and skipped the row as a duplicate.
+    expect(__tables.transactions.filter(t => t.title === 'ค่าหนังสือ')).toHaveLength(2);
+    expect(storedRaw()).toBeNull();
+  });
+
+  it('(X4) localStorage.setItem throwing aborts BEFORE any RPC — explicit Thai error, nothing imported, the plan survives for a retry', async () => {
+    installImportRpcV8();
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Description,Amount\n05/08/2026,กาแฟ,-65\n06/08/2026,ข้าวเที่ยง,-120\n');
+
+    const realSet = window.localStorage.setItem.bind(window.localStorage);
+    const setSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('exceeded the quota', 'QuotaExceededError');
+    });
+
+    fireEvent.click(importButton());
+    await screen.findByText(/บันทึกจุดกู้คืนไม่ได้ \(พื้นที่เก็บข้อมูลเต็ม\) — ยังไม่ได้นำเข้าอะไรทั้งสิ้น/);
+
+    // v4.22 swallowed the throw and imported anyway, unrecoverably.
+    expect(simCalls).toHaveLength(0);                     // no transaction RPC at all
+    expect(__tables.transactions).toHaveLength(0);
+    expect(__tables.import_receipts).toHaveLength(0);
+    expect(__tables.accounts).toHaveLength(0);
+    expect(storedRaw()).toBeNull();
+    // The plan is intact: still on preview, still 2 rows selected.
+    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();
+    expect(importButton().textContent).toMatch(/Import 2 รายการ/);
+
+    setSpy.mockRestore();
+    expect(realSet).toBeTruthy();
+    fireEvent.click(importButton());                      // space freed → retry works
+    await screen.findByText('Import สำเร็จ!');
+    expect(__tables.transactions).toHaveLength(2);
+    expect(storedRaw()).toBeNull();
+  });
+
+  it('(X5) the stale check uses the IMMUTABLE startedAt, not the last patch — a day-0 session patched yesterday is refused, never probed', async () => {
+    installImportRpcV8();
+    const DAY = 24 * 3600 * 1000;
+    __tables.transactions.push({ id: 'tx-old', user_id: 'user-1', scope: 'personal',
+      title: 'เก่ามาก', amount: -65, note: null, type: 'food', category: 'อาหาร',
+      occurred_at: '2026-08-05T05:00:00.000Z' });
+    __tables.import_receipts.push({ user_id: 'user-1', import_key: 'key-aged', ord: 91,
+      transaction_id: 'tx-old', outcome: 'inserted', detail: null,
+      created_at: new Date(Date.now() - 70 * DAY).toISOString() });
+    window.localStorage.setItem(SLOT_PREFIX + 'key-aged', JSON.stringify({
+      v: 3, key: 'key-aged',
+      startedAt: Date.now() - 70 * DAY,      // the receipts' true age
+      at: Date.now() - 1 * DAY,              // …but a patch refreshed this yesterday
+      groups: [{ scope: 'personal', month: '2026-08', wipe: false, dedup: true, ords: [91] }],
+      rows: [{ _rid: 91, scope: 'personal', month: '2026-08', title: 'เก่ามาก', amount: -65,
+        occurred_at: '2026-08-05T12:00:00+07:00' }],
+      pockets: [], debtLinks: [], createAccts: false, makeFmt: false,
+      doneGroups: [], sideEffects: {},
+    }));
+
+    render(<CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+
+    // v4.22 read `at`, called this 1 day old, probed and finalised.
+    await screen.findByText(/การนำเข้าค้างนี้เก่าเกินกว่าจะตรวจสอบได้/);
+    expect(screen.queryByText('Import สำเร็จ!')).toBeNull();
+    expect(simCalls).toHaveLength(0);                     // not even a probe
+    expect(screen.queryByRole('button', { name: /ทำต่อให้จบ/ })).toBeNull();
+    expect(storedRaw()).toBeTruthy();                     // kept until an informed discard
+  });
+
+  it('(X5b) a v4.22 record with NO startedAt is unknown-age: probe-only, resume refused, and a zero probe is never read as "nothing was imported"', async () => {
+    installImportRpcV8();
+    const noStamp = (key, ords) => JSON.stringify({
+      v: 2, key, at: Date.now(),                          // no startedAt at all
+      groups: [{ scope: 'personal', month: '2026-08', wipe: false, ords }],
+      rows: ords.map(o => ({ _rid: o, scope: 'personal', month: '2026-08',
+        title: 'แถว ' + o, amount: -50, occurred_at: '2026-08-05T12:00:00+07:00' })),
+      pockets: [], debtLinks: [], createAccts: false, makeFmt: false,
+      doneGroups: [], sideEffects: {},
+    });
+
+    // (a) receipts DO exist → report the outcome, but never resume from it.
+    __tables.transactions.push({ id: 'tx-u1', user_id: 'user-1', scope: 'personal',
+      title: 'แถว 61', amount: -50, note: null, type: 'food', category: 'อาหาร',
+      occurred_at: '2026-08-05T05:00:00.000Z' });
+    __tables.import_receipts.push({ user_id: 'user-1', import_key: 'key-nostamp', ord: 61,
+      transaction_id: 'tx-u1', outcome: 'inserted', detail: null, created_at: new Date().toISOString() });
+    window.localStorage.setItem(SLOT_PREFIX + 'key-nostamp', noStamp('key-nostamp', [61, 62]));
+
+    render(<CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
+    fireEvent.click(screen.getByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/ตรวจสอบได้ แต่ทำต่ออัตโนมัติไม่ได้/);
+    expect(screen.queryByText('Import สำเร็จ!')).toBeNull();
+    expect(screen.queryByRole('button', { name: /ทำต่อให้จบ/ })).toBeNull();
+    expect(simCalls.every(c => c.probe)).toBe(true);      // read-only throughout
+    expect(__tables.transactions).toHaveLength(1);
+
+    // (b) the probe resolves ZERO — with no trustworthy age this cannot be
+    // called "nothing was imported": the receipts may simply have been purged.
+    cleanup();
+    window.localStorage.clear();
+    window.localStorage.setItem(SLOT_PREFIX + 'key-empty', noStamp('key-empty', [63]));
+    render(<CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /ตรวจสอบผลอีกครั้ง/ }));
+    await screen.findByText(/ไม่ทราบเวลาของการนำเข้าค้างนี้ — ยืนยันผลให้ไม่ได้/);
+    expect(screen.queryByText(/ยังไม่ได้นำเข้า — กรุณานำเข้าใหม่/)).toBeNull();
+    expect(storedRaw()).toBeTruthy();
   });
 });

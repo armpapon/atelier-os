@@ -1,14 +1,14 @@
 # Audit evidence harness
 
 Executable acceptance evidence for the independent finance audit
-(rounds 1–9, closed in v4.14 – v4.22).
+(rounds 1–10, closed in v4.14 – v4.23).
 
 ## Run it
 
 ```bash
 npm install          # once — needs the repo's own devDependencies
-node audit/evidence.mjs   # pure-logic evidence (147 checks)
-npm run test:ui           # MOUNTED CSVImporter orchestration tests (21, rounds 6–9)
+node audit/evidence.mjs   # pure-logic evidence (155 checks)
+npm run test:ui           # MOUNTED CSVImporter orchestration tests (28, rounds 6–10)
 ```
 
 `npm run test:ui` renders the real `CSVImporter` under jsdom (vitest +
@@ -26,6 +26,16 @@ The mock also emulates the v8 foreign key
 the "delete an imported transaction" acceptance case runs for real, and the
 round-9 receipt retention purge (own rows, `created_at` older than 90 days,
 never this call's key).
+
+Round-10 cases (X1–X5b) cover the recovery record itself: two importers are
+mounted at once (two tabs sharing one `localStorage`) and a `storage` event is
+dispatched by hand, exactly as a browser notifies another document. They prove
+one namespaced slot per session key with no cross-tab clobbering, the picker
+that appears when several records are pending, a resumed run that repeats the
+persisted per-group `wipe`/`dedup` instead of re-deriving defaults, an import
+that refuses to start when `localStorage.setItem` throws, and the staleness
+rule measured from an immutable `startedAt`. Each of the seven fails against
+v4.22's component and passes against v4.23's.
 
 Round-9 cases (R1–R7) drive the cross-reload path end to end by unmounting the
 component while keeping `localStorage` and the server tables — a real page

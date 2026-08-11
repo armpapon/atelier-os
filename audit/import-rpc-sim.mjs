@@ -35,7 +35,9 @@ export function installImportRpcV8({ failPredicate, postCommitFailPredicate } = 
     call++;
     const probe = !!args.p_probe;
     simCalls.push({ call, key: args.p_import_key, month: args.p_month, scope: args.p_scope,
-      wipe: !!args.p_wipe, probe, n: (args.p_rows || []).length });
+      // Round 10: p_dedup is recorded too — a resume must send the options the
+      // run was started with, not re-derived defaults.
+      wipe: !!args.p_wipe, dedup: !!args.p_dedup, probe, n: (args.p_rows || []).length });
     if (failPredicate?.(call, args)) {
       return { data: null, error: { code: '500', message: 'simulated network failure' } };
     }
