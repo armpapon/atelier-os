@@ -1,14 +1,14 @@
 # Audit evidence harness
 
 Executable acceptance evidence for the independent finance audit
-(rounds 1–8, closed in v4.14 – v4.21).
+(rounds 1–9, closed in v4.14 – v4.22).
 
 ## Run it
 
 ```bash
 npm install          # once — needs the repo's own devDependencies
 node audit/evidence.mjs   # pure-logic evidence (147 checks)
-npm run test:ui           # MOUNTED CSVImporter orchestration tests (14, rounds 6–8)
+npm run test:ui           # MOUNTED CSVImporter orchestration tests (21, rounds 6–9)
 ```
 
 `npm run test:ui` renders the real `CSVImporter` under jsdom (vitest +
@@ -23,7 +23,19 @@ recovery paths, none of which pure-logic tests can reach.
 
 The mock also emulates the v8 foreign key
 `import_receipts.transaction_id → transactions(id) ON DELETE SET NULL`, so
-the "delete an imported transaction" acceptance case runs for real.
+the "delete an imported transaction" acceptance case runs for real, and the
+round-9 receipt retention purge (own rows, `created_at` older than 90 days,
+never this call's key).
+
+Round-9 cases (R1–R7) drive the cross-reload path end to end by unmounting the
+component while keeping `localStorage` and the server tables — a real page
+reload. They cover: a probe that resolves ZERO outcomes (no finalisation, no
+success screen), a PARTIAL probe (stays pending, resume finishes it), a
+multi-group reload (all mappings restored, balances + debt links applied,
+force-imported ambiguities keep category/type/account), the new-file block
+while a stored session exists, a NULL receipt mapping excluded from the
+account pass and the debt links, and the corrupt / unversioned stored-record
+handling.
 
 Exit code `0` = every check passed. Run under different timezones to verify
 device-TZ independence:
