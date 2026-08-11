@@ -5,12 +5,39 @@
 // wipe-forced-off + ord→id mapping + p_probe) by audit/import-rpc-sim.mjs,
 // with scriptable pre-execution failures AND post-commit response loss.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import React from 'react';
 
 import { CSVImporter } from '../../src/components/CSVImporter.jsx';
 import { __tables, __config, supabase } from '../mock-supabase.mjs';
 import { installImportRpcV8, simCalls, resetSim } from '../import-rpc-sim.mjs';
+
+// ── Recovery-record storage (round 10) ─────────────────────────────────────
+// v4.22 kept every session at the single key 'loop:import-session'; v4.23
+// namespaces one slot per session key ('loop:import-session:<importKey>') and
+// still reads/migrates the legacy key. These helpers therefore address "the
+// pending record(s)", not a fixed key — the round 6–9 assertions below are
+// unchanged in meaning.
+const LEGACY_KEY = 'loop:import-session';
+const SLOT_PREFIX = 'loop:import-session:';
+function storedSlots() {
+  const out = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const k = window.localStorage.key(i);
+    if (k === LEGACY_KEY || (k && k.startsWith(SLOT_PREFIX))) {
+      out.push([k, window.localStorage.getItem(k)]);
+    }
+  }
+  return out.sort();
+}
+function storedRaw() {
+  const slots = storedSlots();
+  return slots.length ? slots[0][1] : null;
+}
+function storedRecord() {
+  const raw = storedRaw();
+  return raw ? JSON.parse(raw) : null;
+}
 
 async function uploadCsv(container, csvText) {
   const input = container.querySelector('input[type="file"]');
@@ -19,8 +46,8 @@ async function uploadCsv(container, csvText) {
   await screen.findByText(/ตัวเลือก IMPORT/);
 }
 
-function importButton() {
-  return screen.getByRole('button', { name: /Import \d+ รายการ/ });
+function importButton(scope = screen) {
+  return scope.getByRole('button', { name: /Import \d+ รายการ/ });
 }
 
 beforeEach(() => {
@@ -351,8 +378,8 @@ describe('CSVImporter orchestration (round 8)', () => {
     expect(__tables.import_receipts).toHaveLength(2);
     // Round 9 (M2): the record is now the COMPLETE session — every group plus
     // the row payloads needed to finish the job — not just the group in flight.
-    const stored = JSON.parse(window.localStorage.getItem('loop:import-session'));
-    expect(stored.v).toBe(2);
+    const stored = storedRecord();
+    expect(stored.v).toBe(3);                    // round 10: namespaced record
     expect(stored.groups).toHaveLength(1);
     expect(stored.groups[0].ords).toHaveLength(2);
     expect(stored.groups[0].month).toBe('2026-08');
@@ -374,7 +401,7 @@ describe('CSVImporter orchestration (round 8)', () => {
     fireEvent.click(importButton());                    // the recovery read
     await screen.findByText(/Import สำเร็จ!/);
     expect(__tables.transactions).toHaveLength(2);      // no duplicates
-    expect(window.localStorage.getItem('loop:import-session')).toBeNull();
+    expect(storedRaw()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /ปิดและดูรายการ/ }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -427,7 +454,7 @@ describe('CSVImporter orchestration (round 8)', () => {
     await screen.findByText(/Import สำเร็จ!/);
     expect(__tables.transactions).toHaveLength(0);      // NOT resurrected
     expect(__tables.debt_payments).toHaveLength(0);     // no link to a dead id
-    expect(window.localStorage.getItem('loop:import-session')).toBeNull();
+    expect(storedRaw()).toBeNull();
   });
 
   it('(A5) a stored session survives a page reload → the mount banner runs a read-only probe that restores the outcome', async () => {
@@ -438,7 +465,7 @@ describe('CSVImporter orchestration (round 8)', () => {
     fireEvent.click(importButton());
     await screen.findByText(/Import ไม่สำเร็จ/);
     expect(__tables.transactions).toHaveLength(1);
-    expect(window.localStorage.getItem('loop:import-session')).toBeTruthy();
+    expect(storedRaw()).toBeTruthy();
 
     cleanup();                                          // ← the page reload
     const before = simCalls.length;
@@ -450,7 +477,7 @@ describe('CSVImporter orchestration (round 8)', () => {
     expect(simCalls[before].probe).toBe(true);          // read-only reconstruction
     expect(__tables.transactions).toHaveLength(1);      // nothing re-inserted
     expect(__tables.import_receipts).toHaveLength(1);
-    expect(window.localStorage.getItem('loop:import-session')).toBeNull();
+    expect(storedRaw()).toBeNull();
   });
 });
 
@@ -480,7 +507,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     await screen.findByText(/Import ไม่สำเร็จ/);
     expect(__tables.transactions).toHaveLength(0);
     expect(__tables.import_receipts).toHaveLength(0);
-    expect(window.localStorage.getItem('loop:import-session')).toBeTruthy();
+    expect(storedRaw()).toBeTruthy();
 
     reload();                                            // ← the page reload
     await screen.findByText(/มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง/);
@@ -493,11 +520,11 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     expect(screen.queryByText(/รายการใหม่/)).toBeNull();       // no stats, no done screen
     expect(__tables.transactions).toHaveLength(0);
     // NOT cleared by the probe — only the explicit, informed action clears it.
-    expect(window.localStorage.getItem('loop:import-session')).toBeTruthy();
+    expect(storedRaw()).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /เข้าใจแล้ว — ล้างและเริ่มใหม่/ }));
     await waitFor(() =>
-      expect(window.localStorage.getItem('loop:import-session')).toBeNull());
+      expect(storedRaw()).toBeNull());
     expect(screen.queryByText(/ยังไม่ได้นำเข้า/)).toBeNull();
   });
 
@@ -516,7 +543,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     fireEvent.click(importButton());
     await screen.findByText(/Import ไม่สำเร็จ/);
     expect(__tables.transactions).toHaveLength(2);       // July committed
-    const stored = JSON.parse(window.localStorage.getItem('loop:import-session'));
+    const stored = storedRecord();
     expect(stored.groups).toHaveLength(2);               // BOTH groups persisted
     expect(stored.rows).toHaveLength(3);
 
@@ -527,7 +554,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     await screen.findByText(/นำเข้าไปแล้วบางส่วน — ยังไม่จบ/);
     expect(screen.queryByText('Import สำเร็จ!')).toBeNull();     // never a success
     await screen.findByText(/บันทึกไปแล้ว 2 จาก 3 รายการ/);
-    expect(window.localStorage.getItem('loop:import-session')).toBeTruthy();
+    expect(storedRaw()).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /ทำต่อให้จบ/ }));
     await screen.findByText('Import สำเร็จ!');
@@ -535,7 +562,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
       .toEqual(['กาแฟ', 'ข้าวเที่ยง', 'ค่าหนังสือ'].sort());     // no duplicates
     expect(__tables.import_receipts).toHaveLength(3);
     expect(new Set(simCalls.map(c => c.key)).size).toBe(1);       // ONE key throughout
-    expect(window.localStorage.getItem('loop:import-session')).toBeNull();
+    expect(storedRaw()).toBeNull();
   });
 
   it('(R3) multi-group reload → every group\'s mappings restored, balances + debt links applied, force-imported ambiguity keeps category/type/account', async () => {
@@ -567,7 +594,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
 
     fireEvent.click(importButton());
     await screen.findByText(/Import ไม่สำเร็จ/);
-    const stored = JSON.parse(window.localStorage.getItem('loop:import-session'));
+    const stored = storedRecord();
     expect(stored.groups.map(g => g.month).sort()).toEqual(['2026-07', '2026-08']);
     expect(stored.rows).toHaveLength(2);
     expect(stored.debtLinks).toHaveLength(1);
@@ -602,7 +629,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     expect(__tables.debt_payments).toHaveLength(1);
     expect(__tables.debt_payments[0].transaction_id)
       .toBe(__tables.transactions.find(t => t.title === 'KTC Krung ชำระบัตร').id);
-    expect(window.localStorage.getItem('loop:import-session')).toBeNull();
+    expect(storedRaw()).toBeNull();
   });
 
   it('(R4) a new file cannot be uploaded while a stored session exists — only recovery or an explicit informed discard unblocks it', async () => {
@@ -612,7 +639,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     await uploadCsv(container, 'Date,Description,Amount\n05/08/2026,กาแฟ,-65\n');
     fireEvent.click(importButton());
     await screen.findByText(/Import ไม่สำเร็จ/);
-    const before = window.localStorage.getItem('loop:import-session');
+    const before = storedRaw();
     expect(before).toBeTruthy();
 
     const { container: c2 } = reload();                  // ← the page reload
@@ -626,7 +653,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     await waitFor(() => expect(window.alert).toHaveBeenCalled());
     expect(String(window.alert.mock.calls.at(-1)[0])).toMatch(/มีการนำเข้าค้างอยู่จากครั้งก่อน/);
     expect(screen.queryByText(/ตัวเลือก IMPORT/)).toBeNull();       // never reached preview
-    expect(window.localStorage.getItem('loop:import-session')).toBe(before);   // intact
+    expect(storedRaw()).toBe(before);   // intact
 
     // Explicit informed discard — the confirm names the session and groups.
     fireEvent.click(screen.getByRole('button', { name: /ทิ้งการกู้คืนนี้/ }));
@@ -636,7 +663,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     expect(msg).toMatch(/ส่วนตัว 2026-08 \(1 รายการ\)/);
     expect(msg).toMatch(/ยังไม่ได้ตรวจสอบ/);
     await waitFor(() =>
-      expect(window.localStorage.getItem('loop:import-session')).toBeNull());
+      expect(storedRaw()).toBeNull());
 
     // Now a new file is accepted.
     fireEvent.change(c2.querySelector('input[type="file"]'), { target: { files: [
@@ -717,6 +744,6 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /ทิ้งการกู้คืนนี้/ }));
     await waitFor(() =>
-      expect(window.localStorage.getItem('loop:import-session')).toBeNull());
+      expect(storedRaw()).toBeNull());
   });
 });

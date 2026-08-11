@@ -10,17 +10,17 @@ import {
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 
-// ── Round-8 B2 / round-9 M2: the COMPLETE import session, survivable across
-//    reloads ────────────────────────────────────────────────────────────────
+// ── Round-8 B2 / round-9 M2 / round-10: the COMPLETE import session,
+//    survivable across reloads AND across tabs ──────────────────────────────
 // A post-commit response loss leaves rows (and receipts) on the server that
 // this tab never heard about. Round 8 persisted only the group that happened
 // to be in flight, so after a reload `stats.plan` was empty, earlier groups
 // were invisible, the account/debt side effects could not be reconstructed and
 // force-imported ambiguities lost their category/type/account.
 //
-// v2 of the record therefore persists the WHOLE job:
+// The record therefore persists the WHOLE job:
 //   { v, key, at, startedAt,
-//     groups:  [{ scope, month, wipe, ords[] }]      — every group, not one
+//     groups:  [{ scope, month, wipe, dedup, ords[] }] — every group, not one
 //     rows:    [{ _rid, scope, month, occurred_at, title, amount, category,
 //                 type, note, account_id, _pocket, _cp_bal, _synthetic,
 //                 _force }]                          — enough to FINISH the job
@@ -30,12 +30,30 @@ import { parseKBankPDF } from '../lib/kbankPdfParser.js';
 // It is written as the plan is finalised, updated as each group and each
 // side-effect stage completes, and dropped ONLY on authoritative full
 // completion or an explicit informed discard.
-const SESSION_LS_KEY = 'loop:import-session';
-const SESSION_RECORD_V = 2;
+//
+// ── Round-10 case 1: ONE KEY PER SESSION, NOT ONE KEY PER BROWSER ──────────
+// v4.22 stored every session at the single key 'loop:import-session'. Two open
+// tabs therefore shared one slot: tab A's write overwrote tab B's record and
+// tab A's completion deleted it, so B's lost-response session became
+// unrecoverable. Records now live at 'loop:import-session:<importKey>', one
+// slot per session; a tab may only ever write or remove the slot of the key it
+// OWNS, and the legacy single key is read and migrated on mount so v4.22
+// records survive the upgrade.
+//
+// ── Round-10 case 5 (F2): startedAt is IMMUTABLE ───────────────────────────
+// `at` is the last-updated stamp (display only). `startedAt` is written once,
+// when the session key is minted, and never refreshed — it is the only sound
+// clock for the staleness rule below, because it is the receipts' age too.
+const SESSION_LS_PREFIX = 'loop:import-session:';
+const SESSION_LS_LEGACY_KEY = 'loop:import-session';   // v4.22 and older
+const SESSION_LS_PROBE_KEY = 'loop:import-session-probe';
+const SESSION_RECORD_V = 3;                            // v3 = namespaced + per-group dedup
+const SESSION_READABLE_V = new Set([2, 3]);
 // Server-side receipts are purged after 90 days (migration_add_import_rpc.sql,
-// round-9 retention). Refuse to reconstruct a record older than 60 days: with a
-// 30-day margin below the purge horizon, "the probe resolved zero outcomes" can
-// only ever mean "nothing committed", never "the receipts were purged".
+// round-9 retention). Refuse to reconstruct a record whose session STARTED
+// more than 60 days ago: with a 30-day margin below the purge horizon, "the
+// probe resolved zero outcomes" can only ever mean "nothing committed", never
+// "the receipts were purged".
 const SESSION_MAX_AGE_MS = 60 * 24 * 3600 * 1000;
 // Guard rail, not a quota: ~500 KB of JSON is far more than any real statement
 // (a 5 000-row import is ≈ 1 MB of payload, and Make exports are in the low
@@ -43,40 +61,63 @@ const SESSION_MAX_AGE_MS = 60 * 24 * 3600 * 1000;
 // "resume disabled, verify manually" — never a half-written record.
 const SESSION_MAX_CHARS = 512 * 1024;
 
-/** Shape sanity check + degraded flag. Returns null for anything unusable. */
+/** Storage refused the recovery record. Round-10 case 4: this ABORTS the run. */
+class SessionStorageError extends Error {
+  constructor(message) { super(message); this.name = 'SessionStorageError'; }
+}
+const isSessionStorageError = (e) => e?.name === 'SessionStorageError';
+const SESSION_STORAGE_ABORT_MSG =
+  'บันทึกจุดกู้คืนไม่ได้ (พื้นที่เก็บข้อมูลเต็ม) — ยังไม่ได้นำเข้าอะไรทั้งสิ้น '
+  + 'กรุณาเพิ่มพื้นที่ว่างของเบราว์เซอร์ (หรือออกจากโหมดไม่ระบุตัวตน) แล้วกด Import อีกครั้ง';
+
+/** Shape sanity check + degraded/age flags. Returns null for anything unusable. */
 function normalizeSession(s) {
   if (!s?.key || !Array.isArray(s.groups)) return null;
-  const groups = s.groups.filter(g =>
-    g && g.scope && /^\d{4}-\d{2}$/.test(String(g.month || '')) &&
-    Array.isArray(g.ords) && g.ords.length);
+  const groups = s.groups
+    .filter(g => g && g.scope && /^\d{4}-\d{2}$/.test(String(g.month || '')) &&
+      Array.isArray(g.ords) && g.ords.length)
+    .map(g => ({
+      ...g, scope: g.scope, month: g.month, ords: g.ords,
+      wipe: !!g.wipe,
+      // Round-10 case 3: every option that changes what a call MEANS is part
+      // of the record. A v2 record has no per-group dedup — unknown resolves
+      // to the safe value (dedup ON can never create a duplicate; OFF can).
+      dedup: g.dedup === undefined || g.dedup === null ? true : !!g.dedup,
+    }));
   if (!groups.length) return null;
   const rows = Array.isArray(s.rows) ? s.rows : [];
+  const startedAt = Number.isFinite(s.startedAt) ? s.startedAt : null;
   return {
     ...s, v: SESSION_RECORD_V, groups, rows,
-    // No row payload ⇒ the job cannot be finished from storage: probe-only.
-    degraded: !!s.degraded || rows.length === 0,
+    startedAt,
+    // Round-10 case 5: no immutable start stamp ⇒ the age is UNKNOWN, so the
+    // record may be probed but never resumed and never trusted on a zero.
+    unknownAge: startedAt === null,
+    at: Number.isFinite(s.at) ? s.at : (startedAt ?? Date.now()),
+    // No row payload (or no trustworthy age) ⇒ the job cannot be finished
+    // from storage: probe-only.
+    degraded: !!s.degraded || rows.length === 0 || startedAt === null,
     doneGroups: Array.isArray(s.doneGroups) ? s.doneGroups : [],
     debtLinks:  Array.isArray(s.debtLinks)  ? s.debtLinks  : [],
     pockets:    Array.isArray(s.pockets)    ? s.pockets    : [],
   };
 }
 
-function readStoredImportSession() {
-  let raw = null;
-  try { raw = globalThis.localStorage?.getItem(SESSION_LS_KEY); } catch { return null; }
+function parseSessionRecord(raw) {
   if (!raw) return null;
   let s;
   try { s = JSON.parse(raw); } catch { return null; }   // corrupt → ignore safely
   if (!s || typeof s !== 'object') return null;
-  if (s.v === SESSION_RECORD_V) return normalizeSession(s);
+  if (SESSION_READABLE_V.has(Number(s.v))) return normalizeSession(s);
   // v4.21 shipped an UNVERSIONED single-group record { key, ords, scope,
   // month }. It still names real receipts, so it is upgraded rather than
   // thrown away — but it carries no row payload, so it lands degraded
   // (probe-only, resume disabled).
   if (!s.v && s.key && Array.isArray(s.ords) && s.ords.length && s.scope && s.month) {
     return normalizeSession({
-      v: SESSION_RECORD_V, key: s.key, at: s.at ?? Date.now(), startedAt: s.at ?? Date.now(),
-      groups: [{ scope: s.scope, month: s.month, wipe: false, ords: s.ords }],
+      v: SESSION_RECORD_V, key: s.key, at: s.at ?? Date.now(),
+      startedAt: Number.isFinite(s.at) ? s.at : null,
+      groups: [{ scope: s.scope, month: s.month, wipe: false, dedup: true, ords: s.ords }],
       rows: [], pockets: [], debtLinks: [], createAccts: false, makeFmt: false,
       degraded: true, doneGroups: [], sideEffects: {},
     });
@@ -85,26 +126,105 @@ function readStoredImportSession() {
 }
 
 /**
- * Write the record, degrading rather than corrupting. Returns what was
- * actually stored (null = nothing could be stored) so the in-memory mirror
- * never claims more than localStorage holds.
+ * Round-10 case 1: enumerate EVERY pending record, not just one. `migrate`
+ * moves a v4.22 single-key record into its own namespaced slot — the only
+ * write this function ever performs, and only on mount.
+ */
+function listStoredSessions({ migrate = false } = {}) {
+  const out = [];
+  let ls = null;
+  try { ls = globalThis.localStorage || null; } catch { return out; }
+  if (!ls) return out;
+  const seen = new Set();
+  const add = (rec) => { if (rec && !seen.has(rec.key)) { seen.add(rec.key); out.push(rec); } };
+
+  try {
+    const rec = parseSessionRecord(ls.getItem(SESSION_LS_LEGACY_KEY));
+    if (rec) {
+      if (migrate) {
+        // Give it its own slot so a second tab can never overwrite it.
+        // Unreadable data is left exactly where it is — we never delete what
+        // we could not parse.
+        try {
+          ls.setItem(SESSION_LS_PREFIX + rec.key, JSON.stringify(rec));
+          ls.removeItem(SESSION_LS_LEGACY_KEY);
+        } catch { /* read-only storage: the legacy copy stays readable */ }
+      }
+      add(rec);
+    }
+  } catch { /* storage disabled */ }
+
+  try {
+    const slots = [];
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k && k.startsWith(SESSION_LS_PREFIX)) slots.push(k);
+    }
+    slots.sort();
+    for (const k of slots) {
+      const rec = parseSessionRecord(ls.getItem(k));
+      // A record must live in the slot named after its OWN key, otherwise it
+      // has been tampered with or half-migrated — ignore it.
+      if (rec && SESSION_LS_PREFIX + rec.key === k) add(rec);
+    }
+  } catch { /* storage disabled */ }
+
+  out.sort((a, b) => (a.startedAt ?? a.at ?? 0) - (b.startedAt ?? b.at ?? 0));
+  return out;
+}
+
+/**
+ * Round-10 case 4: prove storage accepts a write BEFORE anything is sent to
+ * the server. An import we cannot record is an import we cannot recover.
+ */
+function assertSessionStorageWritable() {
+  try {
+    const ls = globalThis.localStorage;
+    if (!ls) throw new Error('localStorage is not available');
+    ls.setItem(SESSION_LS_PROBE_KEY, '1');
+    ls.removeItem(SESSION_LS_PROBE_KEY);
+  } catch (e) {
+    throw new SessionStorageError(e?.message || String(e));
+  }
+}
+
+/**
+ * Write the record into ITS OWN slot, degrading rather than corrupting.
+ * Returns what was actually stored; THROWS SessionStorageError when nothing
+ * could be stored, so no caller can proceed believing it is recoverable.
  */
 function writeStoredImportSession(rec) {
+  const slot = SESSION_LS_PREFIX + rec.key;
   const put = (r) => {
     const json = JSON.stringify(r);
     if (json.length > SESSION_MAX_CHARS) return false;
-    globalThis.localStorage?.setItem(SESSION_LS_KEY, json);
+    const ls = globalThis.localStorage;
+    if (!ls) throw new Error('localStorage is not available');
+    ls.setItem(slot, json);
     return true;
   };
   try {
     if (put(rec)) return rec;
     const lite = { ...rec, rows: [], pockets: [], degraded: true };
     if (put(lite)) return lite;
-    return null;   // even the plan alone will not fit — write NOTHING
-  } catch { return null; }   // storage disabled / quota
+  } catch (e) {
+    throw new SessionStorageError(e?.message || String(e));   // disabled / quota
+  }
+  throw new SessionStorageError('recovery record too large to store');
 }
-function clearStoredImportSession() {
-  try { globalThis.localStorage?.removeItem(SESSION_LS_KEY); } catch { /* storage disabled */ }
+
+/** Removes ONE session's slot — never any other tab's. */
+function clearStoredImportSession(key) {
+  if (!key) return;
+  try {
+    const ls = globalThis.localStorage;
+    if (!ls) return;
+    ls.removeItem(SESSION_LS_PREFIX + key);
+    // A legacy record that could not be migrated (storage was read-only then)
+    // still belongs to THIS key — remove it, and nothing else.
+    const legacy = parseSessionRecord(ls.getItem(SESSION_LS_LEGACY_KEY));
+    if (legacy?.key === key) ls.removeItem(SESSION_LS_LEGACY_KEY);
+  } catch { /* storage disabled */ }
 }
 
 const TYPE_ICONS  = { food: '🍜', transport: '🚗', bills: '💡', income: '💰', shop: '🛍', family: '❤️', other: '📦' };
@@ -421,37 +541,105 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   const [pendingRecovery, setPendingRecovery] = useState(null);
   const pendingRecoveryRef = useRef(null);
 
-  // ── Round-9 M2/M3: the persisted session record ──────────────────────────
-  // storedSession = a record found in localStorage that has NOT yet been
-  // recovered or explicitly discarded. It gates every action that would start
-  // new work (M3), and it is the only route back to those rows.
-  const [storedSession, setStoredSession] = useState(() => readStoredImportSession());
+  // ── Round-9 M2/M3 + round-10 case 1: the persisted session records ───────
+  // allSessions = EVERY pending record in localStorage (this tab's and other
+  // tabs'). storedSession = the one THIS tab has adopted and is responsible
+  // for; it gates every action that would start new work (M3), and it is the
+  // only route back to those rows.
+  //
+  // OWNERSHIP (the round-10 semantics, stated in the audit reply):
+  //  · A tab owns at most ONE session key — `ownedKeyRef` — set when it mints
+  //    a key for a new import, or when it adopts a stored record.
+  //  · A tab may write/patch/remove ONLY its owned key's slot. Another tab's
+  //    record is read for display and never touched.
+  //  · On mount, exactly one pending record ⇒ adopt it (a reload is
+  //    indistinguishable from another tab, and adopting is the safe default,
+  //    unchanged from v4.22). More than one ⇒ adopt NONE and let the user
+  //    pick, so a tab is never silently bound to a session it did not start.
+  //  · The new-work gate looks at the ADOPTED record only, so an unrelated
+  //    tab's pending session can never permanently lock this tab — a new
+  //    import mints its own key and cannot collide with it.
+  const [allSessions, setAllSessions] = useState(() => listStoredSessions({ migrate: true }));
+  const [adoptedKey, setAdoptedKey] = useState(
+    () => (allSessions.length === 1 ? allSessions[0].key : null));
+  const ownedKeyRef = useRef(adoptedKey);
+  const sessionStartedAtRef = useRef(null);
+  const storedSession = allSessions.find(s => s.key === adoptedKey) || null;
+  const otherSessions = allSessions.filter(s => s.key !== adoptedKey);
   const storedSessionRef = useRef(storedSession);
+  storedSessionRef.current = storedSession;
   const [recovering, setRecovering] = useState(false);
   // What the recovery probe actually found: null | {kind:'none'|'partial'
-  // |'degraded'|'stale', …}. 'none' and 'partial' must NEVER reach the done
-  // screen (round-9 M1).
+  // |'degraded'|'stale'|'unknown-age', …}. 'none' and 'partial' must NEVER
+  // reach the done screen (round-9 M1).
   const [recoveryReport, setRecoveryReport] = useState(null);
   const sessionRecordRef = useRef(storedSession);
 
-  /** Persist the complete record. Refuses to clobber a DIFFERENT session. */
+  /**
+   * Persist the complete record into ITS OWN slot. Refuses to touch a
+   * different session's key (round-10 case 1), and THROWS when storage
+   * refuses the write (round-10 case 4) — callers before a write must abort.
+   */
   const persistSession = (rec) => {
-    const blocking = storedSessionRef.current;
-    if (blocking && blocking.key !== rec.key) return;   // M3: never implicitly
+    if (!rec?.key) return;
+    if (ownedKeyRef.current && ownedKeyRef.current !== rec.key) return;   // not ours
+    ownedKeyRef.current = rec.key;
     sessionRecordRef.current = writeStoredImportSession(rec);
   };
   const patchSession = (patch) => {
     const cur = sessionRecordRef.current;
     if (!cur) return;
-    persistSession({ ...cur, ...patch, at: Date.now() });
+    // startedAt is immutable (round-10 case 5) — `at` is the display stamp.
+    persistSession({ ...cur, ...patch, startedAt: cur.startedAt, at: Date.now() });
+  };
+  /**
+   * Post-commit bookkeeping. The write already happened, so a storage failure
+   * here can abort nothing: the pre-write record already names every group
+   * and every row, and the server receipts keep a resumed wipe idempotent.
+   */
+  const patchSessionSoft = (patch) => {
+    try { patchSession(patch); } catch { /* recovery record is already on disk */ }
   };
   const dropStoredSession = () => {
-    clearStoredImportSession();
+    const key = ownedKeyRef.current
+      || sessionRecordRef.current?.key || storedSessionRef.current?.key || null;
+    clearStoredImportSession(key);          // ONLY this tab's own slot
     sessionRecordRef.current = null;
     storedSessionRef.current = null;
-    setStoredSession(null);
+    ownedKeyRef.current = null;
+    setAllSessions(prev => prev.filter(r => r.key !== key));
+    setAdoptedKey(null);
     setRecoveryReport(null);
   };
+  /** Take responsibility for one of several pending records (the picker). */
+  const adoptStoredSession = (key) => {
+    if (importing || recovering) return;
+    if (ownedKeyRef.current && ownedKeyRef.current !== key) return;
+    const rec = allSessions.find(s => s.key === key);
+    if (!rec) return;
+    ownedKeyRef.current = key;
+    sessionRecordRef.current = rec;
+    setAdoptedKey(key);
+    setRecoveryReport(null);
+  };
+
+  // Round-10 case 1: another tab created, finished or discarded a session.
+  // Refresh what we SHOW; never touch what we own (a `storage` event is a
+  // notification, not permission to rewrite our own in-memory record).
+  useEffect(() => {
+    const onStorage = (e) => {
+      const k = e?.key;
+      if (k && k !== SESSION_LS_LEGACY_KEY && !String(k).startsWith(SESSION_LS_PREFIX)) return;
+      const owned = ownedKeyRef.current;
+      const fromDisk = listStoredSessions().filter(r => r.key !== owned);
+      setAllSessions(prev => {
+        const mine = prev.find(r => r.key === owned);
+        return mine ? [mine, ...fromDisk] : fromDisk;
+      });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const beginPendingRecovery = (info) => {
     pendingRecoveryRef.current = info;
@@ -576,14 +764,16 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     markSideEffects(pending);
     // The record dies ONLY here — authoritative full completion. While a side
     // effect is still outstanding it stays, so a reload can finish the job.
-    if (pending) patchSession({ sideEffects: { accounts: !accountFail, debts: !debtFails.length } });
+    if (pending) patchSessionSoft({ sideEffects: { accounts: !accountFail, debts: !debtFails.length } });
     else dropStoredSession();
 
     setImportStats({
       inserted: insertedTotal, skipped: S.dupSkipped, debtLinked, skippedDeleted,
       ambiguousSkipped: S.ambiguousSkipped, ambiguousImported: S.ambiguousImported,
       accountsCreated: S.accountsCreated,
-      wipedMonths: S.wipeExecuted ? S.monthArr.length : 0,
+      // A resumed run reports the wipes IT executed (round-10 case 2); the
+      // primary path still reports "every month in the plan".
+      wipedMonths: S.wipedMonths ?? (S.wipeExecuted ? S.monthArr.length : 0),
     });
     setStep('done');
     onImported?.();
@@ -608,7 +798,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         ? { accounts: accountFail, debtFails: stillFailed }
         : null;
       markSideEffects(stillPending);
-      if (stillPending) patchSession({ sideEffects: { accounts: !accountFail, debts: !stillFailed.length } });
+      if (stillPending) patchSessionSoft({ sideEffects: { accounts: !accountFail, debts: !stillFailed.length } });
       else dropStoredSession();
       // Round-8 follow-up 1: the retry writes the SAME account balances and
       // debt payments the primary path writes, so it must refresh Finance the
@@ -646,7 +836,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     if (recovering || importing) return;
     const rec = storedSessionRef.current;
     if (!rec) return;
-    if (Date.now() - (rec.at || 0) > SESSION_MAX_AGE_MS) {
+    // ── Round-10 case 5 (F2) ── The age that matters is the age of the
+    // RECEIPTS, i.e. when the session STARTED — never `at`, which every patch
+    // refreshes. A record created on day 0 and patched on day 59 looked one
+    // day old while its receipts were three weeks from the purge horizon.
+    if (rec.startedAt != null && Date.now() - rec.startedAt > SESSION_MAX_AGE_MS) {
       // Older than the receipt retention margin — a probe could read "zero"
       // from a purge and mislead. Say so instead of guessing.
       setRecoveryReport({ kind: 'stale', total: totalOrds(rec), resolved: 0 });
@@ -683,7 +877,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         committedRef.current = new Map();
         unmappedRef.current = new Set();
         syncCommitted();
-        setRecoveryReport({ kind: 'none', total, resolved: 0 });
+        // Round-10 case 5: on a record with no immutable start stamp, a zero
+        // could equally be a purge artefact. Do not claim "nothing imported".
+        setRecoveryReport({ kind: rec.unknownAge ? 'unknown-age' : 'none', total, resolved: 0 });
         return;
       }
       if (rec.degraded) {
@@ -749,6 +945,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
    * reconstructed by the RPC (never re-inserted) and unsettled ords are
    * processed, so one response per group describes that group completely and
    * nothing can be double-counted.
+   *
+   * Round-10 cases 2 + 3: every per-group option comes from the RECORD, never
+   * from a re-derived default. `wipe: false, dedup: true` was wrong twice —
+   * a group that never ran lost its "replace the month" intent (the month kept
+   * its stale rows for ever), and a run with "ข้ามรายการซ้ำ" switched OFF had
+   * dedup silently switched back ON, so its deliberate near-duplicates were
+   * dropped.
    */
   const resumeStoredSession = async () => {
     if (importing || recovering) return;
@@ -763,22 +966,32 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         if (!byGroup.has(k)) byGroup.set(k, []);
         byGroup.get(k).push(r);
       }
-      let dupSkipped = 0, noMapInserted = 0;
+      const groupMeta = new Map((rec.groups || []).map(g => [`${g.scope}|${g.month}`, g]));
+      let dupSkipped = 0, noMapInserted = 0, wipedMonths = 0;
       const discovered = [];
       const done = new Set(rec.doneGroups || []);
       for (const [k, rows] of byGroup) {
         const [sc, ym] = k.split('|');
+        const meta = groupMeta.get(k) || {};
+        // A group that already committed must never be wiped again: its ords
+        // carry receipts (found by the probe) or it is recorded as done. The
+        // v8 receipts force the wipe off server-side too, but the client's
+        // INTENT has to match — a resume must not ask for a destructive
+        // operation it knows has already happened.
+        const alreadyCommitted = done.has(k)
+          || rows.some(r => committedRef.current.has(r._rid));
+        const wipeEff  = !!meta.wipe && !alreadyCommitted;
+        const dedupEff = meta.dedup !== false;
         beginPendingRecovery({ key: rec.key, ords: rows.map(r => r._rid), scope: sc, month: ym });
         let res;
         try {
           res = await importTransactionsBatch({
-            // wipe stays OFF: a resume can only ever follow a call that
-            // already wiped-and-filled, or one that never ran at all.
-            scope: sc, month: ym, wipe: false, dedup: true,
+            scope: sc, month: ym, wipe: wipeEff, dedup: dedupEff,
             rows, importKey: rec.key,
           });
         } catch (e) { settlePendingRecovery(e); throw e; }
         clearPendingRecovery();
+        if (wipeEff) wipedMonths++;
         for (const m of res.inserted) committedRef.current.set(m.ord, m.transaction_id);
         if (!res.inserted.length && res.insertedCount > 0) {
           const ambOrds = new Set(res.ambiguous.map(a => a.ord));
@@ -794,10 +1007,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           discovered.push({ row: rowFromRecord(rec, a, { scope: sc }), incoming: a.incoming, existing: a.existing });
         }
         done.add(k);
-        patchSession({ doneGroups: [...done] });
+        patchSessionSoft({ doneGroups: [...done] });
       }
 
-      const stats = statsFromRecord(rec, { dupSkipped, noMapInserted });
+      const stats = statsFromRecord(rec, { dupSkipped, noMapInserted, wipedMonths });
       setRecoveryReport(null);
       if (discovered.length) {
         pendingStatsRef.current = stats;
@@ -813,16 +1026,21 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     } finally { setImporting(false); }
   };
 
+  /** When the session STARTED (immutable) — '(ไม่ทราบเวลา)' if unknown. */
+  const sessionWhen = (rec) => {
+    if (rec?.startedAt == null) return '(ไม่ทราบเวลา)';
+    try {
+      return new Date(rec.startedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    } catch { return '(ไม่ทราบเวลา)'; }
+  };
+  const describeGroups = (rec) => (rec?.groups || [])
+    .map(g => `${g.scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว'} ${g.month} (${g.ords.length} รายการ)`)
+    .join(', ');
+
   /** Human-readable identity of the stored session, for the discard confirm. */
   const describeStoredSession = (rec) => {
-    let when = '(ไม่ทราบเวลา)';
-    try {
-      when = new Date(rec.at || Date.now())
-        .toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-    } catch { /* locale unavailable */ }
-    const groups = (rec.groups || [])
-      .map(g => `${g.scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว'} ${g.month} (${g.ords.length} รายการ)`)
-      .join(', ');
+    const when = sessionWhen(rec);
+    const groups = describeGroups(rec);
     const known = [...committedRef.current.values()].filter(v => v != null).length;
     const knownTxt = committedRef.current.size || recoveryReport
       ? `ตรวจสอบแล้ว: บันทึกลงระบบไปแล้ว ${known} รายการ`
@@ -857,9 +1075,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
     setImporting(true); setError(null);
     try {
+      // ── Round-10 case 4 ── An import we cannot record is an import we
+      // cannot recover. Prove storage takes a write BEFORE anything (account
+      // shells included, let alone a transaction RPC) is sent to the server.
+      assertSessionStorageWritable();
       if (!importKeyRef.current) {
         importKeyRef.current = (globalThis.crypto?.randomUUID?.()
           ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        // Written once, never refreshed — the receipts' own clock (case 5).
+        sessionStartedAtRef.current = Date.now();
       }
 
       // Detect month range of selected rows (for dedup / wipe)
@@ -922,7 +1146,12 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         const ym = bangkokMonth(r.occurred_at);
         if (!ym) continue;
         const k = `${r.scope}|${ym}`;
-        if (!planGroups.has(k)) planGroups.set(k, { scope: r.scope, month: ym, wipe: !!wipeMonth, ords: [] });
+        // Round-10 case 3: the record carries the EXACT options each group is
+        // sent with, so a resume repeats the run instead of re-deriving it.
+        if (!planGroups.has(k)) planGroups.set(k, {
+          scope: r.scope, month: ym,
+          wipe: !!wipeMonth, dedup: !!(dedup && !wipeMonth), ords: [],
+        });
         planGroups.get(k).ords.push(r._rid);
         sessionRows.push({
           _rid: r._rid, scope: r.scope, month: ym,
@@ -951,7 +1180,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         }
         persistSession({
           v: SESSION_RECORD_V, key: importKeyRef.current,
-          at: Date.now(), startedAt: sessionRecordRef.current?.startedAt ?? Date.now(),
+          at: Date.now(),
+          startedAt: sessionRecordRef.current?.startedAt
+            ?? sessionStartedAtRef.current ?? Date.now(),
           groups: [...planGroups.values()],
           rows: sessionRows,
           pockets: (createAccts && makeFmt) ? extractAccountsFromMapped(plan) : [],
@@ -997,7 +1228,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
             else ambiguousSkipped++;   // v4 count-only: cannot round-trip
           }
           doneGroups.add(key);
-          patchSession({ doneGroups: [...doneGroups] });
+          patchSessionSoft({ doneGroups: [...doneGroups] });
         }
         usedRpc = true;
       } catch (err) {
@@ -1071,7 +1302,12 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
       await finalizeImport(stats);
     } catch (err) {
-      setError('Import ไม่สำเร็จ: ' + (err.message || String(err)) +
+      // Round-10 case 4: a storage refusal is thrown BEFORE any write, so the
+      // plan is still intact and nothing reached the server. Say exactly that
+      // instead of "กด Import ซ้ำได้เลย" — retrying without freeing space
+      // would only hit the same wall.
+      if (isSessionStorageError(err)) setError(SESSION_STORAGE_ABORT_MSG);
+      else setError('Import ไม่สำเร็จ: ' + (err.message || String(err)) +
         ' — กด Import ซ้ำได้เลย ระบบจะทำต่อเฉพาะส่วนที่ยังไม่สำเร็จ (ไม่มีการเบิ้ล)');
     } finally { setImporting(false); }
   };
@@ -1093,6 +1329,26 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         .filter(r => !committedRef.current.has(r._rid));   // retry: skip committed
 
       if (approved.length) {
+        // ── Round-10 case 4 (force phase) ── Answering an ambiguity CHANGES
+        // what this session means: these ords will be reopened and inserted.
+        // Record that intent first — if storage refuses, nothing is sent.
+        const cur = sessionRecordRef.current;
+        if (cur) {
+          const forced = new Set(approved.map(r => r._rid));
+          const known  = new Set((cur.rows || []).map(r => r._rid));
+          const rows = (cur.rows || [])
+            .map(r => (forced.has(r._rid) ? { ...r, _force: true } : r));
+          for (const a of approved) {
+            if (known.has(a._rid)) continue;
+            rows.push({
+              _rid: a._rid, scope: a.scope, month: bangkokMonth(a.occurred_at),
+              occurred_at: a.occurred_at, title: a.title, amount: a.amount,
+              category: a.category ?? null, type: a.type ?? null, note: a.note ?? null,
+              account_id: a.account_id ?? null, _force: true,
+            });
+          }
+          patchSession({ rows });   // throws → abort before any write
+        }
         if (S.usedRpc) {
           const groups = new Map();
           for (const r of approved) {
@@ -1145,7 +1401,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       pendingStatsRef.current = null;
       await finalizeImport(S);
     } catch (err) {
-      setError('Import ไม่สำเร็จ: ' + (err.message || String(err)) +
+      if (isSessionStorageError(err)) setError(SESSION_STORAGE_ABORT_MSG);
+      else setError('Import ไม่สำเร็จ: ' + (err.message || String(err)) +
         ' — กดยืนยันซ้ำได้เลย ระบบจะทำต่อเฉพาะส่วนที่ยังไม่สำเร็จ (ไม่มีการเบิ้ล)');
     } finally { setImporting(false); }
   };
@@ -1248,6 +1505,48 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
           {step === 'upload' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
 
+              {/* Round-10 case 1: more than one pending record exists (other
+                  tabs, or several interrupted sessions). None is adopted
+                  automatically — the user says which one this tab should
+                  finish. The list also refreshes when another tab writes or
+                  completes a session (the `storage` listener above). */}
+              {otherSessions.length > 0 && (
+                <div style={{
+                  width: 420, background: tint('--warning', 8),
+                  border: `1px solid ${tint('--warning', 45)}`,
+                  borderRadius: 'var(--radius-card)', padding: '14px 18px',
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', fontWeight: 600, color: 'var(--warning)' }}>
+                    มีการนำเข้าค้างอยู่หลายชุด · {allSessions.length} ชุด — เลือกชุดที่จะกู้คืน
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                    {storedSession
+                      ? 'กำลังกู้คืนชุดด้านล่างอยู่ — ทำชุดนั้นให้จบ (หรือทิ้ง) ก่อนจึงจะเลือกชุดอื่นได้'
+                      : 'อาจมาจากแท็บอื่นที่เปิดค้างไว้ — เลือกทีละชุด ระบบจะไม่แตะชุดที่ไม่ได้เลือก'}
+                  </div>
+                  {otherSessions.map(s => (
+                    <div key={s.key} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                      background: 'var(--surface)', border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-control)', padding: '8px 10px',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-primary)' }}>
+                        {describeGroups(s)}
+                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                          {sessionWhen(s)}
+                        </div>
+                      </div>
+                      <button className="btn btn--ghost btn--sm"
+                        disabled={!!storedSession || importing || recovering}
+                        onClick={() => adoptStoredSession(s.key)}>
+                        เลือกกู้คืนชุดนี้
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Round-8 B2 + round-9 M1/M2/M3: a write from a previous page
                   load was never authoritatively answered. The probe reads the
                   truth for EVERY group; what it finds decides what is said —
@@ -1268,6 +1567,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                      : recoveryReport?.kind === 'partial' ? 'นำเข้าไปแล้วบางส่วน — ยังไม่จบ'
                      : recoveryReport?.kind === 'degraded' ? 'ตรวจสอบได้ แต่ทำต่ออัตโนมัติไม่ได้'
                      : recoveryReport?.kind === 'stale'    ? 'การนำเข้าค้างนี้เก่าเกินกว่าจะตรวจสอบได้'
+                     : recoveryReport?.kind === 'unknown-age' ? 'ไม่ทราบเวลาของการนำเข้าค้างนี้ — ยืนยันผลให้ไม่ได้'
                      : 'มีการนำเข้าค้างอยู่ — ตรวจสอบผลอีกครั้ง'}
                   </div>
 
@@ -1310,8 +1610,19 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
                   {recoveryReport?.kind === 'stale' && (
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                      ข้อมูลใบเสร็จการนำเข้าเก็บไว้ 90 วัน — รายการค้างนี้เก่ากว่านั้น
+                      ข้อมูลใบเสร็จการนำเข้าเก็บไว้ 90 วัน — รายการค้างนี้เริ่มไว้นานเกินกว่านั้น
                       ระบบจึงยืนยันผลให้ไม่ได้ กรุณาตรวจสอบรายการในหน้า Finance เอง
+                    </div>
+                  )}
+
+                  {/* Round-10 case 5: no immutable start stamp ⇒ we cannot
+                      tell "never committed" from "the receipts were purged". */}
+                  {recoveryReport?.kind === 'unknown-age' && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                      ตรวจสอบกับเซิร์ฟเวอร์แล้วไม่พบใบเสร็จการนำเข้า — แต่รายการค้างนี้
+                      ไม่ได้บันทึกเวลาที่เริ่มไว้ จึงแยกไม่ออกว่า "ยังไม่ได้นำเข้า" หรือ
+                      "ใบเสร็จหมดอายุ 90 วันไปแล้ว" กรุณาตรวจสอบรายการในหน้า Finance เอง
+                      ก่อนนำเข้าใหม่
                     </div>
                   )}
 
