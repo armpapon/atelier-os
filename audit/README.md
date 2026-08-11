@@ -1,14 +1,14 @@
 # Audit evidence harness
 
 Executable acceptance evidence for the independent finance audit
-(rounds 1–10, closed in v4.14 – v4.23).
+(rounds 1–11, closed in v4.14 – v4.24).
 
 ## Run it
 
 ```bash
 npm install          # once — needs the repo's own devDependencies
 node audit/evidence.mjs   # pure-logic evidence (155 checks)
-npm run test:ui           # MOUNTED CSVImporter orchestration tests (28, rounds 6–10)
+npm run test:ui           # MOUNTED CSVImporter orchestration tests (32, rounds 6–11)
 ```
 
 `npm run test:ui` renders the real `CSVImporter` under jsdom (vitest +
@@ -26,6 +26,14 @@ The mock also emulates the v8 foreign key
 the "delete an imported transaction" acceptance case runs for real, and the
 round-9 receipt retention purge (own rows, `created_at` older than 90 days,
 never this call's key).
+
+Round-11 cases (Y1–Y3) cover the tab's GRIP on the record: ownership released
+in one place and only when the owned session cannot still be needed (Y1 walks
+the auditor's six-step repro; Y1b proves a session the server may hold
+receipts for survives the release as an un-adopted pending record), a
+pre-flight that writes the real record before any side effect rather than
+probing with a token byte (Y2), and an abort message that names what already
+committed instead of claiming a clean slate (Y3).
 
 Round-10 cases (X1–X5b) cover the recovery record itself: two importers are
 mounted at once (two tabs sharing one `localStorage`) and a `storage` event is
