@@ -1235,7 +1235,7 @@ export async function importTransactionsBatch({ scope, month, wipe, dedup, rows,
 
   const rowByOrd = (ord) => rows.find(r => r._rid === ord) || rows[ord - 1] || null;
   if (data && typeof data === 'object') {
-    const isV6 = Number(data.v) === 6 || Array.isArray(data.inserted);
+    const isV6 = Number(data.v) >= 6 || Array.isArray(data.inserted);
     const insertedMap = isV6
       ? (data.inserted || []).map(m => ({ ord: Number(m.ord), transaction_id: m.transaction_id }))
       : [];

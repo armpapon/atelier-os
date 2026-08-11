@@ -1,8 +1,21 @@
 -- ============================================================================
 --  Migration: Atomic CSV import RPC (audit blocker #1)
---  v6 (audit round 6): PERSISTENT IDEMPOTENCY — import receipts make
---  retries and lost responses safe, and `inserted` returns the exact
---  ord → transaction_id mapping.
+--  v7 (audit round 7 — CRITICAL fix): receipts are loaded BEFORE any write.
+--
+--  v6's ordering was wipe-first: a committed wipe-import whose RESPONSE was
+--  lost would, on retry with the same key, wipe the month AGAIN (deleting
+--  the rows it had just inserted) while the receipt exclusion prevented
+--  re-inserting them — leaving the month EMPTY with stale mappings.
+--  v7 sequence:
+--   1. load receipts for (p_import_key, THIS call's ords) FIRST;
+--   2. if any exist, the group already committed — return the receipted
+--      mappings immediately, with NO wipe and NO processing (the retry is
+--      purely a response-recovery read);
+--   3. only when zero receipts exist for this call's rows does the function
+--      wipe (if p_wipe) + classify + insert + receipt, in one transaction.
+--  Degenerate case (documented): p_import_key IS NULL with p_wipe=true has
+--  no receipts to consult and keeps the legacy wipe-every-call behaviour —
+--  the shipped client always sends a key.
 --
 --  Fix history:
 --  v1  one SQL function = one transaction; per-user/month advisory lock.
@@ -29,14 +42,14 @@
 --        id — no re-query, no natural-key matching.
 --
 --  Returns jsonb:
---    { "v": 6,
---      "inserted": [ { "ord": n, "transaction_id": uuid } ],   -- incl. rows
---            receipted by EARLIER calls with the same import_key
+--    { "v": 7,
+--      "inserted": [ { "ord": n, "transaction_id": uuid } ],
 --      "dup_skipped": n,
---      "ambiguous":  [ { "ord": n, "incoming": {...}, "existing": {...} } ] }
+--      "ambiguous":  [ { "ord": n, "incoming": {...}, "existing": {...} } ],
+--      "recovered": bool }   -- true = response-recovery read, nothing written
 --
 --  SECURITY INVOKER → RLS applies. Idempotent: DROP IF EXISTS + CREATE,
---  CREATE TABLE IF NOT EXISTS. Safe to re-run (replaces v1–v5).
+--  CREATE TABLE IF NOT EXISTS. Safe to re-run (replaces v1–v6).
 --
 --  Suggested tab name: loop_import_transactions_rpc
 -- ============================================================================
@@ -98,22 +111,44 @@ begin
   v_end   := ((to_date(p_month || '-01', 'YYYY-MM-DD') + interval '1 month')::date::text
               || ' 00:00:00+07:00')::timestamptz;
 
+  -- v7 STEP 1 — receipts FIRST, before any write. Scoped to THIS call's
+  -- ords: the same key covers every group of the session, and another
+  -- group's receipts must not short-circuit this one.
+  if p_import_key is not null then
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'ord', r.ord, 'transaction_id', r.transaction_id) order by r.ord), '[]'::jsonb)
+      into v_ins
+      from import_receipts r
+     where r.user_id = v_uid
+       and r.import_key = p_import_key
+       and r.ord in (
+         select (e.elem->>'ord')::int
+         from jsonb_array_elements(p_rows) as e(elem)
+         where e.elem ? 'ord');
+
+    -- v7 STEP 2 — any receipt for this group ⇒ it already committed (each
+    -- group is one transaction, so it is all-or-nothing). Return the saved
+    -- mappings; NO wipe, NO processing. A month wiped+filled by the first
+    -- committed call stays exactly as that call left it.
+    if jsonb_array_length(v_ins) > 0 then
+      return jsonb_build_object(
+        'v', 7,
+        'inserted', v_ins,
+        'dup_skipped', 0,
+        'ambiguous', '[]'::jsonb,
+        'recovered', true
+      );
+    end if;
+  end if;
+
+  -- v7 STEP 3 — zero receipts for this group: first (or first successful)
+  -- attempt. Wipe-if-requested + classify + insert + receipt, one txn.
   if p_wipe then
     delete from transactions t
     where t.user_id = v_uid
       and t.scope = p_scope
       and t.occurred_at >= v_start
       and t.occurred_at <  v_end;
-  end if;
-
-  -- Idempotency: mappings already committed for this key are returned as-is
-  -- and their ords are excluded from processing below.
-  if p_import_key is not null then
-    select coalesce(jsonb_agg(jsonb_build_object(
-             'ord', r.ord, 'transaction_id', r.transaction_id) order by r.ord), '[]'::jsonb)
-      into v_ins
-      from import_receipts r
-     where r.user_id = v_uid and r.import_key = p_import_key;
   end if;
 
   for rec in (
@@ -143,6 +178,8 @@ begin
              category text, type text, note text, account_id uuid,
              synthetic boolean, force boolean
            )
+      -- Defensive only: STEP 2 already early-returns when any of this
+      -- group's ords are receipted, so this filter is a no-op here.
       where p_import_key is null
          or coalesce(r.ord, o.ord::int) not in (
               select ir.ord from import_receipts ir
@@ -254,10 +291,11 @@ begin
   end loop;
 
   return jsonb_build_object(
-    'v', 6,
+    'v', 7,
     'inserted', v_ins,
     'dup_skipped', v_dup,
-    'ambiguous', v_amb
+    'ambiguous', v_amb,
+    'recovered', false
   );
 end;
 $$;
