@@ -856,8 +856,16 @@ export function shouldApplyImportedBalance(existingAnchorAt, importedAt) {
  * was true), and are skipped entirely when the file is OLDER than the
  * current anchor (see shouldApplyImportedBalance). While the anchor column
  * migration is unrun, falls back to the legacy overwrite behaviour.
+ *
+ * `mode` (audit round 6 — side effects must follow the EXECUTED plan):
+ *   'full'   — create + update in one pass (legacy behaviour).
+ *   'ensure' — create missing accounts ONLY (balance 0, no anchor) so
+ *              imported rows can link account_id; NO balance mutations —
+ *              nothing is stranded if the import then fails.
+ *   'apply'  — balance/anchor updates ONLY (no creation), run AFTER the
+ *              whole import succeeded, fed by the rows actually inserted.
  */
-export async function bulkUpsertAccountsByPocket(pockets) {
+export async function bulkUpsertAccountsByPocket(pockets, { mode = 'full' } = {}) {
   if (!supabase) return new Map();
   if (!pockets?.length) return new Map();
 
@@ -898,7 +906,7 @@ export async function bulkUpsertAccountsByPocket(pockets) {
     const found = exMap.get(key);
     if (found) {
       idMap.set(p.pocket, found.id);
-      if (p.latestBalance != null) {
+      if (mode !== 'ensure' && p.latestBalance != null) {
         if (!anchorSupported) {
           // Legacy behaviour while the migration is unrun.
           toUpdate.push({ id: found.id, patch: { balance: p.latestBalance } });
@@ -912,18 +920,22 @@ export async function bulkUpsertAccountsByPocket(pockets) {
         }
         // else: older statement file — balance and anchor stay untouched.
       }
-    } else {
+    } else if (mode !== 'apply') {
       const row = {
         user_id: user.id,
         name: p.pocket,
         type: 'savings',  // Make pockets are essentially savings sub-accounts
-        balance: p.latestBalance ?? 0,
+        // 'ensure' creates a linkable shell only — the real balance lands in
+        // the post-success 'apply' pass, so a failed import strands nothing.
+        balance: mode === 'ensure' ? 0 : (p.latestBalance ?? 0),
         tone: pickTone(p.pocket),
         scope: p.scope,
         is_active: true,
       };
-      if (anchorSupported) row.balance_anchor_at = p.latestDate || new Date().toISOString();
-      if (anchorSupported && sourceSupported) row.balance_anchor_source = 'import';
+      if (mode !== 'ensure') {
+        if (anchorSupported) row.balance_anchor_at = p.latestDate || new Date().toISOString();
+        if (anchorSupported && sourceSupported) row.balance_anchor_source = 'import';
+      }
       toInsert.push(row);
     }
   }
@@ -1193,9 +1205,12 @@ export function classifyImportRows(rows, existingRows) {
  * Throws the raw error when the RPC is missing — the importer catches it
  * with isRpcMissing() and falls back to the legacy multi-call path.
  */
-export async function importTransactionsBatch({ scope, month, wipe, dedup, rows }) {
+export async function importTransactionsBatch({ scope, month, wipe, dedup, rows, importKey = null }) {
   if (!supabase) throw new Error('Supabase not configured');
-  const payload = rows.map(r => ({
+  const payload = rows.map((r, i) => ({
+    // v6: ord is CLIENT-ASSIGNED (= the importer's session-unique _rid), so
+    // receipts from different groups of one session can never collide.
+    ord:         r._rid ?? (i + 1),
     title:       r.title,
     occurred_at: r.occurred_at,
     amount:      r.amount,
@@ -1206,27 +1221,41 @@ export async function importTransactionsBatch({ scope, month, wipe, dedup, rows 
     synthetic:   !!r._synthetic,
     force:       !!r._force,
   }));
-  const { data, error } = await supabase.rpc('import_transactions', {
+  const args = {
     p_scope: scope, p_month: month, p_wipe: !!wipe, p_rows: payload, p_dedup: !!dedup,
-  });
+  };
+  let { data, error } = await supabase.rpc('import_transactions',
+    importKey ? { ...args, p_import_key: importKey } : args);
+  if (error && importKey && isRpcMissing(error)) {
+    // v5 deployment (no p_import_key parameter) — degrade gracefully: the
+    // client-side committed-row tracking still makes in-session retries safe.
+    ({ data, error } = await supabase.rpc('import_transactions', args));
+  }
   if (error) throw error;
+
+  const rowByOrd = (ord) => rows.find(r => r._rid === ord) || rows[ord - 1] || null;
   if (data && typeof data === 'object') {
+    const isV6 = Number(data.v) === 6 || Array.isArray(data.inserted);
+    const insertedMap = isV6
+      ? (data.inserted || []).map(m => ({ ord: Number(m.ord), transaction_id: m.transaction_id }))
+      : [];
     const ambiguous = Array.isArray(data.ambiguous)
       ? data.ambiguous.map(a => ({
           ord: Number(a.ord),
-          row: rows[Number(a.ord) - 1] || null,   // caller identity (_rid intact)
+          row: rowByOrd(Number(a.ord)),
           incoming: a.incoming || null,
           existing: a.existing || null,
         }))
       : [];
     return {
-      inserted:         Number(data.inserted) || 0,
+      inserted:         insertedMap,                       // [{ord, transaction_id}]
+      insertedCount:    isV6 ? insertedMap.length : (Number(data.inserted) || 0),
       dupSkipped:       Number(data.dup_skipped) || 0,
       ambiguous,
       ambiguousSkipped: ambiguous.length || Number(data.ambiguous_skipped) || 0,
     };
   }
-  return { inserted: Number(data) || 0, dupSkipped: 0, ambiguous: [], ambiguousSkipped: 0 };
+  return { inserted: [], insertedCount: Number(data) || 0, dupSkipped: 0, ambiguous: [], ambiguousSkipped: 0 };
 }
 
 /** Delete all transactions in a month (used for clean re-import). */
