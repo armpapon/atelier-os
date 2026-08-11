@@ -1334,7 +1334,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         if (!isRpcMissing(err)) throw err;
         // The RPC is not installed: the legacy path leaves NO receipts, so a
         // persisted record would promise a recovery that cannot happen.
-        dropStoredSession();
+        // keepImportKey: the legacy path below still stamps its in-memory
+        // recovery marker with this session's key (round 11 — releasing
+        // ownership must not silently blank the key mid-run).
+        dropStoredSession({ keepImportKey: true });
       }
 
       let wipeExecuted = usedRpc && wipeMonth;
