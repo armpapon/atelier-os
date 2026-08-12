@@ -8,3 +8,5 @@ dist-ssr
 *.log
 .vite
 .vercel
+.claude/
+supabase/.temp/
