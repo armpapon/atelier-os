@@ -716,6 +716,16 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // and no transaction, and a retry reuses them — but an abort must still say
   // so rather than implying the server was never touched.
   const shellsReadyRef = useRef(0);
+  // Batch C · B2: archived accounts this import brought back. An import that
+  // matches an archived pocket reactivates it — which must never be silent.
+  const reactivatedRef = useRef([]);
+  const noteReactivated = (idMap) => {
+    for (const r of (idMap?.reactivated || [])) {
+      if (!reactivatedRef.current.some(x => x.accountId === r.accountId)) {
+        reactivatedRef.current.push(r);
+      }
+    }
+  };
   const noteOutcomes = (res) => {
     if (!res) return;
     if (res.inserted?.length || res.insertedCount > 0
@@ -906,7 +916,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // by the never-rewind rule; running it twice writes the same values.
   const applyAccountPass = async (pockets) => {
     try {
-      if (pockets?.length) await bulkUpsertAccountsByPocket(pockets, { mode: 'apply' });
+      if (pockets?.length) {
+        noteReactivated(await bulkUpsertAccountsByPocket(pockets, { mode: 'apply' }));
+      }
       return null;
     } catch (e) {
       return { pockets, count: pockets.length, message: e.message || String(e) };
@@ -991,6 +1003,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       // B11: the rows this import REFUSED to date. Reported so the count of
       // what went in can be reconciled against the file.
       quarantined: quarantined.length,
+      // Batch C · B2: archived accounts an imported pocket matched. They are
+      // brought back rather than written into while hidden — named here so the
+      // reactivation is a decision the owner sees, not a silent side effect.
+      reactivatedAccounts: reactivatedRef.current.slice(),
     });
     setStep('done');
     onImported?.();
@@ -1295,6 +1311,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     setImporting(true); setError(null);
     try {
       shellsReadyRef.current = 0;
+      reactivatedRef.current = [];
       if (!importKeyRef.current) {
         importKeyRef.current = (globalThis.crypto?.randomUUID?.()
           ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -1395,6 +1412,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
         const planPockets = extractAccountsFromMapped(plan);
         if (planPockets.length) {
           pocketIdMap = await bulkUpsertAccountsByPocket(planPockets, { mode: 'ensure' });
+          noteReactivated(pocketIdMap);
           shellsReadyRef.current = pocketIdMap.size;
         }
         // Same discipline: the ids must be recorded before the RPC can use
@@ -2584,7 +2602,20 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   {importStats?.skippedDeleted > 0 && (
                     <StatChip label="ข้ามเพราะรายการถูกลบ" value={importStats.skippedDeleted} accent="var(--ink-3)" />
                   )}
+                  {/* Batch C · B2: an import matching an archived account
+                      reactivates it — never a silent write into a hidden row. */}
+                  {importStats?.reactivatedAccounts?.length > 0 && (
+                    <StatChip label="🗂 บัญชีที่เก็บไว้ — เปิดใช้อีกครั้ง"
+                      value={importStats.reactivatedAccounts.length} accent="var(--amber)" />
+                  )}
                 </div>
+                {importStats?.reactivatedAccounts?.length > 0 && (
+                  <div style={{ marginTop: 14, color: 'var(--ink-3)', fontSize: 12, lineHeight: 1.55, maxWidth: 480 }}>
+                    พ็อกเก็ตในไฟล์ตรงกับบัญชีที่เคยเก็บไว้ จึงเปิดใช้กลับมาให้ (ไม่แก้ยอดบัญชีที่ซ่อนอยู่):
+                    {' '}{importStats.reactivatedAccounts.map(a => a.name || a.pocket).join(', ')}
+                    {' '}— ถ้าไม่ต้องการ กดเก็บบัญชีอีกครั้งได้ที่หน้าบัญชี
+                  </div>
+                )}
                 {importStats?.skippedDeleted > 0 && (
                   <div style={{ marginTop: 14, color: 'var(--ink-3)', fontSize: 12, lineHeight: 1.55, maxWidth: 480 }}>
                     มี {importStats.skippedDeleted} รายการที่นำเข้าไปแล้วแต่ถูกลบทีหลัง —

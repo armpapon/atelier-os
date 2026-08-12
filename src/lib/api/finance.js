@@ -98,6 +98,19 @@ export function isColumnMissing(err) {
     || /could not find the .* column|column .* does not exist/i.test(msg);
 }
 
+/**
+ * WHICH column a PGRST204/42703 is about, when the message names it.
+ * Lets a read that asks for several not-yet-migrated columns drop exactly the
+ * offending one and retry, instead of guessing a fallback ladder.
+ */
+export function missingColumnName(err) {
+  const msg = String(err?.message || '');
+  const m = /could not find the '([^']+)' column/i.exec(msg)
+         || /column "?([A-Za-z0-9_]+)"? does not exist/i.exec(msg)
+         || /column [A-Za-z0-9_]+\.([A-Za-z0-9_]+) does not exist/i.exec(msg);
+  return m ? m[1] : null;
+}
+
 // ── Pagination ───────────────────────────────────────────────────────────────
 // PostgREST silently caps a response at max-rows (default 1000) even when
 // .limit() asks for more — a >1000-row month under-counted every total.
@@ -930,10 +943,34 @@ export async function loadEffectiveBalances(accounts) {
 // ── Account auto-create from Make pocket import ──────────────────────────────
 
 /**
+ * The IMMUTABLE identity of an imported pocket (audit batch C · B2).
+ *
+ * Accounts used to be identified by `accounts.name`, which the user can edit —
+ * so a rename made the next import create a duplicate, and an archived account
+ * was still matched by name and silently written into.
+ *
+ * The Make by KBank / bank CSV export carries no pocket UUID. The stable
+ * identifier it DOES carry is the Cloud Pocket name as it exists in the source
+ * system. That value is captured once, normalised, and stored in
+ * `accounts.source_key`; from then on it is decoupled from `accounts.name`,
+ * which Loop lets the user rename freely. Renaming in Loop cannot change
+ * identity. Renaming the pocket in Make is a genuine re-identification and
+ * yields a new account — the honest outcome; the app never guesses.
+ *
+ * Normalisation matches the SQL backfill in
+ * migration_add_account_source_key.sql exactly: trim → collapse whitespace →
+ * lowercase.
+ */
+export function pocketSourceKey(pocket) {
+  const raw = String(pocket ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return raw ? `make:pocket:${raw}` : null;
+}
+
+/**
  * From mapped Make transactions, group by pocket → return latest CP Bal + scope.
  * Latest = transaction with most recent occurred_at per pocket.
  *
- * Returns: [{ pocket, scope, latestBalance, latestDate, txCount }]
+ * Returns: [{ pocket, sourceKey, scope, latestBalance, latestDate, txCount }]
  */
 export function extractAccountsFromMapped(mappedRows) {
   const byPocket = {};
@@ -943,6 +980,7 @@ export function extractAccountsFromMapped(mappedRows) {
     if (!cur || r.occurred_at > cur.latestDate) {
       byPocket[r._pocket] = {
         pocket: r._pocket,
+        sourceKey: pocketSourceKey(r._pocket),
         scope: r.scope,
         latestBalance: r._cp_bal != null ? r._cp_bal : (cur?.latestBalance ?? 0),
         latestDate: r.occurred_at,
@@ -1003,9 +1041,17 @@ export function shouldApplyImportedBalance(existingAnchorAt, importedAt, existin
 }
 
 /**
- * Upsert accounts based on { pocket, scope, latestBalance, latestDate }.
- * Dedup key: (user_id, name, scope) — case-insensitive match on name.
- * Returns: Map<pocketName, accountId>
+ * Upsert accounts based on { pocket, sourceKey, scope, latestBalance, latestDate }.
+ *
+ * Dedup key (audit batch C · B2): `accounts.source_key` — immutable, derived
+ * from the pocket's identity in the SOURCE export, never from the editable
+ * display name. Name matching survives only as a ONE-TIME migration path for
+ * rows created before the column existed, and only when the normalised name is
+ * unambiguous inside (user_id, scope); an ambiguous name is never guessed at.
+ *
+ * Returns: Map<pocketName, accountId>, carrying one extra property:
+ *   .reactivated — [{ pocket, accountId, name }] archived accounts this call
+ *                  brought back, so the import summary can name them.
  *
  * Balance writes stamp balance_anchor_at = latestDate (the moment the CP Bal
  * was true), and are skipped entirely when the file is OLDER than the
@@ -1027,56 +1073,106 @@ export async function bulkUpsertAccountsByPocket(pockets, { mode = 'full' } = {}
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not logged in');
 
-  // Fetch existing accounts — full meta first, then anchor-only, then legacy.
-  let anchorSupported = true;
-  let sourceSupported = true;
-  let { data: existing, error: fetchErr } = await supabase
-    .from('accounts').select('id, name, scope, balance, balance_anchor_at, balance_anchor_source')
-    .eq('user_id', user.id);
-  if (fetchErr && isColumnMissing(fetchErr)) {
-    sourceSupported = false;
-    ({ data: existing, error: fetchErr } = await supabase
-      .from('accounts').select('id, name, scope, balance, balance_anchor_at')
-      .eq('user_id', user.id));
+  // Fetch existing accounts. Ask for every optional column, then drop exactly
+  // the one PostgREST says is missing and retry — so an unrun source_key
+  // migration costs the anchor columns nothing, and vice versa.
+  let cols = ['id', 'name', 'scope', 'balance', 'is_active',
+              'source_key', 'balance_anchor_at', 'balance_anchor_source'];
+  let existing = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { data, error } = await supabase
+      .from('accounts').select(cols.join(', ')).eq('user_id', user.id);
+    if (!error) { existing = data; break; }
+    if (!isColumnMissing(error)) throw error;
+    const named = missingColumnName(error);
+    const drop = (named && cols.includes(named))
+      ? named
+      : ['source_key', 'balance_anchor_source', 'balance_anchor_at'].find(c => cols.includes(c));
+    if (!drop) throw error;
+    cols = cols.filter(c => c !== drop);
   }
-  if (fetchErr && isColumnMissing(fetchErr)) {
-    anchorSupported = false;
-    ({ data: existing, error: fetchErr } = await supabase
-      .from('accounts').select('id, name, scope, balance')
-      .eq('user_id', user.id));
-  }
-  if (fetchErr) throw fetchErr;
+  const sourceKeySupported = cols.includes('source_key');
+  const anchorSupported    = cols.includes('balance_anchor_at');
+  const sourceSupported    = cols.includes('balance_anchor_source');
 
-  const exMap = new Map();
+  const normName = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+  // Two indexes: the real one (source_key) and the legacy one (name). A name
+  // that appears twice in a scope is recorded as AMBIGUOUS and never matched —
+  // guessing there is exactly how two pockets would collapse into one.
+  const bySourceKey   = new Map();
+  const byName        = new Map();
+  const ambiguousName = new Set();
   for (const a of (existing || [])) {
-    exMap.set(`${(a.name || '').trim().toLowerCase()}|${a.scope || 'personal'}`, a);
+    const sc = a.scope || 'personal';
+    if (sourceKeySupported && a.source_key) bySourceKey.set(`${a.source_key}|${sc}`, a);
+    const nk = `${normName(a.name)}|${sc}`;
+    if (byName.has(nk)) ambiguousName.add(nk);
+    else byName.set(nk, a);
   }
 
   const idMap = new Map();
+  const reactivated = [];
   const toInsert = [];
-  const toUpdate = [];
+  const insertKeyToPocket = new Map();
+  const toUpdate = new Map();   // accountId → merged patch (one write per account)
+  const patchFor = (id) => {
+    if (!toUpdate.has(id)) toUpdate.set(id, {});
+    return toUpdate.get(id);
+  };
 
   for (const p of pockets) {
-    const key = `${p.pocket.trim().toLowerCase()}|${p.scope}`;
-    const found = exMap.get(key);
+    const sourceKey = p.sourceKey || pocketSourceKey(p.pocket);
+    const scope     = p.scope || 'personal';
+    const nameKey   = `${normName(p.pocket)}|${scope}`;
+
+    let found = sourceKeySupported ? bySourceKey.get(`${sourceKey}|${scope}`) : null;
+    let adoptKey = false;
+    if (!found && !ambiguousName.has(nameKey)) {
+      const byNameHit = byName.get(nameKey);
+      // ONE-TIME migration path only: a row that predates the column. A row
+      // that already carries a DIFFERENT source_key belongs to another pocket
+      // and must never be stolen by a name collision.
+      if (byNameHit && !(sourceKeySupported && byNameHit.source_key)) {
+        found = byNameHit;
+        adoptKey = sourceKeySupported;
+      }
+    }
+
     if (found) {
       idMap.set(p.pocket, found.id);
+
+      // Stamp the identity onto the legacy row so this is the last import that
+      // ever has to reason about its name.
+      if (adoptKey) {
+        patchFor(found.id).source_key = sourceKey;
+        found.source_key = sourceKey;
+        bySourceKey.set(`${sourceKey}|${scope}`, found);
+      }
+
+      // ARCHIVED POLICY (B2): reactivate + report. Never a silent write into
+      // a row the user cannot see. See migration_add_account_source_key.sql
+      // for why reactivate beats refuse-and-prompt here.
+      if (found.is_active === false) {
+        patchFor(found.id).is_active = true;
+        found.is_active = true;
+        reactivated.push({ pocket: p.pocket, accountId: found.id, name: found.name });
+      }
+
       if (mode !== 'ensure' && p.latestBalance != null) {
         if (!anchorSupported) {
           // Legacy behaviour while the migration is unrun.
-          toUpdate.push({ id: found.id, patch: { balance: p.latestBalance } });
+          patchFor(found.id).balance = p.latestBalance;
         } else if (shouldApplyImportedBalance(
           found.balance_anchor_at, p.latestDate,
           // Provenance is only readable when the column migration has run;
           // without it every tie is decided as if the anchor were an import.
           sourceSupported ? found.balance_anchor_source : null,
         )) {
-          const patch = {
-            balance: p.latestBalance,
-            balance_anchor_at: p.latestDate,   // CP Bal was true at the file's last txn
-          };
+          const patch = patchFor(found.id);
+          patch.balance = p.latestBalance;
+          patch.balance_anchor_at = p.latestDate;   // CP Bal true at the file's last txn
           if (sourceSupported) patch.balance_anchor_source = 'import';
-          toUpdate.push({ id: found.id, patch });
         }
         // else: older statement file — balance and anchor stay untouched.
       }
@@ -1089,36 +1185,66 @@ export async function bulkUpsertAccountsByPocket(pockets, { mode = 'full' } = {}
         // the post-success 'apply' pass, so a failed import strands nothing.
         balance: mode === 'ensure' ? 0 : (p.latestBalance ?? 0),
         tone: pickTone(p.pocket),
-        scope: p.scope,
+        scope,
         is_active: true,
       };
+      if (sourceKeySupported && sourceKey) row.source_key = sourceKey;
       if (mode !== 'ensure') {
         if (anchorSupported) row.balance_anchor_at = p.latestDate || new Date().toISOString();
         if (anchorSupported && sourceSupported) row.balance_anchor_source = 'import';
       }
       toInsert.push(row);
+      if (sourceKey) insertKeyToPocket.set(sourceKey, p.pocket);
     }
   }
 
-  // Insert new accounts
+  // Create the missing accounts.
   if (toInsert.length) {
-    const { data: inserted, error } = await supabase
-      .from('accounts').insert(toInsert).select('id, name, scope');
-    if (error) throw error;
-    for (const a of (inserted || [])) {
-      idMap.set(a.name, a.id);
+    let inserted = null;
+    if (sourceKeySupported && toInsert.every(r => r.source_key)) {
+      // Preferred path: ON CONFLICT against the partial unique index, so two
+      // tabs importing the same file converge on ONE row instead of two.
+      const { data, error } = await supabase.rpc('accounts_upsert_by_source_key', {
+        p_rows: toInsert.map(({ user_id, ...r }) => r),
+      });
+      if (!error) {
+        inserted = (data || []).map(a => ({ ...a, name: insertKeyToPocket.get(a.source_key) ?? a.name }));
+        for (const a of (data || [])) {
+          if (a.was_reactivated) {
+            reactivated.push({
+              pocket: insertKeyToPocket.get(a.source_key) ?? a.name,
+              accountId: a.id, name: a.name,
+            });
+          }
+        }
+      } else if (!isRpcMissing(error)) {
+        throw error;
+      }
     }
+    if (!inserted) {
+      // FALLBACK while migration_add_account_source_key.sql is unrun.
+      // CAVEAT — NOT atomic: this is still select-then-insert, so two tabs
+      // importing the same file at the same moment can each create the pocket.
+      // The RPC above plus the partial unique index are the real closure; this
+      // path only keeps the app working before the owner runs the SQL.
+      const { data, error } = await supabase
+        .from('accounts').insert(toInsert).select('id, name, scope');
+      if (error) throw error;
+      inserted = data;
+    }
+    for (const a of (inserted || [])) idMap.set(a.name, a.id);
   }
 
-  // Update existing balances (parallel)
-  if (toUpdate.length) {
-    const results = await Promise.all(toUpdate.map(u =>
-      supabase.from('accounts').update(u.patch).eq('id', u.id)
+  // Apply every accumulated patch — one write per account.
+  if (toUpdate.size) {
+    const results = await Promise.all([...toUpdate].map(([id, patch]) =>
+      supabase.from('accounts').update(patch).eq('id', id)
     ));
     const failed = results.find(r => r.error);
     if (failed) throw failed.error;
   }
 
+  idMap.reactivated = reactivated;
   return idMap;
 }
 

@@ -14,6 +14,7 @@ import {
   importTransactionsBatch,
   multisetDedupRows, getExistingTxnKeyCounts,
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
+  pocketSourceKey, extractAccountsFromMapped,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
@@ -1450,6 +1451,177 @@ section('A · B11 · a row with no readable date is quarantined, never dated to 
   check('a clean file quarantines nothing',
     mapRowsWithQuarantine(clean.rows, detectKBankColumns(clean.headers), 'personal',
       { rowLines: clean.rowLines }).quarantined.length === 0);
+}
+
+// ════════════════════════════════ BATCH C ═══════════════════════════════════
+// B2 · B3 · B5 · B8 — schema identity + atomicity.
+// Every check in this block FAILS at e7d53e7 (v4.26) unless marked otherwise.
+
+section('C · B2 · imported accounts have a stable identity (source_key)');
+{
+  // The key is derived from the SOURCE pocket, normalised the same way the
+  // SQL backfill normalises it — never from the editable display name.
+  check('pocketSourceKey normalises trim / inner whitespace / case',
+    pocketSourceKey('  Cash  Box ') === 'make:pocket:cash box'
+    && pocketSourceKey('CASHBOX') === pocketSourceKey('cashbox'),
+    pocketSourceKey('  Cash  Box '));
+  check('an empty pocket has no identity (never a key of "")',
+    pocketSourceKey('') === null && pocketSourceKey(null) === null);
+  check('extractAccountsFromMapped carries the key alongside the pocket',
+    extractAccountsFromMapped([
+      { _pocket: 'ซองเที่ยว', scope: 'personal', _cp_bal: 100, occurred_at: '2026-08-01T10:00:00+07:00' },
+    ])[0].sourceKey === 'make:pocket:ซองเที่ยว');
+
+  // (a) an ARCHIVED account is never silently updated while hidden.
+  __tables.accounts.push({ id: 'c2-arc', user_id: 'user-1', name: 'พ็อกเก็ตที่เก็บไว้',
+    scope: 'personal', balance: 500, is_active: false });
+  const arcMap = await bulkUpsertAccountsByPocket([
+    { pocket: 'พ็อกเก็ตที่เก็บไว้', scope: 'personal', latestBalance: 9999,
+      latestDate: '2026-08-20T10:00:00+07:00', txCount: 3 },
+  ]);
+  const arc = __tables.accounts.find(a => a.id === 'c2-arc');
+  check('an import NEVER leaves a hidden account silently updated',
+    !(arc.balance === 9999 && arc.is_active === false),
+    `balance=${arc.balance} is_active=${arc.is_active}`);
+  check('the archived match is REACTIVATED (chosen policy) …',
+    arc.is_active === true);
+  check('… and reported by name so the import summary can say so',
+    arcMap.reactivated.length === 1 && arcMap.reactivated[0].accountId === 'c2-arc',
+    JSON.stringify(arcMap.reactivated));
+
+  // (b) renaming an imported account must not fork it into two.
+  const first = await bulkUpsertAccountsByPocket([
+    { pocket: 'ซองค่าเดินทาง', scope: 'personal', latestBalance: 100,
+      latestDate: '2026-08-01T10:00:00+07:00', txCount: 1 },
+  ]);
+  const travelId = first.get('ซองค่าเดินทาง');
+  const travelRow = __tables.accounts.find(a => a.id === travelId);
+  check('a newly imported account is stamped with its source key',
+    travelRow.source_key === 'make:pocket:ซองค่าเดินทาง', travelRow.source_key);
+  travelRow.name = 'กระเป๋าเดินทาง (เปลี่ยนชื่อเอง)';        // the user renames it in Loop
+  const second = await bulkUpsertAccountsByPocket([
+    { pocket: 'ซองค่าเดินทาง', scope: 'personal', latestBalance: 250,
+      latestDate: '2026-08-05T10:00:00+07:00', txCount: 1 },
+  ]);
+  check('renaming in Loop does NOT fork the account on the next import',
+    second.get('ซองค่าเดินทาง') === travelId
+    && __tables.accounts.filter(a => a.source_key === 'make:pocket:ซองค่าเดินทาง').length === 1,
+    `${__tables.accounts.filter(a => a.source_key === 'make:pocket:ซองค่าเดินทาง').length} row(s)`);
+  check('the renamed account still receives the newer balance',
+    travelRow.balance === 250 && travelRow.name === 'กระเป๋าเดินทาง (เปลี่ยนชื่อเอง)',
+    `฿${travelRow.balance} · ${travelRow.name}`);
+
+  // Legacy adoption: a pre-column row is claimed ONCE, by unambiguous name.
+  __tables.accounts.push({ id: 'c2-legacy', user_id: 'user-1', name: 'ซองเก่าไม่มีคีย์',
+    scope: 'personal', balance: 10, is_active: true });
+  const adopted = await bulkUpsertAccountsByPocket([
+    { pocket: 'ซองเก่าไม่มีคีย์', scope: 'personal', latestBalance: 20,
+      latestDate: '2026-08-06T10:00:00+07:00', txCount: 1 },
+  ]);
+  check('a legacy row is adopted by name ONCE and stamped, not duplicated',
+    adopted.get('ซองเก่าไม่มีคีย์') === 'c2-legacy'
+    && __tables.accounts.find(a => a.id === 'c2-legacy').source_key === 'make:pocket:ซองเก่าไม่มีคีย์');
+
+  // Ambiguity is never guessed at: two same-named rows in one scope.
+  __tables.accounts.push(
+    { id: 'c2-dup-a', user_id: 'user-1', name: 'ซองซ้ำ', scope: 'personal', balance: 1, is_active: true },
+    { id: 'c2-dup-b', user_id: 'user-1', name: 'ซองซ้ำ', scope: 'personal', balance: 2, is_active: true },
+  );
+  const dupMap = await bulkUpsertAccountsByPocket([
+    { pocket: 'ซองซ้ำ', scope: 'personal', latestBalance: 77,
+      latestDate: '2026-08-07T10:00:00+07:00', txCount: 1 },
+  ]);
+  check('an AMBIGUOUS legacy name is never guessed — neither twin is touched',
+    __tables.accounts.find(a => a.id === 'c2-dup-a').balance === 1
+    && __tables.accounts.find(a => a.id === 'c2-dup-b').balance === 2
+    && !__tables.accounts.find(a => a.id === 'c2-dup-a').source_key
+    && !__tables.accounts.find(a => a.id === 'c2-dup-b').source_key);
+  check('… a fresh, properly keyed account is created for the pocket instead',
+    dupMap.get('ซองซ้ำ') !== 'c2-dup-a' && dupMap.get('ซองซ้ำ') !== 'c2-dup-b'
+    && __tables.accounts.find(a => a.id === dupMap.get('ซองซ้ำ')).source_key === 'make:pocket:ซองซ้ำ');
+
+  // A row already owned by ANOTHER pocket is never stolen by a name collision.
+  __tables.accounts.push({ id: 'c2-owned', user_id: 'user-1', name: 'ชื่อชนกัน',
+    scope: 'personal', balance: 5, is_active: true, source_key: 'make:pocket:ชื่อเดิมของฉัน' });
+  const stolen = await bulkUpsertAccountsByPocket([
+    { pocket: 'ชื่อชนกัน', scope: 'personal', latestBalance: 42,
+      latestDate: '2026-08-08T10:00:00+07:00', txCount: 1 },
+  ]);
+  check('a row that already carries a DIFFERENT source key is never stolen',
+    stolen.get('ชื่อชนกัน') !== 'c2-owned'
+    && __tables.accounts.find(a => a.id === 'c2-owned').balance === 5);
+
+  // (c) creation goes through the ON CONFLICT RPC when it is installed.
+  const rpcSeen = [];
+  __config.rpcHandlers['accounts_upsert_by_source_key'] = (args) => {
+    rpcSeen.push(args);
+    const out = [];
+    for (const r of args.p_rows) {
+      const hit = __tables.accounts.find(a =>
+        a.user_id === 'user-1' && (a.scope || 'personal') === (r.scope || 'personal')
+        && a.source_key === r.source_key);
+      if (hit) {
+        const was = hit.is_active === false;
+        if (was) hit.is_active = true;
+        out.push({ source_key: r.source_key, id: hit.id, name: hit.name, scope: hit.scope,
+                   is_active: true, was_created: false, was_reactivated: was });
+      } else {
+        const row = { id: 'rpc-' + (__tables.accounts.length + 1), user_id: 'user-1', ...r };
+        __tables.accounts.push(row);
+        out.push({ source_key: r.source_key, id: row.id, name: row.name, scope: row.scope,
+                   is_active: true, was_created: true, was_reactivated: false });
+      }
+    }
+    return { data: out, error: null };
+  };
+  const tabA = bulkUpsertAccountsByPocket([
+    { pocket: 'ซองแข่งกัน', scope: 'personal', latestBalance: 1,
+      latestDate: '2026-08-09T10:00:00+07:00', txCount: 1 },
+  ]);
+  const tabB = bulkUpsertAccountsByPocket([
+    { pocket: 'ซองแข่งกัน', scope: 'personal', latestBalance: 1,
+      latestDate: '2026-08-09T10:00:00+07:00', txCount: 1 },
+  ]);
+  const [ra, rb] = await Promise.all([tabA, tabB]);
+  check('creation goes through the atomic ON CONFLICT RPC when installed',
+    rpcSeen.length === 2, `${rpcSeen.length} rpc call(s)`);
+  check('two tabs importing the same pocket converge on ONE account',
+    ra.get('ซองแข่งกัน') === rb.get('ซองแข่งกัน')
+    && __tables.accounts.filter(a => a.source_key === 'make:pocket:ซองแข่งกัน').length === 1,
+    `${__tables.accounts.filter(a => a.source_key === 'make:pocket:ซองแข่งกัน').length} row(s)`);
+
+  // The RPC also reports a reactivation it performed itself.
+  __tables.accounts.push({ id: 'c2-rpc-arc', user_id: 'user-1', name: 'ซองที่ RPC ปลุก',
+    scope: 'personal', balance: 3, is_active: false, source_key: 'make:pocket:ซองที่ rpc ปลุก' });
+  // Hide it from the client-side index so the RPC is the one that finds it.
+  const hidden = __tables.accounts.pop();
+  const rpcArc = bulkUpsertAccountsByPocket([
+    { pocket: 'ซองที่ RPC ปลุก', scope: 'personal', latestBalance: 3,
+      latestDate: '2026-08-10T10:00:00+07:00', txCount: 1 },
+  ]);
+  __tables.accounts.push(hidden);
+  const rpcArcMap = await rpcArc;
+  check('a reactivation performed inside the RPC is reported too',
+    rpcArcMap.reactivated.some(r => r.accountId === 'c2-rpc-arc') && hidden.is_active === true,
+    JSON.stringify(rpcArcMap.reactivated));
+  delete __config.rpcHandlers['accounts_upsert_by_source_key'];
+
+  // MIGRATION UNRUN: the column is absent → the old name behaviour, no crash.
+  __config.missingColumns = { accounts: ['source_key'] };
+  const legacyMap = await bulkUpsertAccountsByPocket([
+    { pocket: 'ซองก่อน migration', scope: 'personal', latestBalance: 60,
+      latestDate: '2026-08-11T10:00:00+07:00', txCount: 1 },
+  ]);
+  const preMig = __tables.accounts.find(a => a.id === legacyMap.get('ซองก่อน migration'));
+  check('source_key column missing → account still created, no source_key written',
+    !!preMig && !('source_key' in preMig), JSON.stringify(Object.keys(preMig || {})));
+  const preMigAgain = await bulkUpsertAccountsByPocket([
+    { pocket: 'ซองก่อน migration', scope: 'personal', latestBalance: 90,
+      latestDate: '2026-08-12T10:00:00+07:00', txCount: 1 },
+  ]);
+  check('… and the pre-migration import still matches by name (old behaviour)',
+    preMigAgain.get('ซองก่อน migration') === preMig.id && preMig.balance === 90);
+  __config.missingColumns = {};
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
