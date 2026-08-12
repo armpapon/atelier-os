@@ -367,6 +367,134 @@ describe('วางแผนภาษี · a v4.28 row still means what it mean
   });
 });
 
+// ── v4.30 · ติ๊กแล้วเติมให้ · นับเป็นคน ─────────────────────────────────────
+// "แม่ไม่มีเงินได้เลย เลขต้องกรอกยังไง จริงๆ ติ๊กควร Auto นะ" — the tick has to
+// write the number. audit/cases.mjs § F pins the arithmetic and every Thai
+// string; what only a mounted page can prove is that the checkbox, the stepper
+// and the restore link actually reach the table.
+
+const SPOUSE_ROW = 'คู่สมรสไม่มีเงินได้';
+const CHILD_EXTRA_ROW = 'บุตรคนที่ 2 ขึ้นไป ที่เกิดตั้งแต่ปี 2561';
+const spouseBox = () => screen.getByLabelText(`จำนวน ${SPOUSE_ROW}`);
+
+/** Seed, type the salary, and land on the deductions form. */
+async function openDeductions() {
+  await seedHousehold();
+  fireEvent.change(salaryField(), { target: { value: '150000' } });
+  await openFullForm();
+}
+
+describe('วางแผนภาษี · ติ๊กแล้วเติมยอดตามกฎหมายให้ (v4.30)', () => {
+  it('fills in ฿60,000 on tick and clears it on untick', async () => {
+    await openDeductions();
+
+    // Before the tick there is no box at all — and no empty ฿ box to stare at.
+    expect(screen.queryByLabelText(`จำนวน ${SPOUSE_ROW}`)).toBeNull();
+
+    fireEvent.click(screen.getByLabelText(`ใช้ลดหย่อน ${SPOUSE_ROW}`));
+    expect((await screen.findByLabelText(`จำนวน ${SPOUSE_ROW}`)).value).toBe('60,000');
+    await waitFor(() => expect(__tables.tax_profiles[0].deductions.spouse).toBe(60000), { timeout: 4000 });
+
+    // It is the statutory figure, so there is nothing to restore and no clutter.
+    expect(document.body.textContent).not.toContain('ค่ามาตรฐาน ฿60,000');
+    // …and the whole return moved by exactly that ฿60,000: 1,629,500 → 1,569,500.
+    await waitFor(() => expect(screen.getAllByText('฿1,569,500').length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByLabelText(`ใช้ลดหย่อน ${SPOUSE_ROW}`));
+    expect(screen.queryByLabelText(`จำนวน ${SPOUSE_ROW}`)).toBeNull();
+    await waitFor(() => expect(__tables.tax_profiles[0].deductions.spouse).toBe(0), { timeout: 4000 });
+    await waitFor(() => expect(screen.getAllByText('฿1,629,500').length).toBeGreaterThan(0));
+  });
+
+  it('keeps a manual override across a reload, and one link puts the standard figure back', async () => {
+    await openDeductions();
+    fireEvent.click(screen.getByLabelText(`ใช้ลดหย่อน ${SPOUSE_ROW}`));
+
+    // A part-year situation is his call — the app must not lock him out of it.
+    fireEvent.change(await screen.findByLabelText(`จำนวน ${SPOUSE_ROW}`), { target: { value: '30000' } });
+    await screen.findByText(/ค่ามาตรฐาน ฿60,000/);
+    await waitFor(() => expect(__tables.tax_profiles[0].deductions.spouse).toBe(30000), { timeout: 4000 });
+
+    cleanup();
+    render(<TaxPlanner />);
+    await screen.findByText('ค่าลดหย่อน');
+    expect(spouseBox().value).toBe('30,000');
+    await screen.findByText(/ค่ามาตรฐาน ฿60,000/);
+
+    fireEvent.click(screen.getByText('คำนวณใหม่'));
+    await waitFor(() => expect(spouseBox().value).toBe('60,000'));
+    expect(screen.queryByText(/ค่ามาตรฐาน ฿60,000/)).toBeNull();
+    await waitFor(() => expect(__tables.tax_profiles[0].deductions.spouse).toBe(60000), { timeout: 4000 });
+  });
+
+  it('a v4.28 row holding a plain baht number keeps it, and is offered the restore', async () => {
+    // Exactly what v4.28/v4.29 wrote: a number, with nothing saying whether it
+    // was meant to be the statutory one. Reading it must not change it.
+    __tables.tax_profiles = [{
+      id: 'legacy-spouse', user_id: 'u1', tax_year: new Date().getFullYear(),
+      person_name: 'อาร์ม', is_self: true, sort_order: 0,
+      income: { salaryMonthly: 150000 },
+      deductions: { spouse: 45000 },
+      notes: null,
+    }];
+
+    render(<TaxPlanner />);
+    await screen.findByText('เงินได้ของ อาร์ม');
+    expect(spouseBox().value).toBe('45,000');
+    expect(document.body.textContent).toContain('ค่ามาตรฐาน ฿60,000');
+    // Nothing was recomputed, rounded, or written back on read.
+    expect(__tables.tax_profiles[0].deductions.spouse).toBe(45000);
+    // 1,800,000 − 100,000 − 60,000 (ส่วนตัว) − 45,000
+    expect(screen.getAllByText('฿1,595,000').length).toBeGreaterThan(0);
+  });
+});
+
+describe('วางแผนภาษี · ช่องที่นับเป็นคน (v4.30)', () => {
+  it('counts children with a stepper and shows the addition', async () => {
+    await openDeductions();
+
+    fireEvent.click(screen.getByLabelText('ใช้ลดหย่อน บุตร'));
+    expect((await screen.findByLabelText('จำนวน บุตร')).value).toBe('1');
+    await screen.findByText('1 คน = ฿30,000');
+
+    fireEvent.click(screen.getByLabelText('เพิ่มจำนวน บุตร'));
+    await screen.findByText('2 คน = 30,000 + 30,000 = ฿60,000');
+
+    // The 2561 rule is a second count, never a second sum he has to do.
+    fireEvent.click(screen.getByLabelText(`ใช้ลดหย่อน ${CHILD_EXTRA_ROW}`));
+    await screen.findByText('2 คน = 30,000 + 60,000 = ฿90,000');
+    await waitFor(() => {
+      expect(__tables.tax_profiles[0].deductions.children).toBe(2);
+      expect(__tables.tax_profiles[0].deductions.childrenExtra).toBe(1);
+    }, { timeout: 4000 });
+
+    // Drop back to one child: the dependent count goes with it and says why.
+    fireEvent.click(screen.getByLabelText('ลดจำนวน บุตร'));
+    await screen.findByText('1 คน = ฿30,000');
+    expect(document.body.textContent).toContain('ต้องมีบุตรตั้งแต่ 2 คนขึ้นไปก่อน');
+    await waitFor(() => expect(__tables.tax_profiles[0].deductions.childrenExtra).toBe(0), { timeout: 4000 });
+  });
+
+  it('counts parents to a hard maximum of four, with the conditions beside the stepper', async () => {
+    await openDeductions();
+
+    fireEvent.click(screen.getByLabelText('ใช้ลดหย่อน บิดามารดา'));
+    expect((await screen.findByLabelText('จำนวน บิดามารดา')).value).toBe('1');
+    await screen.findByText('1 คน × 30,000 = ฿30,000');
+
+    // Who actually qualifies, said here rather than left to memory.
+    expect(document.body.textContent).toContain('แต่ละคนต้องอายุ 60 ปีขึ้นไป');
+    expect(document.body.textContent).toContain('และมีเงินได้ในปีภาษีนั้นไม่เกิน ฿30,000');
+    expect(document.body.textContent).toContain('พ่อแม่คนหนึ่งมีลูกใช้สิทธิได้แค่คนเดียว');
+
+    for (let i = 0; i < 3; i++) fireEvent.click(screen.getByLabelText('เพิ่มจำนวน บิดามารดา'));
+    await screen.findByText('4 คน × 30,000 = ฿120,000');
+    // His two plus his spouse's two. There is no fifth.
+    expect(screen.getByLabelText('เพิ่มจำนวน บิดามารดา').disabled).toBe(true);
+    await waitFor(() => expect(__tables.tax_profiles[0].deductions.parents).toBe(4), { timeout: 4000 });
+  });
+});
+
 describe('วางแผนภาษี · a failed save is never silent', () => {
   it('surfaces the error in Thai and keeps the patch for a retry', async () => {
     await seedHousehold();

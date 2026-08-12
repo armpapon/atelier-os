@@ -32,6 +32,14 @@ import {
   storedUnit, defaultPeriod, periodFor, toStored, toDisplay, annualOf,
   periodDerivation, ssoSettings, deriveSSO, ssoLegalMax, resolveSSO,
   sanityWarnings, derivations, fmtNumber, pct,
+  SPOUSE_ALLOWANCE, CHILD_ALLOWANCE, CHILD_ALLOWANCE_SECOND,
+  CHILD_SECOND_BORN_FROM_BE, PARENT_ALLOWANCE, PARENT_MAX_COUNT,
+  PARENT_ELIGIBILITY, CHILD_SECOND_NEEDS_TWO, RESTORE_LABEL,
+  STATUTORY_KEYS, COUNT_KEYS, DEDUCTION_BY_KEY,
+  statutoryAmount, statutoryHint, resolveStatutory,
+  childrenAllowance, childrenDerivation, maxQualifyingChildren,
+  parentsAllowance, parentsDerivation,
+  countCeiling, countDerivation, countBlockedNote, countPatch, resolveCounts,
 } from '../src/lib/taxTH.js';
 import {
   listProfiles, listYears, createProfile, updateProfile, deleteProfile,
@@ -2595,6 +2603,221 @@ section('E4 · คำเตือนสติ — เตือนแต่ไม
   check('คำเตือนเป็นข้อความล้วน ไม่มีสถานะบล็อกการกรอก',
     [...low, ...high, ...over, ...noIncome].every(w => typeof w.text === 'string' && w.text.length > 0
       && typeof w.detail === 'string' && !('blocking' in w)));
+}
+
+// ═══ F · ติ๊กแล้วเติมให้ · นับเป็นคนไม่ใช่บาท (v4.30) ═══════════════════════
+// The owner's complaint, verbatim: "แม่ไม่มีเงินได้เลย เลขต้องกรอกยังไง จริงๆ
+// ติ๊กควร Auto นะ". A statutory allowance has one legal value; a headcount is a
+// count. Everything below exists so the app never asks him to compute a number
+// it already knows how to work out — and so that doing the work for him never
+// moves a figure he saved before this version existed.
+
+section('F1 · ค่าลดหย่อนยอดตายตัว — ติ๊กแล้วเติมให้');
+{
+  check(`คู่สมรสไม่มีเงินได้คือยอดตายตัว ${baht(SPOUSE_ALLOWANCE)} และอยู่ในสเปค ไม่ใช่ใน JSX`,
+    SPOUSE_ALLOWANCE === 60000 && statutoryAmount('spouse') === 60000
+    && DEDUCTION_BY_KEY.spouse.statutory === SPOUSE_ALLOWANCE);
+  check('ช่องที่ "ตามที่จ่ายจริง" ไม่มียอดตายตัว — ระบบต้องไม่เติมให้มั่ว',
+    statutoryAmount('ssf') === null && statutoryAmount('lifeInsurance') === null
+    && statutoryAmount('homeLoanInterest') === null && statutoryAmount('ไม่มีช่องนี้') === null);
+  check('รายการช่องยอดตายตัวมีแค่คู่สมรสในตอนนี้ (ส่วนตัวเป็น auto อยู่แล้ว)',
+    STATUTORY_KEYS.join(',') === 'spouse', STATUTORY_KEYS.join(','));
+
+  // Tick → the law's figure. Untick → nothing. No third state.
+  const ticked = resolveStatutory('spouse', SPOUSE_ALLOWANCE);
+  check('ติ๊กแล้วได้ยอดตามกฎหมายเป๊ะ และไม่ถือว่า "กรอกเอง"',
+    ticked.on === true && near(ticked.amount, 60000) && ticked.overridden === false,
+    baht(ticked.amount));
+  const unticked = resolveStatutory('spouse', 0);
+  check('ติ๊กออกแล้วเป็นศูนย์ ไม่ใช่ค้างไว้ที่ ฿60,000',
+    unticked.on === false && unticked.amount === 0 && unticked.overridden === false);
+  check('ช่องที่ไม่ใช่ยอดตายตัว resolveStatutory ตอบ null ไม่ใช่แกล้งตอบเป็นศูนย์',
+    resolveStatutory('ssf', 200000) === null);
+
+  // The override, and the way back.
+  const own = resolveStatutory('spouse', 30000);
+  check('พิมพ์ทับเป็น ฿30,000 (เช่น จดทะเบียนกลางปี) — ระบบเก็บตามที่พิมพ์ แต่ติดธงว่าทับค่ามาตรฐาน',
+    near(own.amount, 30000) && own.overridden === true, baht(own.amount));
+  check('ธงนั้นมาพร้อมบรรทัดกู้คืน "ค่ามาตรฐาน ฿60,000 · คำนวณใหม่" — คำไทยอยู่ใน taxTH ไม่ใช่ใน JSX',
+    own.hint === 'ค่ามาตรฐาน ฿60,000' && own.restore === 'คำนวณใหม่'
+    && statutoryHint('spouse') === 'ค่ามาตรฐาน ฿60,000' && RESTORE_LABEL === 'คำนวณใหม่',
+    `${own.hint} · ${own.restore}`);
+  check('… และใช้คำเดียวกับลิงก์ของแถวประกันสังคม ไม่ใช่คำใหม่ให้ต้องเรียนรู้',
+    RESTORE_LABEL === 'คำนวณใหม่');
+
+  // BACKWARD COMPATIBILITY — the case that must never regress.
+  const legacySpouse = computeTax(profileOf(1000000, { spouse: 45000 }));
+  check('แถวเก่าที่กรอก ฿45,000 ไว้ ยังเป็น ฿45,000 — ไม่ถูกปัดขึ้นเป็น ฿60,000 ให้เอง',
+    near(legacySpouse.rows.spouse.allowed, 45000) && legacySpouse.rows.spouse.capped === false,
+    baht(legacySpouse.rows.spouse.allowed));
+  check('… และถูกอ่านเป็น "กรอกเอง" จึงมีลิงก์ให้กดกลับไปใช้ค่ามาตรฐานได้',
+    resolveStatutory('spouse', 45000).overridden === true);
+  check('แถวเก่าที่บังเอิญกรอก ฿60,000 พอดี ไม่ต้องขึ้นลิงก์ให้รกตา',
+    resolveStatutory('spouse', 60000).overridden === false);
+  check('กรอกเกินยอดตามกฎหมาย ยังโดนเพดานเดิมตัดเหมือนเคย',
+    near(computeTax(profileOf(1000000, { spouse: 100000 })).rows.spouse.allowed, 60000));
+}
+
+section('F2 · บุตร — นับเป็นคน และกฎคนที่ 2 ที่เกิดตั้งแต่ปี 2561');
+{
+  check(`อัตราอยู่ในไฟล์คำนวณ: คนละ ${baht(CHILD_ALLOWANCE)} · คนที่ 2+ ที่เกิดตั้งแต่ พ.ศ. ${CHILD_SECOND_BORN_FROM_BE} = ${baht(CHILD_ALLOWANCE_SECOND)}`,
+    CHILD_ALLOWANCE === 30000 && CHILD_ALLOWANCE_SECOND === 60000
+    && CHILD_SECOND_BORN_FROM_BE === 2561);
+
+  const kid = (n, q) => childrenAllowance(n, q);
+  check('บุตร 1 คน = ฿30,000', near(kid(1, 0).amount, 30000), baht(kid(1, 0).amount));
+  check('บุตร 2 คน ไม่มีใครเข้าเงื่อนไขปี 2561 = ฿60,000',
+    near(kid(2, 0).amount, 60000), baht(kid(2, 0).amount));
+  check('บุตร 2 คน คนที่ 2 เกิดตั้งแต่ปี 2561 = ฿90,000 (30,000 + 60,000)',
+    near(kid(2, 1).amount, 90000), baht(kid(2, 1).amount));
+  check('บุตร 3 คน ไม่เข้าเงื่อนไขเลย = ฿90,000',
+    near(kid(3, 0).amount, 90000), baht(kid(3, 0).amount));
+  check('บุตร 3 คน เข้าเงื่อนไข 2 คน = ฿150,000 (30,000 + 60,000 + 60,000)',
+    near(kid(3, 2).amount, 150000), baht(kid(3, 2).amount));
+  check('ไม่มีบุตร = ฿0 และไม่มีบรรทัดที่มาให้อ่าน',
+    kid(0, 0).amount === 0 && childrenDerivation(0, 0) === null);
+
+  // The first child NEVER qualifies, whenever he was born — so a saved pair
+  // that says otherwise under-claims rather than over-claims.
+  check('ลูกคนแรกไม่เข้าเงื่อนไขไม่ว่าเกิดปีไหน — กรอก (1 คน, เข้าเงื่อนไข 1) ยังได้แค่ ฿30,000',
+    near(kid(1, 1).amount, 30000) && kid(1, 1).second === 0 && kid(1, 1).qualifyingClamped === true,
+    baht(kid(1, 1).amount));
+  check('เข้าเงื่อนไขมากกว่าที่เป็นไปได้ ถูกหั่นลงมาที่ (จำนวนบุตร − 1) เสมอ',
+    kid(3, 9).second === 2 && near(kid(3, 9).amount, 150000)
+    && maxQualifyingChildren(3) === 2 && maxQualifyingChildren(0) === 0);
+  check('ค่าขยะ/ติดลบ/ทศนิยม ถูกอ่านเป็นจำนวนคนที่มีจริง ไม่ทำให้เงินเพี้ยน',
+    kid(-2, -1).amount === 0 && near(kid(2.9, 1.7).amount, 90000)
+    && kid('abc', 'abc').amount === 0, baht(kid(2.9, 1.7).amount));
+
+  // The derivation the row prints — pinned here so the wording cannot drift.
+  check('บรรทัดที่มาแจกแจงทีละคน: "2 คน = 30,000 + 60,000 = ฿90,000"',
+    childrenDerivation(2, 1) === '2 คน = 30,000 + 60,000 = ฿90,000', childrenDerivation(2, 1));
+  check('… 2 คนธรรมดา: "2 คน = 30,000 + 30,000 = ฿60,000"',
+    childrenDerivation(2, 0) === '2 คน = 30,000 + 30,000 = ฿60,000', childrenDerivation(2, 0));
+  check('… 3 คน เข้าเงื่อนไข 2: "3 คน = 30,000 + 60,000 + 60,000 = ฿150,000"',
+    childrenDerivation(3, 2) === '3 คน = 30,000 + 60,000 + 60,000 = ฿150,000', childrenDerivation(3, 2));
+  check('… คนเดียวไม่ต้องโชว์บวก: "1 คน = ฿30,000"',
+    childrenDerivation(1, 0) === '1 คน = ฿30,000', childrenDerivation(1, 0));
+
+  // …and the same numbers coming out of the real computation, two rows deep.
+  const r = computeTax(profileOf(4000000, { children: 2, childrenExtra: 1 }));
+  check('computeTax แตกเป็นสองแถวเหมือนเดิม (บุตร ฿60,000 + คนที่ 2 อีก ฿30,000) รวม = ฿90,000',
+    near(r.rows.children.allowed, 60000) && near(r.rows.childrenExtra.allowed, 30000)
+    && near(r.rows.children.allowed + r.rows.childrenExtra.allowed,
+            childrenAllowance(2, 1).amount),
+    baht(r.rows.children.allowed + r.rows.childrenExtra.allowed));
+  check('… และจำนวนคนเดินทางมาถึงผลลัพธ์ด้วย เพื่อให้ UI เปิดตัวนับกลับมาได้',
+    r.counts.children.count === 2 && r.counts.children.second === 1,
+    `${r.counts.children.count}/${r.counts.children.second}`);
+  const incoherent = computeTax(profileOf(4000000, { children: 1, childrenExtra: 1 }));
+  check('แถวที่ค้างมาแบบไม่สอดคล้อง (บุตร 1 · คนที่ 2 อีก 1) หักได้แค่ ฿30,000 ไม่ใช่ ฿60,000',
+    near(incoherent.rows.children.allowed, 30000)
+    && near(incoherent.rows.childrenExtra.allowed, 0),
+    baht(incoherent.rows.children.allowed + incoherent.rows.childrenExtra.allowed));
+}
+
+section('F3 · บิดามารดา — คนละ ฿30,000 ไม่เกิน 4 คน');
+{
+  check(`อัตราและเพดานอยู่ในไฟล์คำนวณ: คนละ ${baht(PARENT_ALLOWANCE)} · ไม่เกิน ${PARENT_MAX_COUNT} คน`,
+    PARENT_ALLOWANCE === 30000 && PARENT_MAX_COUNT === 4
+    && DEDUCTION_BY_KEY.parents.maxCount === PARENT_MAX_COUNT);
+
+  for (const [n, amount] of [[1, 30000], [2, 60000], [3, 90000], [4, 120000]]) {
+    check(`บิดามารดา ${n} คน = ${baht(amount)}`,
+      near(parentsAllowance(n).amount, amount) && parentsAllowance(n).capped === false,
+      baht(parentsAllowance(n).amount));
+  }
+  check('คนที่ 5 หักไม่ได้ — ตัวนับหยุดที่ 4 และติดธงว่าชนเพดาน',
+    parentsAllowance(5).count === 4 && near(parentsAllowance(5).amount, 120000)
+    && parentsAllowance(5).capped === true, baht(parentsAllowance(5).amount));
+  check('เพดานของตัวนับคือ 4 — UI กดปุ่ม + ต่อไม่ได้ เพราะถามมาจากที่เดียวกับที่คำนวณ',
+    countCeiling('parents') === 4 && countCeiling('parents', { parents: 9 }) === 4);
+  check('ไม่มีบิดามารดาในอุปการะ = ฿0 และไม่มีบรรทัดที่มา',
+    parentsAllowance(0).amount === 0 && parentsDerivation(0) === null);
+  check('บรรทัดที่มา: "2 คน × 30,000 = ฿60,000"',
+    parentsDerivation(2) === '2 คน × 30,000 = ฿60,000', parentsDerivation(2));
+  check('… และกรอกเกิน 4 บรรทัดที่มายังพูดความจริงว่าหักได้แค่ 4 คน',
+    parentsDerivation(9) === '4 คน × 30,000 = ฿120,000', parentsDerivation(9));
+
+  // The conditions, said next to the stepper instead of left to memory.
+  check('เงื่อนไขสิทธิถูกเขียนไว้ให้ UI แสดง ไม่ใช่ให้จำเอง: 60 ปี · เงินได้ไม่เกิน ฿30,000 · ลูกใช้สิทธิซ้ำไม่ได้',
+    PARENT_ELIGIBILITY.length === 3
+    && /60 ปีขึ้นไป/.test(PARENT_ELIGIBILITY[0])
+    && /฿30,000/.test(PARENT_ELIGIBILITY[1])
+    && /คนเดียว/.test(PARENT_ELIGIBILITY[2]),
+    PARENT_ELIGIBILITY.join(' · '));
+  check('… และผูกไว้กับแถวบิดามารดาโดยตรง',
+    DEDUCTION_BY_KEY.parents.conditions === PARENT_ELIGIBILITY);
+
+  // The pre-existing over-claim guard still holds, through the new plumbing.
+  const six = computeTax(profileOf(4000000, { parents: 6 }));
+  check('กรอกมาเป็น 6 (แถวเก่า) → ยังหักได้ ฿120,000 · count = 4 · ติดธงชนเพดาน',
+    near(six.rows.parents.allowed, 120000) && six.rows.parents.count === 4
+    && six.rows.parents.capped === true, baht(six.rows.parents.allowed));
+}
+
+section('F4 · ตัวนับที่ขึ้นกับตัวนับอื่น และการเก็บลง jsonb');
+{
+  check('เพดานของ "บุตรคนที่ 2 ขึ้นไป" = จำนวนบุตร − 1 เสมอ',
+    countCeiling('childrenExtra', { children: 0 }) === 0
+    && countCeiling('childrenExtra', { children: 1 }) === 0
+    && countCeiling('childrenExtra', { children: 2 }) === 1
+    && countCeiling('childrenExtra', { children: 5 }) === 4);
+  check('ช่องบุตรเองไม่มีเพดานตามกฎหมาย — ระบบต้องไม่แอบตั้งเพดานเอง',
+    countCeiling('children', { children: 9 }) === Infinity);
+  check('ยังไม่มีบุตรถึง 2 คน → บอกเหตุผลตรง ๆ แทนที่จะปล่อยให้กดแล้วไม่ขยับ',
+    countBlockedNote('childrenExtra', { children: 1 }) === CHILD_SECOND_NEEDS_TWO
+    && countBlockedNote('childrenExtra', { children: 2 }) === null
+    && countBlockedNote('parents', {}) === null, CHILD_SECOND_NEEDS_TWO);
+
+  // Lowering บุตร must take the dependent count down with it, or a ghost
+  // number sits in the jsonb and reappears the next time he adds a child.
+  check('ลดบุตรจาก 3 เหลือ 1 → ตัวนับ "คนที่ 2 ขึ้นไป" ถูกลดเป็น 0 ในแพตช์เดียวกัน',
+    JSON.stringify(countPatch('children', 1, { children: 3, childrenExtra: 2 }))
+      === JSON.stringify({ children: 1, childrenExtra: 0 }),
+    JSON.stringify(countPatch('children', 1, { children: 3, childrenExtra: 2 })));
+  check('ลดบุตรจาก 3 เหลือ 2 → ลดเหลือ 1 พอดีเพดานใหม่ ไม่ล้างทิ้งทั้งหมด',
+    JSON.stringify(countPatch('children', 2, { children: 3, childrenExtra: 2 }))
+      === JSON.stringify({ children: 2, childrenExtra: 1 }));
+  check('เพิ่มบุตร ไม่ไปยุ่งกับตัวนับอีกช่อง',
+    JSON.stringify(countPatch('children', 5, { children: 3, childrenExtra: 2 }))
+      === JSON.stringify({ children: 5 }));
+  check('ช่องอื่น ๆ แพตช์คีย์เดียวเหมือนเดิม ไม่มีผลข้างเคียง',
+    JSON.stringify(countPatch('ssf', 200000, { children: 3, childrenExtra: 2 }))
+      === JSON.stringify({ ssf: 200000 })
+    && JSON.stringify(countPatch('spouse', 60000, {})) === JSON.stringify({ spouse: 60000 }));
+
+  check('ช่องที่นับเป็นคนมีสามช่อง และทุกช่องมีอัตราต่อคนกำกับไว้',
+    COUNT_KEYS.join(',') === 'children,childrenExtra,parents'
+    && COUNT_KEYS.every(k => DEDUCTION_BY_KEY[k].per > 0), COUNT_KEYS.join(','));
+
+  // What actually lands in the jsonb: counts, in the same keys as before.
+  const ded = { children: 2, childrenExtra: 1, parents: 3, spouse: SPOUSE_ALLOWANCE };
+  const round = JSON.parse(JSON.stringify(ded));
+  const reopened = resolveCounts(round);
+  check('บันทึกลง jsonb เป็น "จำนวนคน" คีย์เดิม แล้วเปิดกลับมาได้ครบทั้งสองตัวนับ',
+    reopened.children.count === 2 && reopened.children.second === 1
+    && reopened.parents.count === 3 && near(reopened.children.amount, 90000)
+    && near(reopened.parents.amount, 90000));
+  check('… และยอดที่ภาษีใช้จริงยังคำนวณจากจำนวนคนเสมอ ไม่ใช่จากบาทที่เก็บซ้ำไว้',
+    near(computeTax(profileOf(4000000, round)).rows.children.allowed
+       + computeTax(profileOf(4000000, round)).rows.childrenExtra.allowed
+       + computeTax(profileOf(4000000, round)).rows.parents.allowed
+       + computeTax(profileOf(4000000, round)).rows.spouse.allowed, 240000),
+    baht(240000));
+
+  check('บรรทัดที่มาถูกส่งต่อไปตามชนิดของแถว ไม่ใช่เขียนซ้ำในหน้าเว็บ',
+    countDerivation('children', ded) === '2 คน = 30,000 + 60,000 = ฿90,000'
+    && countDerivation('childrenExtra', ded) === '1 คน × 30,000 = ฿30,000'
+    && countDerivation('parents', ded) === '3 คน × 30,000 = ฿90,000'
+    && countDerivation('ssf', { ssf: 200000 }) === null,
+    countDerivation('childrenExtra', ded));
+
+  const full = computeTax(profileOf(4000000, ded));
+  const dv = derivations(full);
+  check('แผงผลลัพธ์อ่านบรรทัดเดียวกันนี้ — ไม่มีคำไทยลอยอยู่ใน JSX ให้เทสต์เอื้อมไม่ถึง',
+    dv.children === '2 คน = 30,000 + 60,000 = ฿90,000'
+    && dv.parents === '3 คน × 30,000 = ฿90,000', `${dv.children} · ${dv.parents}`);
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
