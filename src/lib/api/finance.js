@@ -1800,13 +1800,53 @@ export async function createDebt(input) {
   return data;
 }
 
+/** Terms whose change makes the stored remaining_balance stale. */
+const DEBT_TERM_FIELDS = ['total_months', 'months_paid', 'monthly_payment'];
+
+/**
+ * Update a debt and keep `remaining_balance` honest (audit batch C · B8).
+ *
+ * Editing the terms used to leave remaining_balance at whatever the last
+ * payment wrote, so a loan re-termed from 12 to 24 instalments still reported
+ * the old balance — and the summary trusts remaining_balance over the
+ * instalment maths.
+ *
+ * Preferred path: debt_update_terms recomputes it inside one transaction,
+ * under a row lock (migration_add_debt_terms_rpc.sql).
+ */
 export async function updateDebt(id, patch) {
   if (!supabase) throw new Error('Supabase not configured');
+
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('debt_update_terms', {
+    p_id: id, p_patch: patch,
+  });
+  if (!rpcErr) return Array.isArray(rpcData) ? rpcData[0] : rpcData;
+  if (!isRpcMissing(rpcErr)) throw rpcErr;
+
+  // ── FALLBACK while migration_add_debt_terms_rpc.sql is unrun ────────────
+  // A SINGLE guarded UPDATE — deliberately NOT a read-modify-write. The new
+  // remaining_balance is derived only when this very patch carries all three
+  // terms (the debt form always sends them together), so nothing is read back
+  // and no concurrent writer can be clobbered by a stale read. A patch that
+  // does not touch the terms leaves remaining_balance exactly as it is.
+  // ────────────────────────────────────────────────────────────────────────
+  const next = { ...patch, updated_at: new Date().toISOString() };
+  if (DEBT_TERM_FIELDS.every(k => k in patch) && !('remaining_balance' in patch)) {
+    const total = patch.total_months == null || patch.total_months === ''
+      ? null : Number(patch.total_months);
+    next.remaining_balance = total
+      ? Math.max(0, (total - Number(patch.months_paid || 0)) * Number(patch.monthly_payment || 0))
+      : null;
+  }
   const { data, error } = await supabase
-    .from('debts').update({ ...patch, updated_at: new Date().toISOString() })
-    .eq('id', id).select().single();
+    .from('debts').update(next).eq('id', id).select().single();
   if (error) throw error;
   return data;
+}
+
+/** Hide a finished debt without destroying its payment history. */
+export async function archiveDebt(id) {
+  return updateDebt(id, { is_active: false });
 }
 
 export async function deleteDebt(id) {
@@ -1937,6 +1977,39 @@ export async function deleteDebtPayment(id) {
 
 // ── Forecast / Status helpers (pure, client-side) ───────────────────────────
 
+/**
+ * Where a debt sits in its own life, for a given Bangkok month
+ * (audit batch C · B8): 'upcoming' | 'active' | 'completed'.
+ *
+ * The tracker used to know only "paid this month or not", so a loan that had
+ * not started yet was already overdue, and a loan paid off 12/12 went overdue
+ * again every single month and stayed in the monthly burden forever.
+ *
+ *   completed — every instalment is paid (months_paid ≥ total_months), or the
+ *               end_date is behind us with nothing outstanding.
+ *   upcoming  — the requested month is before start_date's month.
+ *   active    — everything else, including a debt with no dates at all
+ *               (unchanged behaviour for the loosely-filled records).
+ *
+ * Month granularity throughout: due_day decides the day-level question, and
+ * this decides whether the month counts at all.
+ */
+export function debtLifecycle(debt, yearMonth) {
+  const ym    = yearMonth || currentYearMonth();
+  const total = Number(debt?.total_months || 0);
+  const paid  = Number(debt?.months_paid  || 0);
+  if (total > 0 && paid >= total) return 'completed';
+
+  const outstanding = debt?.remaining_balance == null ? null : Number(debt.remaining_balance);
+  const endMonth = String(debt?.end_date || '').slice(0, 7);
+  if (endMonth && endMonth < ym && !(outstanding > 0)) return 'completed';
+
+  const startMonth = String(debt?.start_date || '').slice(0, 7);
+  if (startMonth && ym < startMonth) return 'upcoming';
+
+  return 'active';
+}
+
 /** For one debt + payment list, return status this month */
 export function getDebtStatus(debt, payments, yearMonth) {
   const monthKey = yearMonth + '-01';
@@ -1948,6 +2021,15 @@ export function getDebtStatus(debt, payments, yearMonth) {
     amount_paid: Number(paid.amount_paid),
     payment_id: paid.id,
   };
+
+  // B8: a debt that is finished, or has not started, is never "not paid yet".
+  const phase = debtLifecycle(debt, yearMonth);
+  if (phase === 'completed') {
+    return { status: 'completed', dueDay: debt.due_day || 5, endDate: debt.end_date || null };
+  }
+  if (phase === 'upcoming') {
+    return { status: 'upcoming', dueDay: debt.due_day || 5, startDate: debt.start_date || null };
+  }
 
   // Not paid yet — check if overdue.
   // Audit B10: "today" is the BANGKOK calendar day, never the device's.
@@ -1972,7 +2054,6 @@ export function getDebtStatus(debt, payments, yearMonth) {
 /** Aggregate forecast summary across all debts */
 export function summarizeDebts(debts, payments, yearMonth) {
   const ym = yearMonth || currentYearMonth();
-  const monthlyBurden = debts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
   let paidThisMonth = 0, pending = 0, overdue = 0;
   const statuses = debts.map(d => {
     const st = getDebtStatus(d, payments.filter(p => p.debt_id === d.id), ym);
@@ -1981,9 +2062,17 @@ export function summarizeDebts(debts, payments, yearMonth) {
     if (st.status === 'overdue') overdue       += Number(d.monthly_payment);
     return { debt: d, status: st };
   });
+  const isDone = (d) => debtLifecycle(d, ym) === 'completed';
 
-  // Remaining balance estimate
+  // B8: a loan that is paid off is not a burden. It used to sit in this total
+  // forever — the owner's two โมนี่ loans would have haunted the tracker.
+  const monthlyBurden = debts.reduce(
+    (s, d) => s + (isDone(d) ? 0 : Number(d.monthly_payment || 0)), 0);
+
+  // Remaining balance estimate — a completed loan owes nothing, whatever a
+  // stale remaining_balance still says.
   const totalRemaining = debts.reduce((s, d) => {
+    if (isDone(d)) return s;
     if (d.remaining_balance != null) return s + Number(d.remaining_balance);
     if (d.total_months) {
       const remainingMonths = Math.max(0, Number(d.total_months) - Number(d.months_paid || 0));
@@ -2001,9 +2090,11 @@ export function summarizeDebts(debts, payments, yearMonth) {
 
   return {
     monthlyBurden, paidThisMonth, pending, overdue,
-    paidCount:    statuses.filter(s => s.status.status === 'paid').length,
-    pendingCount: statuses.filter(s => s.status.status === 'pending').length,
-    overdueCount: statuses.filter(s => s.status.status === 'overdue').length,
+    paidCount:      statuses.filter(s => s.status.status === 'paid').length,
+    pendingCount:   statuses.filter(s => s.status.status === 'pending').length,
+    overdueCount:   statuses.filter(s => s.status.status === 'overdue').length,
+    completedCount: statuses.filter(s => s.status.status === 'completed').length,
+    upcomingCount:  statuses.filter(s => s.status.status === 'upcoming').length,
     totalRemaining,
     maxMonthsRemaining,
     statuses,
@@ -2169,7 +2260,10 @@ function runPayoffSim(enriched, strategy, extraPerMonth) {
 
 export function simulatePayoff(debts, strategy = 'snowball', extraPerMonth = 0) {
   const enriched = (debts || [])
-    .filter(d => d.total_months && Number(d.months_paid || 0) < Number(d.total_months))
+    // B8: a finished loan is not part of a payoff plan (an end_date-completed
+    // loan would otherwise slip past the instalment test below).
+    .filter(d => d.total_months && Number(d.months_paid || 0) < Number(d.total_months)
+      && debtLifecycle(d) !== 'completed')
     .map(d => {
       const P = Number(d.monthly_payment);
       const N = Number(d.total_months);
@@ -2230,19 +2324,29 @@ export function simulatePayoff(debts, strategy = 'snowball', extraPerMonth = 0) 
   };
 }
 
-/** Forecast: month-by-month total outflow + balance projection (next N months) */
+/**
+ * Forecast: month-by-month total outflow + balance projection (next N months).
+ *
+ * B8: each month is billed only while the debt is ACTIVE in that month — a
+ * loan that has not reached its start_date bills nothing yet, and one that is
+ * finished bills nothing ever again. Instalments accumulate as the projection
+ * walks forward, so a debt starts its countdown from the month it actually
+ * begins, not from today.
+ */
 export function forecastDebts(debts, monthsAhead = 12) {
   const result = [];
   let cur = currentYearMonth();
+  const billed = new Map();   // debt → instalments this projection has added
   for (let i = 0; i < monthsAhead; i++) {
     let totalOutflow = 0;
     let activeCount = 0;
     for (const d of debts) {
-      const monthsPaidAtThisPoint = Number(d.months_paid || 0) + i;
-      if (!d.total_months || monthsPaidAtThisPoint < Number(d.total_months)) {
-        totalOutflow += Number(d.monthly_payment);
-        activeCount++;
-      }
+      const already = billed.get(d) || 0;
+      const projected = { ...d, months_paid: Number(d.months_paid || 0) + already };
+      if (debtLifecycle(projected, cur) !== 'active') continue;
+      totalOutflow += Number(d.monthly_payment || 0);
+      activeCount++;
+      billed.set(d, already + 1);
     }
     result.push({ ym: cur, outflow: totalOutflow, activeCount });
     cur = nextMonth(cur);
@@ -2402,10 +2506,10 @@ export function forecastCashFlow({ monthlyIncome = 0, recurring = [], debts = []
   let curYM = currentYearMonth();
   for (let i = 0; i < monthsAhead; i++) {
     curYM = nextMonth(curYM);
-    const activeDebts = debts.filter(d => {
-      const paid = Number(d.months_paid || 0) + i + 1;
-      return !d.total_months || paid <= Number(d.total_months);
-    });
+    // B8: lifecycle-aware — a finished loan and one that has not started yet
+    // are both absent from the projected outflow.
+    const activeDebts = debts.filter(d =>
+      debtLifecycle({ ...d, months_paid: Number(d.months_paid || 0) + i }, curYM) === 'active');
     const debtPayment = activeDebts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
     const totalOut = fixedExpense + debtPayment + avgVariableExpense;
     const net = monthlyIncome - totalOut;
@@ -2417,7 +2521,9 @@ export function forecastCashFlow({ monthlyIncome = 0, recurring = [], debts = []
       activeDebtsCount: activeDebts.length,
     });
   }
-  const debtNow = debts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
+  // "ตอนนี้" excludes debts that are finished or have not started (B8).
+  const debtNow = debts.reduce((s, d) =>
+    s + (debtLifecycle(d) === 'active' ? Number(d.monthly_payment || 0) : 0), 0);
   return {
     monthlyIncome, fixedExpense, avgVariableExpense,
     debtPaymentNow: debtNow,

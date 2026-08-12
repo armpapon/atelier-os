@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardHeader, Badge, Button, EmptyState } from '../ui/index.js';
 import {
   summarizeDebts, forecastDebts, recordDebtPayment, deleteDebtPayment, deleteDebt,
-  calculateDebtMath, simulatePayoff,
+  calculateDebtMath, simulatePayoff, archiveDebt,
 } from '../../lib/api/finance.js';
 
 const TYPE_META = {
@@ -15,10 +15,13 @@ const TYPE_META = {
 };
 
 const STATUS_META = {
-  paid:     { label: 'จ่ายแล้ว', tone: 'success', icon: '✓' },
-  pending:  { label: 'รอจ่าย',   tone: 'warning', icon: '◷' },
-  overdue:  { label: 'เกินกำหนด', tone: 'danger',  icon: '!' },
-  upcoming: { label: 'อนาคต',    tone: 'neutral', icon: '…' },
+  paid:      { label: 'จ่ายแล้ว',    tone: 'success', icon: '✓' },
+  pending:   { label: 'รอจ่าย',      tone: 'warning', icon: '◷' },
+  overdue:   { label: 'เกินกำหนด',   tone: 'danger',  icon: '!' },
+  upcoming:  { label: 'ยังไม่เริ่ม',  tone: 'neutral', icon: '…' },
+  // Batch C · B8: a loan that is finished says so, instead of going overdue
+  // again every month for the rest of time.
+  completed: { label: 'ผ่อนหมดแล้ว', tone: 'success', icon: '🎉' },
 };
 
 function fmt(n) {
@@ -71,6 +74,14 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
     finally { setBusy(debtId, false); }
   };
 
+  // B8: a finished loan can be filed away — the payment history survives,
+  // the row just stops showing up (listDebts filters on is_active).
+  const handleArchive = async (debt) => {
+    if (!confirm(`เก็บ "${debt.name}" เข้าคลัง?\n(ผ่อนหมดแล้ว — ประวัติการจ่ายยังอยู่ครบ แค่ไม่แสดงในรายการ)`)) return;
+    try { await archiveDebt(debt.id); onChange?.(); }
+    catch (e) { alert('เก็บไม่สำเร็จ: ' + e.message); }
+  };
+
   const handleDelete = async (debt) => {
     if (!confirm(`ลบหนี้สิน "${debt.name}"?\n(บันทึกการจ่ายทั้งหมดของหนี้นี้จะถูกลบด้วย)`)) return;
     try { await deleteDebt(debt.id); onChange?.(); }
@@ -82,7 +93,11 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
       <CardHeader
         eyebrow={`💳 หนี้สิน & ผ่อนชำระ · ${debts.length} รายการ`}
         title="Debt Tracker"
-        meta={debts.length > 0 ? `ภาระต่อเดือน ${fmt(summary.monthlyBurden)}` : null}
+        meta={debts.length > 0
+          ? `ภาระต่อเดือน ${fmt(summary.monthlyBurden)}`
+            + (summary.completedCount > 0 ? ` · ผ่อนหมดแล้ว ${summary.completedCount} รายการ` : '')
+            + (summary.upcomingCount  > 0 ? ` · ยังไม่เริ่ม ${summary.upcomingCount} รายการ`  : '')
+          : null}
         action={
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {debts.length > 1 && (
@@ -144,6 +159,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
                 onMarkPaid={() => markPaid(debt)}
                 onUnmark={() => unmarkPaid(debt.id, status.payment_id)}
                 onEdit={() => setEditing(editing?.id === debt.id ? null : debt)}
+                onArchive={() => handleArchive(debt)}
                 onDelete={() => handleDelete(debt)}
               />
               {editing?.id === debt.id && (
@@ -182,7 +198,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  Debt Row
 // ════════════════════════════════════════════════════════════════════════════
-function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, onEdit, onDelete }) {
+function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, onEdit, onArchive, onDelete }) {
   const typeMeta   = TYPE_META[debt.type]      || TYPE_META.other;
   const statusMeta = STATUS_META[status.status] || STATUS_META.upcoming;
   const monthsRemaining = debt.total_months
@@ -196,8 +212,9 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
   return (
     <div style={{
       padding: '12px 14px',
-      background: status.status === 'overdue' ? 'var(--danger-soft)' :
-                  status.status === 'paid'    ? 'var(--success-soft)' : 'var(--fill)',
+      background: status.status === 'overdue'   ? 'var(--danger-soft)' :
+                  status.status === 'paid'      ? 'var(--success-soft)' :
+                  status.status === 'completed' ? 'var(--success-soft)' : 'var(--fill)',
       borderRadius: 'var(--radius-control)',
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
@@ -266,7 +283,17 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-        {status.status === 'paid' ? (
+        {status.status === 'completed' ? (
+          /* B8: nothing left to pay — offer to file it away instead of
+             nagging for a payment that does not exist. */
+          <Button variant="secondary" size="sm" onClick={onArchive}>
+            🗂 ผ่อนหมดแล้ว — เก็บเข้าคลัง
+          </Button>
+        ) : status.status === 'upcoming' ? (
+          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', alignSelf: 'center' }}>
+            เริ่มผ่อน {status.startDate ? new Date(status.startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : 'เดือนหน้า'}
+          </span>
+        ) : status.status === 'paid' ? (
           <Button variant="ghost" size="sm" onClick={onUnmark} disabled={busy}>
             ✓ จ่ายแล้วเมื่อ {new Date(status.paid_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · ยกเลิก
           </Button>
@@ -297,6 +324,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
     original_principal: initial?.original_principal || '',
     type:               initial?.type               || 'loan',
     start_date:         initial?.start_date         || '',
+    end_date:           initial?.end_date           || '',
     notes:              initial?.notes              || '',
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -316,6 +344,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
         interest_rate:      form.interest_rate      ? Number(form.interest_rate)      : null,
         original_principal: form.original_principal ? Number(form.original_principal) : null,
         start_date:         form.start_date || null,
+        end_date:           form.end_date   || null,
         scope,
       };
       if (initial) {
@@ -372,7 +401,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
         <div>
           <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>จ่ายไปแล้วกี่งวด</label>
           <input type="number" min="0" value={form.months_paid}
@@ -383,6 +412,13 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
           <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>เริ่มผ่อน</label>
           <input type="date" value={form.start_date}
             onChange={e => set('start_date', e.target.value)}
+            style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
+        </div>
+        <div>
+          {/* B8: the end of the loan is what tells the tracker to stop. */}
+          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>ผ่อนหมด</label>
+          <input type="date" value={form.end_date}
+            onChange={e => set('end_date', e.target.value)}
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
         </div>
       </div>

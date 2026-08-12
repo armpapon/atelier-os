@@ -16,6 +16,8 @@ import {
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
   pocketSourceKey, extractAccountsFromMapped, reassignAndArchiveAccount,
   createScopeTransfer, updateTransactionMaybePaired, deleteTransactionWithPair,
+  debtLifecycle, updateDebt, archiveDebt, forecastDebts, forecastCashFlow,
+  summarizeDebts, nextMonth, previousMonth,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
@@ -1799,6 +1801,123 @@ section('C · B5 · a scope transfer is one pair, not two loose rows');
   check('… and an edit before the migration still updates its own row',
     bareEdit.title === 'แก้ก่อน migration');
   __config.missingColumns = {};
+}
+
+section('C · B8 · a debt has a life: upcoming → active → completed');
+{
+  // Everything is anchored to the CURRENT Bangkok month, so these hold on any
+  // day the harness runs.
+  const THIS = currentYearMonth();
+  const NEXT = nextMonth(THIS);
+  const PREV = previousMonth(THIS);
+
+  const future = {
+    id: 'c8-future', name: 'สินเชื่อที่ยังไม่เริ่ม', monthly_payment: 5000, due_day: 5,
+    start_date: `${NEXT}-01`, total_months: 12, months_paid: 0, scope: 'personal',
+  };
+  const done = {   // the owner's โมนี่ shape: 12 of 12 instalments paid
+    id: 'c8-done', name: 'โมนี่ 1', monthly_payment: 19253, due_day: 5,
+    start_date: '2025-08-01', end_date: '2026-07-05',
+    total_months: 12, months_paid: 12, remaining_balance: 0, scope: 'personal',
+  };
+  const running = {
+    id: 'c8-run', name: 'ผ่อนรถ', monthly_payment: 8000, due_day: 5,
+    start_date: `${PREV}-01`, total_months: 24, months_paid: 1, scope: 'personal',
+  };
+
+  check('lifecycle: before start_date → upcoming',
+    debtLifecycle(future, THIS) === 'upcoming' && debtLifecycle(future, NEXT) === 'active');
+  check('lifecycle: every instalment paid → completed, in every month',
+    debtLifecycle(done, THIS) === 'completed' && debtLifecycle(done, NEXT) === 'completed');
+  check('lifecycle: a debt with no dates at all is still simply active',
+    debtLifecycle({ monthly_payment: 100 }, THIS) === 'active');
+  check('lifecycle: past end_date with nothing outstanding → completed',
+    debtLifecycle({ monthly_payment: 100, end_date: `${PREV}-28`, remaining_balance: 0 }, THIS) === 'completed');
+  check('lifecycle: past end_date but money STILL outstanding stays active',
+    debtLifecycle({ monthly_payment: 100, end_date: `${PREV}-28`, remaining_balance: 4200 }, THIS) === 'active');
+
+  check('a debt that has not started is never overdue',
+    getDebtStatus(future, [], THIS).status === 'upcoming',
+    getDebtStatus(future, [], THIS).status);
+  check('… and it names the date it actually starts',
+    getDebtStatus(future, [], THIS).startDate === `${NEXT}-01`);
+  check('a fully paid loan (12/12) reads as completed, not overdue',
+    getDebtStatus(done, [], THIS).status === 'completed',
+    getDebtStatus(done, [], THIS).status);
+  check('… and it stays completed next month, and the month after',
+    getDebtStatus(done, [], NEXT).status === 'completed'
+    && getDebtStatus(done, [], nextMonth(NEXT)).status === 'completed');
+  check('a real payment record still wins over everything else',
+    getDebtStatus(done, [{ debt_id: 'c8-done', pay_month: `${THIS}-01`, amount_paid: 19253, paid_at: `${THIS}-05` }], THIS)
+      .status === 'paid');
+
+  const sum = summarizeDebts([done, future, running], [], THIS);
+  check('a completed loan is out of the monthly burden — only the live one counts',
+    sum.monthlyBurden === 8000 + 5000, `฿${sum.monthlyBurden}`);
+  check('a completed loan is out of the overdue total and its count',
+    sum.overdue === 8000 && sum.overdueCount === 1, `฿${sum.overdue} / ${sum.overdueCount}`);
+  check('the summary reports the completed and not-yet-started counts',
+    sum.completedCount === 1 && sum.upcomingCount === 1,
+    `${sum.completedCount} / ${sum.upcomingCount}`);
+  check('a stale remaining_balance on a completed loan cannot inflate คงเหลือรวม',
+    summarizeDebts([{ ...done, remaining_balance: 19253 }], [], THIS).totalRemaining === 0);
+
+  const fc = forecastDebts([future], 14);
+  check('the forecast does not bill a debt before its start_date',
+    fc[0].outflow === 0 && fc[0].activeCount === 0 && fc[1].outflow === 5000,
+    JSON.stringify(fc.slice(0, 3).map(f => f.outflow)));
+  check('… and it bills exactly its 12 instalments, counted from the START',
+    fc.filter(f => f.outflow > 0).length === 12 && fc[13].outflow === 0,
+    `${fc.filter(f => f.outflow > 0).length} billed months`);
+  check('the forecast never bills a completed loan',
+    forecastDebts([done], 6).every(f => f.outflow === 0));
+  check('an ordinary running debt forecasts exactly as before',
+    forecastDebts([running], 24).filter(f => f.outflow > 0).length === 23,
+    `${forecastDebts([running], 24).filter(f => f.outflow > 0).length} months`);
+
+  const cash = forecastCashFlow({ monthlyIncome: 100000, recurring: [], debts: [done, running], avgVariableExpense: 0 });
+  check('the cash-flow forecast drops the completed loan from "ตอนนี้" too',
+    cash.debtPaymentNow === 8000, `฿${cash.debtPaymentNow}`);
+  check('a completed loan is not part of the payoff plan',
+    simulatePayoff([done, running], 'snowball', 0).debts.length === 1);
+
+  // ── Editing the terms recomputes remaining_balance in one write ──────────
+  __tables.debts.push({ id: 'c8-edit', user_id: 'user-1', name: 'แก้เงื่อนไข',
+    monthly_payment: 1000, total_months: 12, months_paid: 2, remaining_balance: 10000,
+    scope: 'personal', is_active: true });
+  await updateDebt('c8-edit', { total_months: 24, months_paid: 3, monthly_payment: 1000 });
+  const edited = __tables.debts.find(d => d.id === 'c8-edit');
+  check('RPC missing → the single guarded UPDATE still recomputes the balance',
+    Number(edited.remaining_balance) === 21000, `฿${edited.remaining_balance}`);
+  await updateDebt('c8-edit', { notes: 'แค่แก้โน้ต' });
+  check('a patch that does not touch the terms leaves the balance alone',
+    Number(__tables.debts.find(d => d.id === 'c8-edit').remaining_balance) === 21000);
+  await updateDebt('c8-edit', { total_months: null, months_paid: 3, monthly_payment: 1000 });
+  check('clearing total_months makes the balance honestly unknown (null)',
+    __tables.debts.find(d => d.id === 'c8-edit').remaining_balance === null);
+
+  // …and through the RPC when it is installed.
+  __config.rpcHandlers['debt_update_terms'] = (args) => {
+    const row = __tables.debts.find(d => d.id === args.p_id);
+    Object.assign(row, args.p_patch);
+    row.remaining_balance = row.total_months == null ? null
+      : Math.max(0, (Number(row.total_months) - Number(row.months_paid || 0)) * Number(row.monthly_payment || 0));
+    row.updated_at = 'rpc';
+    return { data: [row], error: null };
+  };
+  const viaRpc = await updateDebt('c8-edit', { total_months: 10, months_paid: 4, monthly_payment: 500 });
+  check('RPC installed → the recompute happens server-side, in one transaction',
+    viaRpc.updated_at === 'rpc' && Number(viaRpc.remaining_balance) === 3000,
+    `฿${viaRpc.remaining_balance}`);
+
+  // Archiving a finished loan takes it out of the tracker, history intact.
+  __tables.debts.push({ id: 'c8-arch', user_id: 'user-1', name: 'โมนี่ 2',
+    monthly_payment: 19253, total_months: 12, months_paid: 12,
+    scope: 'personal', is_active: true });
+  await archiveDebt('c8-arch');
+  check('a completed loan can be filed away (is_active false), history intact',
+    __tables.debts.find(d => d.id === 'c8-arch').is_active === false);
+  delete __config.rpcHandlers['debt_update_terms'];
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
