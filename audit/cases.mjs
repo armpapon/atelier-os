@@ -1154,6 +1154,68 @@ function withFrozenNow(iso, fn) {
   try { return fn(); } finally { globalThis.Date = RealDate; }
 }
 
+section('A · B1 · the never-rewind guard compares INSTANTS, and ties go to the human');
+{
+  const USER_ANCHOR = '2026-08-12T09:00:00+07:00';   // Arm typed the real balance
+  const OLD_IMPORT  = '2026-08-10T23:59:00+07:00';   // a statement from two days earlier
+
+  // The defect: both are 2026-08, so the month compare let the older file win.
+  check('same Bangkok month, OLDER import vs a 12 ส.ค. user anchor → REFUSED',
+    shouldApplyImportedBalance(USER_ANCHOR, OLD_IMPORT, 'user') === false);
+  check('…and it is refused against an IMPORT anchor of the same date too',
+    shouldApplyImportedBalance(USER_ANCHOR, OLD_IMPORT, 'import') === false);
+  check('…and with provenance unknown (column migration unrun)',
+    shouldApplyImportedBalance(USER_ANCHOR, OLD_IMPORT, null) === false);
+
+  // Precedence at an exact tie.
+  check('TIE against a user anchor → the human number stands',
+    shouldApplyImportedBalance(USER_ANCHOR, USER_ANCHOR, 'user') === false);
+  check('TIE against an import anchor → allowed (idempotent overwrite)',
+    shouldApplyImportedBalance(USER_ANCHOR, USER_ANCHOR, 'import') === true);
+  check('a tie is an INSTANT tie, not a month tie',
+    shouldApplyImportedBalance('2026-08-12T09:00:00+07:00', '2026-08-12T02:00:00+00:00', 'user') === false,
+    'same instant expressed in two offsets');
+
+  // Strict ordering beats provenance in both directions.
+  check('a genuinely NEWER import still applies, even over a user anchor',
+    shouldApplyImportedBalance(USER_ANCHOR, '2026-08-12T18:00:00+07:00', 'user') === true);
+  check('one minute newer is newer — no month granularity left',
+    shouldApplyImportedBalance(USER_ANCHOR, '2026-08-12T09:01:00+07:00', 'user') === true);
+  check('one minute older is older, even against an import anchor',
+    shouldApplyImportedBalance(USER_ANCHOR, '2026-08-12T08:59:00+07:00', 'import') === false);
+  check('never anchored → the import applies', shouldApplyImportedBalance(null, OLD_IMPORT, 'user') === true);
+  check('no imported instant → nothing to apply', shouldApplyImportedBalance(USER_ANCHOR, null, 'user') === false);
+  check('an unreadable imported instant never overwrites',
+    shouldApplyImportedBalance(USER_ANCHOR, 'not-a-date', 'user') === false);
+
+  // End to end through bulkUpsertAccountsByPocket.
+  __tables.accounts.push({ id: 'b1-acc', user_id: 'user-1', name: 'KBank หลัก', scope: 'personal',
+    balance: 87654, balance_anchor_at: USER_ANCHOR, balance_anchor_source: 'user', is_active: true });
+  await bulkUpsertAccountsByPocket([
+    { pocket: 'KBank หลัก', scope: 'personal', latestBalance: 12000, latestDate: OLD_IMPORT, txCount: 9 },
+  ]);
+  let acc = __tables.accounts.find(a => a.id === 'b1-acc');
+  check('END TO END: a 10 ส.ค. statement cannot overwrite the 12 ส.ค. user anchor',
+    acc.balance === 87654 && acc.balance_anchor_at === USER_ANCHOR && acc.balance_anchor_source === 'user',
+    `balance stays ฿${acc.balance}`);
+
+  await bulkUpsertAccountsByPocket([
+    { pocket: 'KBank หลัก', scope: 'personal', latestBalance: 12000, latestDate: USER_ANCHOR, txCount: 9 },
+  ]);
+  acc = __tables.accounts.find(a => a.id === 'b1-acc');
+  check('END TO END: an exact tie against the user anchor is refused too',
+    acc.balance === 87654 && acc.balance_anchor_source === 'user');
+
+  await bulkUpsertAccountsByPocket([
+    { pocket: 'KBank หลัก', scope: 'personal', latestBalance: 55555,
+      latestDate: '2026-08-13T20:00:00+07:00', txCount: 9 },
+  ]);
+  acc = __tables.accounts.find(a => a.id === 'b1-acc');
+  check('END TO END: a genuinely newer statement DOES apply and re-stamps provenance',
+    acc.balance === 55555 && acc.balance_anchor_at === '2026-08-13T20:00:00+07:00'
+    && acc.balance_anchor_source === 'import', `balance now ฿${acc.balance}`);
+}
+
 section('A · B10 · "Bangkok today" no longer follows the device timezone');
 {
   // 2026-09-01 00:30 Bangkok. The same instant is 2026-08-31 13:30 in New

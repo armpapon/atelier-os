@@ -864,16 +864,38 @@ function pickTone(name = '') {
  * Decide whether an imported CP Bal may replace the account's current
  * balance anchor. Pure — unit-tested in audit/evidence.
  *
- * Rule (audit round 2): a CSV import must NEVER move a balance BACKWARD in
- * time. The imported CP Bal was true at `importedAt` (the file's latest
- * transaction). Apply it only when that moment's Bangkok month is >= the
- * month of the account's current anchor; an older statement file leaves
- * balance AND anchor untouched.
+ * Rule (audit round 2, tightened by batch A / B1): a CSV import must NEVER
+ * move a balance BACKWARD in time. The imported CP Bal was true at
+ * `importedAt` (the file's latest transaction).
+ *
+ * Comparison is by EXACT INSTANT, not by Bangkok month. The month compare
+ * shipped in round 2 treated 10 ส.ค. and 12 ส.ค. as equal, so re-importing an
+ * older statement inside the current month overwrote a fresher anchor the
+ * human had just typed in.
+ *
+ * PROVENANCE PRECEDENCE (ties only, i.e. identical instants):
+ *   balance_anchor_source 'user' > 'import' > anything else / unknown.
+ * A human who read the number off the real bank app outranks a CSV that
+ * claims the same moment, so a tie against a 'user' anchor is REFUSED. Any
+ * other tie is allowed through (import vs import at the same instant is
+ * idempotent). Strict ordering always wins over provenance: a genuinely
+ * newer import applies even over a 'user' anchor, and a genuinely older one
+ * is refused even over an 'import' anchor.
+ *
+ * @param existingAnchorAt      the account's current balance_anchor_at
+ * @param importedAt            the moment the imported CP Bal was true
+ * @param existingAnchorSource  the account's current balance_anchor_source
  */
-export function shouldApplyImportedBalance(existingAnchorAt, importedAt) {
+export function shouldApplyImportedBalance(existingAnchorAt, importedAt, existingAnchorSource = null) {
   if (!importedAt) return false;
   if (!existingAnchorAt) return true;                     // never anchored → take it
-  return bangkokMonth(importedAt) >= bangkokMonth(existingAnchorAt);
+  const incoming = new Date(importedAt).getTime();
+  const current  = new Date(existingAnchorAt).getTime();
+  if (!Number.isFinite(incoming)) return false;           // unreadable → never overwrite
+  if (!Number.isFinite(current))  return true;            // unreadable anchor → the readable one wins
+  if (incoming > current) return true;                    // strictly newer → apply
+  if (incoming < current) return false;                   // strictly older → refuse
+  return existingAnchorSource !== 'user';                 // tie → the human's number stands
 }
 
 /**
@@ -939,7 +961,12 @@ export async function bulkUpsertAccountsByPocket(pockets, { mode = 'full' } = {}
         if (!anchorSupported) {
           // Legacy behaviour while the migration is unrun.
           toUpdate.push({ id: found.id, patch: { balance: p.latestBalance } });
-        } else if (shouldApplyImportedBalance(found.balance_anchor_at, p.latestDate)) {
+        } else if (shouldApplyImportedBalance(
+          found.balance_anchor_at, p.latestDate,
+          // Provenance is only readable when the column migration has run;
+          // without it every tie is decided as if the anchor were an import.
+          sourceSupported ? found.balance_anchor_source : null,
+        )) {
           const patch = {
             balance: p.latestBalance,
             balance_anchor_at: p.latestDate,   // CP Bal was true at the file's last txn
