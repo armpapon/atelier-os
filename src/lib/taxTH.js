@@ -215,11 +215,206 @@ export function resolveSSO(profile = {}) {
   };
 }
 
+// ── ค่าลดหย่อนที่กฎหมายกำหนดเป็นยอดตายตัว ────────────────────────────────────
+// A statutory flat allowance has exactly ONE legal value. Asking the owner to
+// type it is asking him to make a mistake — he ticked "คู่สมรสไม่มีเงินได้" and
+// was left staring at an empty ฿ box. So the tick writes the number.
+//
+// It is still a text box, not a label: a part-year marriage or a
+// จดทะเบียนกลางปี case is his call, and the app must never lock him out of the
+// truth. When the typed figure differs from the statutory one, the row says so
+// and offers one click back — the same กรอกเอง / คำนวณใหม่ pattern ประกันสังคม
+// already uses.
+
+export const SPOUSE_ALLOWANCE = 60000;
+
+/** The statutory figure for a flat row, or null when the row is not one. */
+export function statutoryAmount(key) {
+  const spec = DEDUCTION_BY_KEY[key];
+  const v = spec && spec.statutory;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/** The one-click-restore line: "ค่ามาตรฐาน ฿60,000". Pinned here, not in JSX. */
+export function statutoryHint(key) {
+  const v = statutoryAmount(key);
+  return v == null ? null : `ค่ามาตรฐาน ${baht(v)}`;
+}
+
+/** The link that puts it back. Same word ประกันสังคม uses, on purpose. */
+export const RESTORE_LABEL = 'คำนวณใหม่';
+
+/**
+ * What a flat row is claiming, and whether the owner has typed over the law.
+ *
+ * BACKWARD COMPATIBILITY — a v4.28/v4.29 row holds a plain baht number that was
+ * typed by hand, with nothing recording whether it was meant to be the
+ * statutory figure. It must therefore be read as a MANUAL value: never
+ * recomputed, never rounded to ฿60,000 behind his back. If it happens to differ
+ * from the statute the row simply offers to restore it.
+ */
+export function resolveStatutory(key, value) {
+  const statutory = statutoryAmount(key);
+  if (statutory == null) return null;
+  const amount = num(value);
+  return {
+    key, statutory, amount,
+    on: amount > 0,
+    overridden: amount > 0 && Math.abs(amount - statutory) > 0.01,
+    hint: statutoryHint(key),
+    restore: RESTORE_LABEL,
+  };
+}
+
+// ── แถวที่นับเป็น "คน" ไม่ใช่ "บาท" ──────────────────────────────────────────
+// บุตร and บิดามารดา are headcounts. Making the owner hand over baht for them
+// is making him do the multiplication — and the บุตร rule has a second rate
+// hidden inside it, so the multiplication is not even one sum.
+//
+// The RULE, in full: every child is ฿30,000. A child who is the SECOND or later
+// child AND was born from พ.ศ. 2561 onwards is ฿60,000 instead. So two counts
+// describe it completely: how many children there are, and how many of them
+// qualify for the higher rate. The qualifying count can never be the whole
+// brood — the first child never qualifies, whenever he was born.
+
+export const CHILD_ALLOWANCE = 30000;
+export const CHILD_ALLOWANCE_SECOND = 60000;
+export const CHILD_SECOND_BORN_FROM_BE = 2561;
+
+export const PARENT_ALLOWANCE = 30000;
+/** His two plus his spouse's two. Nobody may claim a fifth. */
+export const PARENT_MAX_COUNT = 4;
+
+/**
+ * The conditions on บิดามารดา, said out loud next to the stepper rather than
+ * left for him to remember. Every clause here is a reason a claim gets
+ * disallowed, and the last one is the one families get wrong.
+ */
+export const PARENT_ELIGIBILITY = [
+  'แต่ละคนต้องอายุ 60 ปีขึ้นไป',
+  'และมีเงินได้ในปีภาษีนั้นไม่เกิน ฿30,000',
+  'พ่อแม่คนหนึ่งมีลูกใช้สิทธิได้แค่คนเดียว — ตกลงกับพี่น้องก่อน',
+];
+
+/** Said under บุตรคนที่ 2 ขึ้นไป when there is not a second child to count. */
+export const CHILD_SECOND_NEEDS_TWO = 'ต้องมีบุตรตั้งแต่ 2 คนขึ้นไปก่อน';
+
+const countOf = (v) => Math.max(0, Math.floor(num(v)));
+
+/** The most children that can possibly qualify for the ฿60,000 rate. */
+export function maxQualifyingChildren(total) {
+  return Math.max(0, countOf(total) - 1);
+}
+
+/**
+ * ฿30,000 per child, ฿60,000 for each second-or-later child born from 2561.
+ * `qualifying` is clamped to what is arithmetically possible, so an incoherent
+ * saved pair (1 child, 1 qualifying) under-claims rather than over-claims.
+ */
+export function childrenAllowance(total, qualifying) {
+  const count = countOf(total);
+  const wanted = countOf(qualifying);
+  const second = Math.min(wanted, maxQualifyingChildren(count));
+  const plain = count - second;
+  return {
+    count, second, plain,
+    qualifyingClamped: second < wanted,
+    base: round2(count * CHILD_ALLOWANCE),
+    extra: round2(second * CHILD_ALLOWANCE),
+    amount: round2(plain * CHILD_ALLOWANCE + second * CHILD_ALLOWANCE_SECOND),
+  };
+}
+
+/** "2 คน = 30,000 + 60,000 = ฿90,000" — one term per child, in rate order. */
+export function childrenDerivation(total, qualifying) {
+  const k = childrenAllowance(total, qualifying);
+  if (k.count === 0) return null;
+  const terms = [
+    ...Array(k.plain).fill(CHILD_ALLOWANCE),
+    ...Array(k.second).fill(CHILD_ALLOWANCE_SECOND),
+  ];
+  if (terms.length === 1) return `1 คน = ${baht(k.amount)}`;
+  return `${k.count} คน = ${terms.map(fmtNumber).join(' + ')} = ${baht(k.amount)}`;
+}
+
+/** ฿30,000 each, four at the very most. */
+export function parentsAllowance(count) {
+  const wanted = countOf(count);
+  const n = Math.min(wanted, PARENT_MAX_COUNT);
+  return {
+    count: n, wanted, capped: wanted > PARENT_MAX_COUNT,
+    amount: round2(n * PARENT_ALLOWANCE),
+    cap: PARENT_MAX_COUNT * PARENT_ALLOWANCE,
+  };
+}
+
+/** "2 คน × 30,000 = ฿60,000". */
+export function parentsDerivation(count) {
+  const p = parentsAllowance(count);
+  if (p.count === 0) return null;
+  return `${p.count} คน × ${fmtNumber(PARENT_ALLOWANCE)} = ${baht(p.amount)}`;
+}
+
+/**
+ * The ceiling on a count row's stepper, given everything else already entered.
+ * บุตรคนที่ 2 ขึ้นไป depends on the บุตร count; บิดามารดา is a flat 4; บุตร
+ * itself has no legal maximum.
+ */
+export function countCeiling(key, deductions = {}) {
+  if (key === 'childrenExtra') return maxQualifyingChildren(deductions.children);
+  const spec = DEDUCTION_BY_KEY[key];
+  return spec && spec.maxCount != null ? spec.maxCount : Infinity;
+}
+
+/**
+ * The muted line under any headcount stepper. Dispatches to the row's own
+ * wording so the page never assembles Thai copy a test cannot reach.
+ */
+export function countDerivation(key, deductions = {}) {
+  if (key === 'children') return childrenDerivation(deductions.children, deductions.childrenExtra);
+  if (key === 'parents') return parentsDerivation(deductions.parents);
+  const spec = DEDUCTION_BY_KEY[key];
+  if (!spec || spec.kind !== 'count') return null;
+  const n = Math.min(countOf(deductions[key]), countCeiling(key, deductions));
+  if (n <= 0) return null;
+  return `${n} คน × ${fmtNumber(spec.per)} = ${baht(round2(n * spec.per))}`;
+}
+
+/** Why a stepper is stuck at zero, when it is — or null when it is not. */
+export function countBlockedNote(key, deductions = {}) {
+  if (key !== 'childrenExtra') return null;
+  return countCeiling(key, deductions) <= 0 ? CHILD_SECOND_NEEDS_TWO : null;
+}
+
+/**
+ * The patch to write when one deduction field changes — normally just that
+ * field, but lowering บุตร has to bring บุตรคนที่ 2 ขึ้นไป down with it, or a
+ * stale count sits in the jsonb waiting to reappear the next time he adds a
+ * child. Pure: it reads the current bag and returns the keys to merge.
+ */
+export function countPatch(key, value, deductions = {}) {
+  const patch = { [key]: value };
+  if (key === 'children') {
+    const ceiling = maxQualifyingChildren(value);
+    if (countOf(deductions.childrenExtra) > ceiling) patch.childrenExtra = ceiling;
+  }
+  return patch;
+}
+
+/** Both headcount rows resolved together, since one bounds the other. */
+export function resolveCounts(deductions = {}) {
+  return {
+    children: childrenAllowance(deductions.children, deductions.childrenExtra),
+    parents: parentsAllowance(deductions.parents),
+  };
+}
+
 // ── Deduction catalogue ─────────────────────────────────────────────────────
 // One entry per row the UI renders. Shapes:
 //   kind 'auto'   — computed, never typed by the user
 //   kind 'amount' — the user types baht; `cap` and/or `capRate` bound it
-//   kind 'count'  — the user types a headcount; value = count × per
+//     …with `statutory` when the law fixes the figure: ticking the row fills it
+//   kind 'count'  — the user counts PEOPLE; value = count × per
 // `group` ties rows into a shared ceiling. `plannable` marks the rows whose
 // remaining headroom is something the owner can actually still act on this
 // year (buying more SSF is an action; having another child is not).
@@ -235,19 +430,24 @@ export const DEDUCTIONS = [
   },
   {
     key: 'spouse', kind: 'amount', label: 'คู่สมรสไม่มีเงินได้',
-    cap: 60000, note: 'คู่สมรสต้องไม่มีเงินได้ในปีภาษีนั้น',
+    cap: SPOUSE_ALLOWANCE, statutory: SPOUSE_ALLOWANCE,
+    note: 'คู่สมรสต้องไม่มีเงินได้ในปีภาษีนั้น · ติ๊กแล้วเติมยอดให้เอง',
   },
   {
-    key: 'children', kind: 'count', label: 'บุตร', per: 30000,
-    countLabel: 'คน', note: 'คนละ ฿30,000',
+    key: 'children', kind: 'count', label: 'บุตร', per: CHILD_ALLOWANCE,
+    countLabel: 'คน', note: 'คนละ ฿30,000 — นับเป็นจำนวนคน ไม่ต้องคูณเอง',
   },
   {
-    key: 'childrenExtra', kind: 'count', label: 'บุตรคนที่ 2 ขึ้นไป ที่เกิดตั้งแต่ปี 2561', per: 30000,
-    countLabel: 'คน', note: 'เพิ่มอีกคนละ ฿30,000 (รวมเป็น ฿60,000)',
+    key: 'childrenExtra', kind: 'count',
+    label: `บุตรคนที่ 2 ขึ้นไป ที่เกิดตั้งแต่ปี ${CHILD_SECOND_BORN_FROM_BE}`,
+    per: CHILD_ALLOWANCE, countLabel: 'คน', dependsOn: 'children',
+    note: 'เพิ่มอีกคนละ ฿30,000 (รวมเป็น ฿60,000) — นับเฉพาะคนที่เข้าเงื่อนไข',
   },
   {
-    key: 'parents', kind: 'count', label: 'บิดามารดา (อายุ 60+ รายได้ไม่เกิน ฿30,000)', per: 30000,
-    countLabel: 'คน', maxCount: 4, note: 'คนละ ฿30,000 · ไม่เกิน 4 คน',
+    key: 'parents', kind: 'count', label: 'บิดามารดา', per: PARENT_ALLOWANCE,
+    countLabel: 'คน', maxCount: PARENT_MAX_COUNT,
+    note: `คนละ ฿30,000 · ไม่เกิน ${PARENT_MAX_COUNT} คน (ของเรา 2 + ของคู่สมรส 2)`,
+    conditions: PARENT_ELIGIBILITY,
   },
   {
     key: 'socialSecurity', kind: 'amount', label: 'ประกันสังคม',
@@ -313,6 +513,12 @@ export const DEDUCTIONS = [
 
 export const DEDUCTION_BY_KEY = Object.fromEntries(DEDUCTIONS.map(d => [d.key, d]));
 
+/** Every row whose value the law fixes — the ones a tick can fill in. */
+export const STATUTORY_KEYS = DEDUCTIONS.filter(d => d.statutory != null).map(d => d.key);
+
+/** Every row counted in people rather than baht. */
+export const COUNT_KEYS = DEDUCTIONS.filter(d => d.kind === 'count').map(d => d.key);
+
 /** The rows that share the ฿500,000 retirement ceiling, in claim order. */
 export const RETIREMENT_KEYS = DEDUCTIONS.filter(d => d.group === 'retirement').map(d => d.key);
 
@@ -361,17 +567,22 @@ export function marginalRate(netIncome) {
  * Apply one deduction row's own limits (fixed / count / cap / % of income) and
  * report both what was claimed and what the statute allows.
  */
-function applyRowCap(spec, raw, grossIncome, dynamicCaps = {}) {
+function applyRowCap(spec, raw, grossIncome, dynamicCaps = {}, deductions = {}) {
   if (spec.kind === 'auto') {
     return { key: spec.key, claimed: spec.fixed, cap: spec.fixed, allowed: spec.fixed, capped: false };
   }
   if (spec.kind === 'count') {
+    // A headcount row's ceiling can come from the statute (บิดามารดา, 4) or
+    // from another row (บุตรคนที่ 2 ขึ้นไป can never exceed บุตร − 1). Both
+    // live in countCeiling so the stepper and the maths agree by construction.
     const wanted = Math.max(0, Math.floor(num(raw)));
-    const count = spec.maxCount != null ? Math.min(wanted, spec.maxCount) : wanted;
-    const cap = spec.maxCount != null ? spec.maxCount * spec.per : Infinity;
+    const ceiling = countCeiling(spec.key, deductions);
+    const count = Math.min(wanted, ceiling);
+    const cap = Number.isFinite(ceiling) ? round2(ceiling * spec.per) : Infinity;
     return {
-      key: spec.key, count, claimed: wanted * spec.per, cap,
-      allowed: count * spec.per, capped: count < wanted,
+      key: spec.key, count, wanted, ceiling,
+      claimed: round2(wanted * spec.per), cap,
+      allowed: round2(count * spec.per), capped: count < wanted,
     };
   }
   const claimed = num(raw);
@@ -446,8 +657,12 @@ export function computeTax(profile = {}) {
   const rows = {};
   for (const spec of DEDUCTIONS) {
     if (spec.kind === 'donation') continue;
-    rows[spec.key] = applyRowCap(spec, claimedOf(spec.key), gross, { sso: sso.legalMax });
+    rows[spec.key] = applyRowCap(spec, claimedOf(spec.key), gross, { sso: sso.legalMax }, ded);
   }
+
+  // The headcount rows, resolved together — the page reopens the steppers from
+  // these, and the บุตร derivation needs both counts to say anything true.
+  const counts = resolveCounts(ded);
 
   // Shared ceilings, applied after each row's own cap.
   const lifeHealthKeys = DEDUCTIONS.filter(d => d.group === 'lifeHealth').map(d => d.key);
@@ -497,7 +712,7 @@ export function computeTax(profile = {}) {
   return {
     income: { salaryMonthly, salaryAnnual, bonus, other: otherRows, otherTotal, gross, wht },
     expense, expenseCapped,
-    sso,
+    sso, counts,
     rows, customRows, customTotal,
     allowanceTotal, donationTotal, deductionTotal,
     lifeHealth, retirement,
@@ -623,6 +838,10 @@ export function derivations(result) {
     salaryAnnual: `${fmtNumber(i.salaryMonthly)} × 12 = ${baht(i.salaryAnnual)}`,
     expense: `${pct(EXPENSE_RATE)} ของ ${baht(i.gross)} สูงสุด ${baht(EXPENSE_CAP)}`,
     personal: `ได้อัตโนมัติทุกคน ${baht(PERSONAL_ALLOWANCE)}`,
+    // The two headcount rows show their own sum, because "2 คน" and "฿90,000"
+    // are two different facts and the arithmetic between them is the app's job.
+    children: childrenDerivation(result.counts?.children.count, result.counts?.children.second),
+    parents: parentsDerivation(result.counts?.parents.count),
     sso: result.sso.derived.formula,
     ssoMax: `เพดานทั้งปี = ${pct(result.sso.settings.rate)} ของ ${baht(result.sso.settings.wageCeiling)} × 12 = ${baht(result.sso.legalMax)}`,
     netIncome: `${baht(i.gross)} − ${baht(result.expense)} − ${baht(result.deductionTotal)}`,
