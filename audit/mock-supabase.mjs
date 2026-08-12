@@ -20,6 +20,10 @@ export const __tables = {
   // (audit batch A / B4 renders FinanceView, which loads all of them).
   financial_goals:    [],
   recurring_expenses: [],
+  // v4.28 · tax planner. Deleting this key simulates the state the owner's
+  // database is actually in until he runs migration_add_tax_planner.sql —
+  // PostgREST answers 42P01 and the page must degrade, not crash.
+  tax_profiles:       [],
 };
 
 export const __config = {

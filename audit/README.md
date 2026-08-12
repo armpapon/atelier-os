@@ -8,14 +8,32 @@ v4.14 – v4.26).
 
 ```bash
 npm install          # once — needs the repo's own devDependencies
-node audit/evidence.mjs   # pure-logic evidence (214 checks)
-npm run test:ui           # MOUNTED component tests (44)
+node audit/evidence.mjs   # pure-logic evidence (384 checks)
+npm run test:ui           # MOUNTED component tests (59)
 ```
 
-`npm run test:ui` covers two files:
+`npm run test:ui` covers four files:
 `audit/ui/importer.test.jsx` (41 — CSVImporter orchestration, rounds 6–11 +
-batch A B6/B7/B11) and `audit/ui/balances.test.jsx` (3 — the real
-`FinanceView` page, batch A B4).
+batch A B6/B7/B11), `audit/ui/finance-batch-c.test.jsx` (9),
+`audit/ui/balances.test.jsx` (3 — the real `FinanceView` page, batch A B4) and
+`audit/ui/tax-planner.test.jsx` (6 — the real `TaxPlanner` page, v4.28).
+
+## Tax planner (v4.28) — `cases.mjs` § D
+
+`src/lib/taxTH.js` is pure and dependency-free, so § D1–D12 call it directly:
+every bracket boundary (and one baht past each), the ฿100,000 expense cap,
+each deduction cap both where the absolute limit binds and where the
+percentage one does, the shared ฿100,000 life+health and ฿500,000 retirement
+ceilings, the 2× education donation under the 10% rule, payable vs refund,
+and the headroom/marginal-rate advice — including the case where the room
+crosses a bracket and the honest saving is *less* than `room × marginal rate`.
+
+§ D13–D14 drive `src/lib/api/tax.js` against the mock: D13 **deletes**
+`__tables.tax_profiles` to reproduce the database as it is before the owner
+runs `migration_add_tax_planner.sql` (reads return a `missingTable` flag,
+writes throw a Thai "go run the SQL" message), and D14 exercises the real
+save / copy-previous-year / delete paths, including a failed save surfacing
+rather than being swallowed.
 
 ## Batch A (v4.26) — Codex clean-slate review
 

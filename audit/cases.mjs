@@ -24,6 +24,15 @@ import {
   isDefinitiveServerError, currentYearMonth, getDebtStatus, loadEffectiveBalances,
 } from '../src/lib/api/finance.js';
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
+import {
+  TAX_BRACKETS, EXPENSE_CAP, RETIREMENT_COMBINED_CAP, DEDUCTIONS,
+  taxFromNetIncome, marginalRate, computeTax, deductionHeadroom,
+  planningSummary, baht, toBE, toCE, taxYearOf,
+} from '../src/lib/taxTH.js';
+import {
+  listProfiles, listYears, createProfile, updateProfile, deleteProfile,
+  copyYear, isTableMissing, SQL_NOT_RUN_MESSAGE,
+} from '../src/lib/api/tax.js';
 import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
@@ -1918,6 +1927,417 @@ section('C · B8 · a debt has a life: upcoming → active → completed');
   check('a completed loan can be filed away (is_active false), history intact',
     __tables.debts.find(d => d.id === 'c8-arch').is_active === false);
   delete __config.rpcHandlers['debt_update_terms'];
+}
+
+// ═══════════════════════ D · TAX PLANNER (v4.28) ═══════════════════════════
+// The whole point of src/lib/taxTH.js is that it is pure, so these cases call
+// it directly — no mocking, no fixtures, no dates. Every statutory number the
+// module claims to enforce is pinned here; if the Revenue Department changes
+// one, exactly one of these fails and says which.
+
+const near = (a, b, eps = 0.01) => Math.abs(Number(a) - Number(b)) <= eps;
+
+/** A profile that reaches `gross` with nothing but a bonus, plus deductions. */
+const profileOf = (gross, deductions = {}, wht = 0) =>
+  ({ income: { salaryMonthly: 0, bonus: gross, wht }, deductions });
+
+section('D1 · Tax brackets — every boundary');
+{
+  // Cumulative tax AT each boundary, worked by hand from the statute.
+  const BOUNDARIES = [
+    [0,          0],
+    [150000,     0],
+    [300000,     7500],        //             150,000 × 5%
+    [500000,     27500],       //   7,500 +   200,000 × 10%
+    [750000,     65000],       //  27,500 +   250,000 × 15%
+    [1000000,    115000],      //  65,000 +   250,000 × 20%
+    [2000000,    365000],      // 115,000 + 1,000,000 × 25%
+    [5000000,    1265000],     // 365,000 + 3,000,000 × 30%
+    [6000000,    1615000],     // 1,265,000 + 1,000,000 × 35%
+  ];
+  for (const [net, tax] of BOUNDARIES) {
+    check(`เงินได้สุทธิ ${baht(net)} → ภาษี ${baht(tax)}`,
+      near(taxFromNetIncome(net).tax, tax), baht(taxFromNetIncome(net).tax));
+  }
+
+  // One baht INTO the next band pays that band's rate on that baht — the
+  // classic "does the whole income jump to the new rate?" error.
+  const STEPS = [[150001, 0.05], [300001, 0.10], [500001, 0.15],
+                 [750001, 0.20], [1000001, 0.25], [2000001, 0.30], [5000001, 0.35]];
+  for (const [net, rate] of STEPS) {
+    const base = BOUNDARIES.find(([n]) => n === net - 1)[1];
+    check(`฿1 เหนือขั้น ${baht(net - 1)} เสียเพิ่มแค่ ${Math.round(rate * 100)}% ของบาทนั้น`,
+      near(taxFromNetIncome(net).tax, base + rate),
+      `${taxFromNetIncome(net).tax} vs ${base + rate}`);
+  }
+
+  check('ขั้นแรก ฿150,000 ยกเว้นภาษี',
+    taxFromNetIncome(150000).tax === 0 && taxFromNetIncome(149999.99).tax === 0);
+  check('เงินได้สุทธิติดลบไม่ทำให้ภาษีติดลบ', taxFromNetIncome(-500000).tax === 0);
+  check('ขั้นสูงสุดคือ 35% และไม่มีเพดานด้านบน',
+    TAX_BRACKETS[TAX_BRACKETS.length - 1].rate === 0.35
+    && TAX_BRACKETS[TAX_BRACKETS.length - 1].upTo === Infinity);
+
+  // The per-band breakdown the results panel prints line by line.
+  const b = taxFromNetIncome(736000).bands;
+  check('breakdown แจกแจงครบทุกขั้นที่ใช้จริง และผลรวมเท่ากับภาษีทั้งก้อน',
+    b.length === 4 && near(b.reduce((s, x) => s + x.tax, 0), 62900),
+    b.map(x => `${Math.round(x.rate * 100)}%:${x.tax}`).join(' '));
+  check('ขั้นสุดท้ายของ breakdown ตัดที่เงินได้สุทธิ ไม่ใช่ที่ยอดเพดานขั้น',
+    near(b[3].amount, 236000), `${b[3].amount}`);
+}
+
+section('D2 · Marginal rate — the rate the LAST baht paid');
+{
+  check('ที่ ฿150,000 พอดี บาทสุดท้ายยังอยู่ในขั้นยกเว้น → 0%', marginalRate(150000) === 0);
+  check('ที่ ฿150,001 บาทสุดท้ายอยู่ขั้น 5%', marginalRate(150001) === 0.05);
+  check('ที่ ฿300,000 พอดี → ยังเป็น 5%', marginalRate(300000) === 0.05);
+  check('ที่ ฿2,000,001 → 30%', marginalRate(2000001) === 0.30);
+  check('ที่ ฿9,000,000 → 35%', marginalRate(9000000) === 0.35);
+  check('เงินได้สุทธิศูนย์ → 0%', marginalRate(0) === 0);
+}
+
+section('D3 · ค่าใช้จ่าย 50% เพดาน ฿100,000');
+{
+  const small = computeTax(profileOf(120000));
+  check('รายได้น้อย หักค่าใช้จ่ายได้ 50% เต็ม (ยังไม่ชนเพดาน)',
+    near(small.expense, 60000) && small.expenseCapped === false, baht(small.expense));
+  const exact = computeTax(profileOf(200000));
+  check('ที่รายได้ ฿200,000 พอดี 50% = เพดานพอดี ยังไม่ถือว่าชน',
+    near(exact.expense, EXPENSE_CAP) && exact.expenseCapped === false);
+  const big = computeTax(profileOf(2100000));
+  check('รายได้สูง หักค่าใช้จ่ายได้แค่ ฿100,000 และติดธงว่าชนเพดาน',
+    near(big.expense, EXPENSE_CAP) && big.expenseCapped === true, baht(big.expense));
+
+  const salaried = computeTax({ income: { salaryMonthly: 50000, bonus: 0 }, deductions: {} });
+  check('เงินเดือน/เดือน คูณ 12 ให้เองเป็นเงินได้ทั้งปี',
+    near(salaried.income.salaryAnnual, 600000) && near(salaried.income.gross, 600000));
+
+  const mixed = computeTax({
+    income: { salaryMonthly: 50000, bonus: 100000, other: [{ label: 'ค่าเช่า', amount: 240000 }] },
+    deductions: {},
+  });
+  check('เงินได้พึงประเมิน = เงินเดือน×12 + โบนัส + รายได้อื่นทุกบรรทัด',
+    near(mixed.income.gross, 940000) && near(mixed.income.otherTotal, 240000), baht(mixed.income.gross));
+}
+
+section('D4 · เพดานลดหย่อนรายช่อง — ทีละช่อง');
+{
+  // Income high enough that no percentage cap binds where an absolute one is
+  // being tested; each row is exercised ALONE so no shared ceiling interferes.
+  const G = 4000000;   // 30% = 1.2M, 15% = 600k — both above every absolute cap
+  const capCase = (key, put, expect, note) => {
+    const r = computeTax(profileOf(G, { [key]: put }));
+    check(`${key}: ใส่ ${baht(put)} → หักได้ ${baht(expect)}${note ? ' · ' + note : ''}`,
+      near(r.rows[key].allowed, expect) && r.rows[key].capped === (put > expect),
+      baht(r.rows[key].allowed));
+  };
+  capCase('spouse', 100000, 60000);
+  capCase('socialSecurity', 12000, 9000);
+  capCase('lifeInsurance', 150000, 100000);
+  capCase('healthInsurance', 40000, 25000);
+  capCase('parentsHealth', 30000, 15000);
+  capCase('pvd', 900000, 500000, 'เพดานสัมบูรณ์');
+  capCase('rmf', 900000, 500000, 'เพดานสัมบูรณ์');
+  capCase('ssf', 900000, 200000, 'เพดานสัมบูรณ์');
+  capCase('thaiEsg', 900000, 300000, 'เพดานสัมบูรณ์');
+  capCase('pensionInsurance', 900000, 200000, 'เพดานสัมบูรณ์');
+  capCase('homeLoanInterest', 250000, 100000);
+
+  // …and the percentage caps, at an income low enough that THEY bind instead.
+  const pct = (key, gross, put, expect, note) => {
+    const r = computeTax(profileOf(gross, { [key]: put }));
+    check(`${key} ที่เงินได้ ${baht(gross)}: หักได้ ${baht(expect)} · ${note}`,
+      near(r.rows[key].allowed, expect), baht(r.rows[key].allowed));
+  };
+  pct('pvd', 1000000, 500000, 150000, '15% ของเงินได้');
+  pct('rmf', 1000000, 500000, 300000, '30% ของเงินได้');
+  pct('ssf', 400000, 200000, 120000, '30% ของเงินได้');
+  pct('thaiEsg', 500000, 300000, 150000, '30% ของเงินได้');
+  pct('pensionInsurance', 800000, 200000, 120000, '15% ของเงินได้');
+
+  // Head-count rows.
+  const kids = computeTax(profileOf(G, { children: 3, childrenExtra: 2 }));
+  check('บุตร 3 คน = ฿90,000 · และคนที่ 2+ ที่เกิดตั้งแต่ปี 2561 อีก 2 คน เพิ่มอีก ฿60,000',
+    near(kids.rows.children.allowed, 90000) && near(kids.rows.childrenExtra.allowed, 60000),
+    baht(kids.rows.children.allowed + kids.rows.childrenExtra.allowed));
+  const parents = computeTax(profileOf(G, { parents: 6 }));
+  check('บิดามารดาหักได้ไม่เกิน 4 คน (฿120,000) แม้กรอก 6',
+    near(parents.rows.parents.allowed, 120000) && parents.rows.parents.count === 4
+    && parents.rows.parents.capped === true, baht(parents.rows.parents.allowed));
+
+  check('ลดหย่อนส่วนตัว ฿60,000 ได้อัตโนมัติ ไม่ต้องกรอก',
+    near(computeTax(profileOf(G)).rows.personal.allowed, 60000));
+  check('ค่าลดหย่อนที่กรอกติดลบ/ขยะ ถูกอ่านเป็นศูนย์ ไม่ใช่ทำให้ภาษีเพี้ยน',
+    near(computeTax(profileOf(G, { ssf: -50000, rmf: 'abc' })).rows.ssf.allowed, 0)
+    && near(computeTax(profileOf(G, { ssf: -50000, rmf: 'abc' })).rows.rmf.allowed, 0));
+}
+
+section('D5 · เพดานรวม — ประกันชีวิต+สุขภาพ ฿100,000');
+{
+  const r = computeTax(profileOf(2000000, { lifeInsurance: 90000, healthInsurance: 25000 }));
+  check('ชีวิต 90,000 + สุขภาพ 25,000 = 115,000 → ถูกตัดเหลือ ฿100,000 รวม',
+    near(r.rows.lifeInsurance.allowed + r.rows.healthInsurance.allowed, 100000)
+    && near(r.lifeHealth.trimmed, 15000),
+    `ชีวิต ${r.rows.lifeInsurance.allowed} + สุขภาพ ${r.rows.healthInsurance.allowed}`);
+  check('… และแถวที่โดนตัดคือแถวหลัง (สุขภาพ) ไม่ใช่แถวแรก',
+    near(r.rows.lifeInsurance.allowed, 90000) && near(r.rows.healthInsurance.allowed, 10000)
+    && r.rows.healthInsurance.groupCapped === true);
+  const ok = computeTax(profileOf(2000000, { lifeInsurance: 60000, healthInsurance: 25000 }));
+  check('ไม่เกินเพดานรวม → ไม่ถูกตัดสักบาท',
+    near(ok.rows.healthInsurance.allowed, 25000) && ok.lifeHealth.trimmed === 0);
+}
+
+section('D6 · เพดานรวมเกษียณ ฿500,000');
+{
+  const r = computeTax(profileOf(2100000, { pvd: 100000, rmf: 300000, ssf: 200000 }));
+  const used = ['pvd', 'rmf', 'ssf', 'thaiEsg', 'pensionInsurance']
+    .reduce((s, k) => s + r.rows[k].allowed, 0);
+  check('PVD 100k + RMF 300k + SSF 200k = 600k → หักรวมได้แค่ ฿500,000',
+    near(used, RETIREMENT_COMBINED_CAP) && near(r.retirement.trimmed, 100000), baht(used));
+  check('… ส่วนที่โดนตัดคือช่องท้ายแถว (SSF เหลือ 100,000) ช่องแรกยังเต็ม',
+    near(r.rows.pvd.allowed, 100000) && near(r.rows.rmf.allowed, 300000)
+    && near(r.rows.ssf.allowed, 100000) && r.rows.ssf.groupCapped === true);
+  check('เพดานรวมนับประกันบำนาญด้วย — เต็ม 500k แล้วบำนาญหักไม่ได้อีกเลย',
+    near(computeTax(profileOf(4000000, { rmf: 500000, pensionInsurance: 200000 }))
+      .rows.pensionInsurance.allowed, 0));
+
+  const under = computeTax(profileOf(2100000, { pvd: 100000, ssf: 150000 }));
+  check('รวมกันยังไม่ถึงเพดาน → ไม่ตัด และเหลือห้องอีก ฿250,000',
+    under.retirement.trimmed === 0 && near(under.retirement.remaining, 250000),
+    baht(under.retirement.remaining));
+}
+
+section('D7 · เงินบริจาค — 2 เท่า และเพดาน 10%');
+{
+  // gross 1,000,000 · ค่าใช้จ่าย 100,000 · ลดหย่อนส่วนตัว 60,000 → ฐาน 840,000
+  const base = { personal: true };
+  const dbl = computeTax(profileOf(1000000, { donationEdu: 10000 }));
+  check('บริจาคการศึกษา ฿10,000 หักได้ 2 เท่า = ฿20,000',
+    near(dbl.rows.donationEdu.allowed, 20000) && dbl.rows.donationEdu.capped === false,
+    baht(dbl.rows.donationEdu.allowed));
+
+  const capped = computeTax(profileOf(1000000, { donationEdu: 50000 }));
+  check('บริจาค 2 เท่า ยังชนเพดาน 10% ของฐาน ฿840,000 → หักได้ ฿84,000 ไม่ใช่ ฿100,000',
+    near(capped.rows.donationEdu.allowed, 84000) && capped.rows.donationEdu.capped === true,
+    baht(capped.rows.donationEdu.allowed));
+
+  const both = computeTax(profileOf(1000000, { donationEdu: 50000, donationGeneral: 20000 }));
+  check('บริจาคทั่วไปคิดเพดาน 10% จากฐานที่หักบริจาค 2 เท่าไปแล้ว (10% ของ 756,000)',
+    near(both.rows.donationGeneral.cap, 75600) && near(both.rows.donationGeneral.allowed, 20000),
+    `เพดาน ${baht(both.rows.donationGeneral.cap)}`);
+  check('… เงินได้สุทธิหลังบริจาคทั้งสองก้อน = ฿736,000 · ภาษี ฿62,900',
+    near(both.netIncome, 736000) && near(both.tax, 62900),
+    `${baht(both.netIncome)} → ${baht(both.tax)}`);
+
+  const over = computeTax(profileOf(1000000, { donationGeneral: 500000 }));
+  check('บริจาคทั่วไปเกิน 10% ของฐาน → หักได้แค่ ฿84,000',
+    near(over.rows.donationGeneral.allowed, 84000) && over.rows.donationGeneral.capped === true,
+    baht(over.rows.donationGeneral.allowed));
+  void base;
+}
+
+section('D8 · ลดหย่อนอื่น ๆ ที่กรอกเอง (มาตรการรายปี)');
+{
+  const r = computeTax(profileOf(1000000, {
+    custom: [{ label: 'Easy E-Receipt', amount: 50000 }, { label: 'เที่ยวเมืองรอง', amount: 15000 }],
+  }));
+  check('แถวลดหย่อนอื่นบวกเข้าไปเต็มจำนวน (ระบบไม่เดาเพดานของมาตรการรายปี)',
+    near(r.customTotal, 65000) && near(r.netIncome, 1000000 - 100000 - 60000 - 65000),
+    `${baht(r.customTotal)} → สุทธิ ${baht(r.netIncome)}`);
+  check('ไม่มีมาตรการรายปีถูกฝังไว้ในแค็ตตาล็อกลดหย่อน',
+    !DEDUCTIONS.some(d => /e-receipt|ช้อปดี|เที่ยว|คนละครึ่ง/i.test(d.label + d.key)));
+}
+
+section('D9 · ต้องจ่ายเพิ่ม vs ขอคืนได้');
+{
+  const payable = computeTax(profileOf(1000000, { donationEdu: 50000, donationGeneral: 20000 }, 10000));
+  check('หัก ณ ที่จ่ายน้อยกว่าภาษี → ต้องจ่ายเพิ่ม ฿52,900 และ refund = 0',
+    near(payable.payable, 52900) && payable.refund === 0 && payable.balance > 0, baht(payable.payable));
+
+  const refund = computeTax(profileOf(1000000, { donationEdu: 50000, donationGeneral: 20000 }, 100000));
+  check('หัก ณ ที่จ่ายมากกว่าภาษี → ขอคืนได้ ฿37,100 และ payable = 0',
+    near(refund.refund, 37100) && refund.payable === 0 && refund.balance < 0, baht(refund.refund));
+
+  const even = computeTax(profileOf(1000000, { donationEdu: 50000, donationGeneral: 20000 }, 62900));
+  check('หักพอดี → ไม่จ่ายเพิ่ม ไม่มีคืน', even.balance === 0 && even.payable === 0 && even.refund === 0);
+
+  const exempt = computeTax(profileOf(300000, {}, 5000));
+  check('เงินได้สุทธิต่ำกว่า ฿150,000 → ภาษี 0 และขอคืนที่ถูกหักไปได้ทั้งก้อน',
+    exempt.netIncome === 140000 && exempt.tax === 0 && near(exempt.refund, 5000) && exempt.exempt === true,
+    `สุทธิ ${baht(exempt.netIncome)}`);
+}
+
+section('D10 · "ควรทำยังไงต่อ" — headroom × ขั้นภาษี');
+{
+  // The brief's own worked example: ฿120,000 of SSF room at a 15% marginal
+  // rate must read "ประหยัดภาษี ~฿18,000".
+  const r = computeTax(profileOf(940000, { ssf: 80000 }));
+  check('ฉากตัวอย่าง: เงินได้สุทธิ ฿700,000 · ขั้นภาษีสูงสุด 15%',
+    near(r.netIncome, 700000) && r.marginalRate === 0.15, baht(r.netIncome));
+  const ssf = deductionHeadroom(r).find(x => x.key === 'ssf');
+  check('SSF ซื้อเพิ่มได้อีก ฿120,000 → ประหยัดภาษี ~฿18,000',
+    near(ssf.room, 120000) && near(ssf.taxSaved, 18000), `${baht(ssf.room)} → ${baht(ssf.taxSaved)}`);
+  check('… ในกรณีที่ไม่ข้ามขั้น ตัวเลขจริงเท่ากับ headroom × marginal rate พอดี',
+    near(ssf.taxSaved, ssf.taxSavedAtMarginal));
+
+  // …and where the room DOES cross a boundary, the honest number is smaller
+  // than headroom × marginal rate. This is why taxSaved re-runs the brackets.
+  const r2 = computeTax(profileOf(1000000, { ssf: 50000 }));
+  const ssf2 = deductionHeadroom(r2).find(x => x.key === 'ssf');
+  check('ห้องที่ข้ามขั้นภาษี: ประหยัดจริง ฿24,500 ไม่ใช่ ฿30,000 ที่ได้จากคูณอัตราเดียว',
+    near(ssf2.room, 150000) && near(ssf2.taxSaved, 24500) && near(ssf2.taxSavedAtMarginal, 30000),
+    `จริง ${baht(ssf2.taxSaved)} · คูณตรง ๆ ${baht(ssf2.taxSavedAtMarginal)}`);
+
+  // The combined ceiling has to bound the ADVICE too, not just the maths.
+  const full = computeTax(profileOf(2100000, { pvd: 100000, rmf: 300000, ssf: 100000 }));
+  const esg = deductionHeadroom(full).find(x => x.key === 'thaiEsg');
+  check('เพดานรวมเกษียณเต็มแล้ว → ไม่แนะนำให้ซื้อ Thai ESG เพิ่ม (ห้องเหลือ 0)',
+    esg.room === 0 && esg.taxSaved === 0, `ห้อง ${baht(esg.room)}`);
+  const ph = deductionHeadroom(full).find(x => x.key === 'parentsHealth');
+  check('… แต่ช่องที่ไม่เกี่ยวกับเกษียณยังเหลือห้องตามปกติ (สุขภาพพ่อแม่ ฿15,000 ที่ขั้น 25%)',
+    near(ph.room, 15000) && near(ph.taxSaved, 3750), `${baht(ph.room)} → ${baht(ph.taxSaved)}`);
+
+  const life = deductionHeadroom(computeTax(profileOf(2000000, { lifeInsurance: 90000 })))
+    .find(x => x.key === 'healthInsurance');
+  check('ประกันสุขภาพ: ห้องถูกจำกัดด้วยเพดานรวม ฿100,000 เหลือแค่ ฿10,000 ไม่ใช่ ฿25,000',
+    near(life.room, 10000), baht(life.room));
+
+  const edu = deductionHeadroom(computeTax(profileOf(1000000, { donationEdu: 20000 })))
+    .find(x => x.key === 'donationEdu');
+  check('บริจาค 2 เท่า: บริจาคไป ฿20,000 (หักได้ ฿40,000) เหลือห้องอีก ฿22,000 ของเงินสด',
+    near(edu.room, 22000) && edu.weight === 2, baht(edu.room));
+  check('… ทุกตัวเลขในบรรทัดเดียวกันเป็น "เงินสดที่จ่าย" หน่วยเดียวกันหมด ไม่ปนกับยอดที่หักได้',
+    near(edu.used, 20000) && near(edu.cap, 42000),
+    `ใช้ไป ${baht(edu.used)} / ${baht(edu.cap)}`);
+
+  check('เรียงจากช่องที่ประหยัดภาษีได้มากที่สุดก่อน',
+    deductionHeadroom(r).every((x, i, a) => i === 0 || a[i - 1].taxSaved >= x.taxSaved));
+  check('ช่องที่ระบบถือว่า "ซื้อเพิ่มไม่ได้" ไม่โผล่ในคำแนะนำ',
+    !deductionHeadroom(r).some(x => ['personal', 'spouse', 'children', 'parents', 'socialSecurity'].includes(x.key)));
+}
+
+section('D11 · สรุป "ควรทำยังไงต่อ" ไม่ขายของเมื่อไม่มีภาษีให้ประหยัด');
+{
+  const none = planningSummary(computeTax(profileOf(0)));
+  check('ยังไม่กรอกรายได้ → บอกให้กรอกก่อน', none.state === 'empty');
+
+  const exempt = planningSummary(computeTax(profileOf(300000)));
+  check('ต่ำกว่าเกณฑ์ → บอกตรง ๆ ว่าไม่ต้องเสียภาษี และซื้อเพิ่มไม่ช่วย',
+    exempt.state === 'exempt' && /ไม่ต้องเสียภาษี/.test(exempt.detail));
+
+  const taxable = planningSummary(computeTax(profileOf(940000, { ssf: 80000 })));
+  check('มีภาษีต้องเสีย → บอกขั้นภาษีสูงสุดเป็นเปอร์เซ็นต์',
+    taxable.state === 'taxable' && /15%/.test(taxable.headline), taxable.headline);
+
+  // Deductions can carry a taxable income back UNDER the threshold — and then
+  // the panel must stop selling. (There is no fourth state: tax is zero
+  // exactly when net income is ≤ ฿150,000.)
+  const zeroedProfile = computeTax(profileOf(600000, { rmf: 300000, ssf: 200000, socialSecurity: 9000, spouse: 60000 }));
+  const zeroed = planningSummary(zeroedProfile);
+  check('ลดหย่อนกดเงินได้สุทธิลงต่ำกว่าเกณฑ์ → ไม่เสนอให้ซื้ออะไรเพิ่ม',
+    zeroedProfile.tax === 0 && zeroed.state === 'exempt',
+    `สุทธิ ${baht(zeroedProfile.netIncome)}`);
+
+  check('ไม่มีคำแนะนำใดเอ่ยชื่อผลิตภัณฑ์หรือ บลจ.',
+    !/ควรซื้อ|แนะนำให้ซื้อ|กองทุนของ/.test(JSON.stringify([none, exempt, taxable, zeroed])));
+}
+
+section('D12 · พ.ศ. / ค.ศ. และการฟอร์แมตเงิน');
+{
+  check('เก็บ ค.ศ. แสดง พ.ศ. — 2026 → 2569', toBE(2026) === 2569 && toCE(2569) === 2026);
+  check('ปีภาษีอ่านจากวันที่แบบ Bangkok YYYY-MM-DD', taxYearOf('2026-08-12') === 2026);
+  check('วันที่พังอ่านเป็น null ไม่ใช่ NaN', taxYearOf('') === null && taxYearOf(undefined) === null);
+  check('ฟอร์แมตเงินใส่ ฿ และคอมมา', baht(1234567) === '฿1,234,567' && baht(-2500) === '-฿2,500');
+}
+
+section('D13 · ตาราง tax_profiles ยังไม่ถูกสร้าง — แอปต้องไม่พัง');
+{
+  const saved = __tables.tax_profiles;
+  delete __tables.tax_profiles;                       // migration not run yet
+
+  const res = await listProfiles(2026);
+  check('อ่านรายชื่อได้ผลว่าง + ธง missingTable แทนที่จะ throw',
+    res.missingTable === true && Array.isArray(res.rows) && res.rows.length === 0);
+  const yrs = await listYears();
+  check('รายการปีก็คืนธงเดียวกัน ไม่ throw', yrs.missingTable === true && yrs.years.length === 0);
+
+  let msg = '';
+  try { await createProfile({ tax_year: 2026, person_name: 'อาร์ม' }); } catch (e) { msg = e.message; }
+  check('การเขียนกลับเป็น error ภาษาไทยที่บอกให้ไปรัน SQL ไม่ใช่ error ดิบ',
+    msg === SQL_NOT_RUN_MESSAGE, msg);
+
+  check('ตัวตรวจจับรู้จักทั้ง 42P01 (Postgres) และ PGRST205 (PostgREST)',
+    isTableMissing({ code: '42P01' }) && isTableMissing({ code: 'PGRST205' })
+    && isTableMissing({ message: 'Could not find the table \'public.tax_profiles\'' })
+    && !isTableMissing({ code: '23505' }) && !isTableMissing(null));
+
+  __tables.tax_profiles = saved;
+}
+
+section('D14 · บันทึกจริง · คัดลอกจากปีก่อน');
+{
+  __tables.tax_profiles = [];
+
+  const arm = await createProfile({ tax_year: 2026, person_name: 'อาร์ม', is_self: true, sort_order: 0 });
+  const pat = await createProfile({ tax_year: 2026, person_name: 'แพท', sort_order: 1 });
+  await createProfile({ tax_year: 2026, person_name: 'พ่อ', sort_order: 2 });
+  check('เพิ่มคนได้หลายคนในปีเดียวกัน (ตัวเอง + แพท + คนอื่น)',
+    (await listProfiles(2026)).rows.length === 3);
+
+  await updateProfile(arm.id, {
+    income: { salaryMonthly: 150000, bonus: 300000, wht: 180000 },
+    deductions: { ssf: 200000, rmf: 300000, socialSecurity: 9000 },
+  });
+  const back = (await listProfiles(2026)).rows.find(r => r.id === arm.id);
+  check('income/deductions เก็บเป็น jsonb แล้วอ่านกลับมาครบ',
+    back.income.salaryMonthly === 150000 && back.deductions.rmf === 300000);
+  const armTax = computeTax({ income: back.income, deductions: back.deductions });
+  check('คำนวณจากแถวที่อ่านกลับมาได้เลข ฿222,750 (สุทธิ ฿1,431,000)',
+    near(armTax.netIncome, 1431000) && near(armTax.tax, 222750),
+    `${baht(armTax.netIncome)} → ${baht(armTax.tax)}`);
+  check('… และเทียบกับหัก ณ ที่จ่าย ฿180,000 แล้วต้องจ่ายเพิ่ม ฿42,750',
+    near(armTax.payable, 42750), baht(armTax.payable));
+
+  check('เรียงตาม sort_order เสมอ — เจ้าของขึ้นก่อน',
+    (await listProfiles(2026)).rows.map(r => r.person_name).join(',') === 'อาร์ม,แพท,พ่อ');
+
+  // คัดลอกจากปีก่อน
+  await createProfile({ tax_year: 2027, person_name: 'แพท', sort_order: 0 });
+  const copied = await copyYear(2026, 2027);
+  check('คัดลอกปีก่อนมาเฉพาะคนที่ยังไม่มี — ไม่ทับของที่กรอกไว้แล้ว',
+    copied.copied === 2 && copied.skipped.join(',') === 'แพท',
+    `copied ${copied.copied} · skipped ${copied.skipped.join(',')}`);
+  const y27 = (await listProfiles(2027)).rows;
+  check('ปีใหม่ได้ค่าลดหย่อนเดิมติดมาด้วย',
+    y27.find(r => r.person_name === 'อาร์ม').deductions.rmf === 300000);
+  check('แต่ภาษีหัก ณ ที่จ่ายของปีเก่าไม่ถูกคัดลอกมา (ไม่งั้นจะโชว์เงินคืนปลอม)',
+    y27.find(r => r.person_name === 'อาร์ม').income.wht === 0
+    && y27.find(r => r.person_name === 'อาร์ม').income.salaryMonthly === 150000);
+
+  let copyMsg = '';
+  try { await copyYear(2024, 2025); } catch (e) { copyMsg = e.message; }
+  check('คัดลอกจากปีที่ไม่มีข้อมูล → บอกเป็นภาษาไทยพร้อมปี พ.ศ.',
+    /2567/.test(copyMsg), copyMsg);
+
+  // Save failure must surface, not be swallowed.
+  __config.opFailures['update:tax_profiles'] = 1;
+  let saveMsg = '';
+  try { await updateProfile(pat.id, { notes: 'x' }); } catch (e) { saveMsg = e.message; }
+  check('บันทึกล้มเหลวถูกโยนออกมาให้ UI แสดง ไม่ถูกกลืน', saveMsg.length > 0, saveMsg);
+
+  // An update that matches no row (deleted elsewhere / RLS) is NOT a success.
+  let ghostMsg = '';
+  try { await updateProfile('no-such-id', { notes: 'x' }); } catch (e) { ghostMsg = e.message; }
+  check('อัปเดตแถวที่ไม่มีอยู่ = error ไม่ใช่ "บันทึกแล้ว" เงียบ ๆ',
+    /บันทึกไม่สำเร็จ/.test(ghostMsg), ghostMsg);
+
+  await deleteProfile(pat.id);
+  check('ลบคนออกจากปีได้ และเหลือคนอื่นครบ',
+    (await listProfiles(2026)).rows.map(r => r.person_name).join(',') === 'อาร์ม,พ่อ');
+
+  const years = await listYears();
+  check('รายการปีที่มีข้อมูล เรียงใหม่สุดก่อน', years.years.join(',') === '2027,2026');
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
