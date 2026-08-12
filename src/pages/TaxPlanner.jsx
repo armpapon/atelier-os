@@ -12,6 +12,8 @@ import { todayStr } from '../lib/dates.js';
 import {
   DEDUCTIONS, EXPENSE_CAP, RETIREMENT_COMBINED_CAP,
   computeTax, deductionHeadroom, planningSummary, baht, toBE, taxYearOf,
+  periodFor, toStored, toDisplay, periodDerivation,
+  sanityWarnings, derivations, fmtNumber,
 } from '../lib/taxTH.js';
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, copyYear,
@@ -30,6 +32,33 @@ const SECTIONS = [
   { title: `กองทุนเพื่อการเกษียณ · รวมกันไม่เกิน ${baht(RETIREMENT_COMBINED_CAP)}`, keys: ['pvd', 'rmf', 'ssf', 'thaiEsg', 'pensionInsurance'] },
   { title: 'ที่อยู่อาศัย & บริจาค', keys: ['homeLoanInterest', 'donationEdu', 'donationGeneral'] },
 ];
+
+/**
+ * What a person created from today onwards starts with: the payslip panel,
+ * with the two fields the payslip states monthly already set to เดือน.
+ * A v4.28 row has none of this and is left exactly as it was.
+ */
+const NEW_PERSON_INCOME = { entryMode: 'slip', periods: { salary: 'month', wht: 'month' } };
+const NEW_PERSON_DEDUCTIONS = { ssoMode: 'auto' };
+
+/** The `periods` map out of an income/deductions blob, tolerating legacy rows. */
+const periodsOf = (bag) => (bag && typeof bag.periods === 'object' && bag.periods) || {};
+
+/**
+ * Which entry panel this person opens in.
+ * Persisted once a person is created; for a v4.28 row that predates the key,
+ * anything already filled in means the detailed form — that is the form those
+ * numbers were typed into, and dropping him into the slip panel would hide
+ * deductions he has already entered.
+ */
+function entryModeOf(profile) {
+  const income = profile?.income || {};
+  if (income.entryMode === 'slip' || income.entryMode === 'full') return income.entryMode;
+  const touched = Number(income.salaryMonthly) > 0 || Number(income.bonus) > 0
+    || Number(income.wht) > 0 || (Array.isArray(income.other) && income.other.length > 0)
+    || Object.keys(profile?.deductions || {}).length > 0;
+  return touched ? 'full' : 'slip';
+}
 
 export function TaxPlanner() {
   const [year, setYear] = useState(() => taxYearOf(todayStr()) || new Date().getFullYear());
@@ -128,12 +157,42 @@ export function TaxPlanner() {
     patchProfile(active.id, { deductions: { ...(active.deductions || {}), [key]: value } });
   }, [active, patchProfile]);
 
+  // The เดือน/ปี switch stores nothing but the CHOICE — the figure itself is
+  // already converted by the field, so flipping a toggle never moves money.
+  const setIncomePeriod = useCallback((field, period) => {
+    if (!active) return;
+    const income = active.income || {};
+    patchProfile(active.id, { income: { ...income, periods: { ...periodsOf(income), [field]: period } } });
+  }, [active, patchProfile]);
+
+  const setDeductionPeriod = useCallback((field, period) => {
+    if (!active) return;
+    const ded = active.deductions || {};
+    patchProfile(active.id, { deductions: { ...ded, periods: { ...periodsOf(ded), [field]: period } } });
+  }, [active, patchProfile]);
+
+  /** ssoMode / ssoSettings / socialSecurity all live in `deductions`. */
+  const setSso = useCallback((patch) => {
+    if (!active) return;
+    patchProfile(active.id, { deductions: { ...(active.deductions || {}), ...patch } });
+  }, [active, patchProfile]);
+
+  const setEntryMode = useCallback((mode) => {
+    if (!active) return;
+    patchProfile(active.id, { income: { ...(active.income || {}), entryMode: mode } });
+  }, [active, patchProfile]);
+
   // ── Results, for every person (household total needs them all) ────────────
   const results = useMemo(
     () => new Map(profiles.map(p => [p.id, computeTax({ income: p.income, deductions: p.deductions })])),
     [profiles],
   );
   const activeResult = active ? results.get(active.id) : null;
+  const entryMode = active ? entryModeOf(active) : 'slip';
+  const warnings = useMemo(
+    () => (active && activeResult ? sanityWarnings(active, activeResult) : []),
+    [active, activeResult],
+  );
 
   const household = useMemo(() => {
     let tax = 0, wht = 0, gross = 0;
@@ -150,6 +209,7 @@ export function TaxPlanner() {
       const row = await createProfile({
         tax_year: year, person_name: person, is_self: isSelf,
         sort_order: profiles.length,
+        income: NEW_PERSON_INCOME, deductions: NEW_PERSON_DEDUCTIONS,
       });
       setProfiles(list => [...list, row]);
       setActiveId(row.id);
@@ -163,8 +223,9 @@ export function TaxPlanner() {
   const seedHousehold = async () => {
     setBusy(true);
     try {
-      const arm = await createProfile({ tax_year: year, person_name: 'อาร์ม', is_self: true, sort_order: 0 });
-      const pat = await createProfile({ tax_year: year, person_name: 'แพท', is_self: false, sort_order: 1 });
+      const seed = { income: NEW_PERSON_INCOME, deductions: NEW_PERSON_DEDUCTIONS };
+      const arm = await createProfile({ tax_year: year, person_name: 'อาร์ม', is_self: true, sort_order: 0, ...seed });
+      const pat = await createProfile({ tax_year: year, person_name: 'แพท', is_self: false, sort_order: 1, ...seed });
       setProfiles([arm, pat]);
       setActiveId(arm.id);
     } catch (e) {
@@ -284,21 +345,35 @@ export function TaxPlanner() {
                 alignItems: 'start',
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
-                  <IncomeCard
-                    key={`income-${active.id}`}
-                    profile={active} result={activeResult} onChange={setIncome}
-                  />
-                  <DeductionsCard
-                    key={`ded-${active.id}`}
-                    profile={active} result={activeResult}
-                    onChange={setDeduction}
-                    onCustomChange={rows => patchProfile(active.id, {
-                      deductions: { ...(active.deductions || {}), custom: rows },
-                    })}
-                  />
+                  {entryMode === 'slip' ? (
+                    <SlipCard
+                      key={`slip-${active.id}`}
+                      profile={active} result={activeResult}
+                      onIncome={setIncome} onPeriod={setIncomePeriod} onSso={setSso}
+                      onSwitchToFull={() => setEntryMode('full')}
+                    />
+                  ) : (
+                    <>
+                      <IncomeCard
+                        key={`income-${active.id}`}
+                        profile={active} result={activeResult} onChange={setIncome}
+                        onPeriod={setIncomePeriod}
+                        onSwitchToSlip={() => setEntryMode('slip')}
+                      />
+                      <DeductionsCard
+                        key={`ded-${active.id}`}
+                        profile={active} result={activeResult}
+                        onChange={setDeduction} onPeriod={setDeductionPeriod} onSso={setSso}
+                        onCustomChange={rows => patchProfile(active.id, {
+                          deductions: { ...(active.deductions || {}), custom: rows },
+                        })}
+                      />
+                    </>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
+                  <SanityCard warnings={warnings} />
                   <ResultCard result={activeResult} />
                   <AdviceCard result={activeResult} />
                   <Card variant="flat">
@@ -550,6 +625,71 @@ function MoneyInput({ value, onChange, placeholder = '0', ariaLabel, width = 132
   );
 }
 
+// ── เดือน / ปี ──────────────────────────────────────────────────────────────
+// A two-option segmented control, deliberately not a <select>: the whole point
+// is that the current unit is readable without opening anything, and that
+// switching is one tap on a phone.
+
+const PERIOD_LABEL = { month: 'เดือน', year: 'ปี' };
+
+function PeriodToggle({ value, onChange, name }) {
+  return (
+    <div style={{
+      display: 'inline-flex', flexShrink: 0, gap: 2, padding: 2,
+      background: 'var(--fill)', borderRadius: 999,
+    }}>
+      {['month', 'year'].map(p => {
+        const on = value === p;
+        return (
+          <button
+            key={p} type="button" className="focus-ring" aria-pressed={on}
+            aria-label={`${name} เป็นราย${PERIOD_LABEL[p]}`}
+            onClick={() => onChange(p)}
+            style={{
+              ...mono, fontSize: 10, letterSpacing: '0.04em', lineHeight: 1.6,
+              padding: '2px 8px', borderRadius: 999, border: 0, cursor: 'pointer',
+              background: on ? 'var(--surface)' : 'transparent',
+              color: on ? 'var(--ink)' : 'var(--ink-3)',
+              boxShadow: on ? 'var(--shadow-card)' : 'none',
+              transition: 'background 120ms, color 120ms',
+            }}>{PERIOD_LABEL[p]}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * A money input that remembers whether the owner types it monthly or yearly.
+ * The parent only ever sees the STORED figure — the conversion (and the little
+ * "875 × 12 = ฿10,500/ปี" line that proves it) happens here.
+ *
+ * `key` on the inner MoneyInput carries the period because MoneyInput is
+ * uncontrolled: flipping the unit has to reseed the box with the converted
+ * figure, and a remount is the only honest way to do that.
+ */
+function MoneyField({
+  field, stored, period, onStored, onPeriod,
+  ariaLabel, name, width, showDerivation = true,
+}) {
+  const shown = toDisplay(field, stored, period);
+  const deriv = periodDerivation(field, stored, period);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <MoneyInput
+          key={`${field}-${period}`} value={shown} ariaLabel={ariaLabel} width={width}
+          onChange={v => onStored(toStored(field, v, period))}
+        />
+        <PeriodToggle value={period} onChange={onPeriod} name={name || ariaLabel} />
+      </div>
+      {showDerivation && deriv && Number(stored) > 0 && (
+        <div style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)', textAlign: 'right' }}>{deriv}</div>
+      )}
+    </div>
+  );
+}
+
 function CountInput({ value, onChange, ariaLabel, max }) {
   return (
     <input
@@ -567,25 +707,35 @@ function CountInput({ value, onChange, ariaLabel, max }) {
 
 // ── Income ──────────────────────────────────────────────────────────────────
 
-function IncomeCard({ profile, result, onChange }) {
+function IncomeCard({ profile, result, onChange, onPeriod, onSwitchToSlip }) {
   const income = profile.income || {};
   const other = Array.isArray(income.other) ? income.other : [];
+  const periods = periodsOf(income);
+  const d = derivations(result);
 
   const setOther = (rows) => onChange({ other: rows });
 
   return (
     <Card>
       <CardHeader eyebrow="รายได้" title={`เงินได้ของ ${profile.person_name}`}
-        meta={`เงินได้พึงประเมินทั้งปี ${baht(result.income.gross)}`} />
+        meta={d.gross} />
 
-      <FormRow label="เงินเดือน / เดือน" hint={`× 12 = ${baht(result.income.salaryAnnual)}`}>
-        <MoneyInput key="sal" value={income.salaryMonthly} ariaLabel="เงินเดือนต่อเดือน"
-          onChange={v => onChange({ salaryMonthly: v })} />
+      <FormRow label="เงินเดือน" hint={`ทั้งปี ${baht(result.income.salaryAnnual)}`}>
+        <MoneyField
+          field="salary" stored={income.salaryMonthly} period={periodFor(periods, 'salary')}
+          ariaLabel="เงินเดือนต่อเดือน" name="เงินเดือน"
+          onStored={v => onChange({ salaryMonthly: v })}
+          onPeriod={p => onPeriod('salary', p)}
+        />
       </FormRow>
 
-      <FormRow label="โบนัส / เงินได้ก้อนอื่นทั้งปี">
-        <MoneyInput key="bonus" value={income.bonus} ariaLabel="โบนัส"
-          onChange={v => onChange({ bonus: v })} />
+      <FormRow label="โบนัส / เงินได้ก้อนอื่น">
+        <MoneyField
+          field="bonus" stored={income.bonus} period={periodFor(periods, 'bonus')}
+          ariaLabel="โบนัส" name="โบนัส"
+          onStored={v => onChange({ bonus: v })}
+          onPeriod={p => onPeriod('bonus', p)}
+        />
       </FormRow>
 
       <div style={{ ...label10, marginTop: 16, marginBottom: 8 }}>
@@ -597,10 +747,15 @@ function IncomeCard({ profile, result, onChange }) {
             className="input" value={row?.label || ''} placeholder="เช่น ค่าเช่า / ฟรีแลนซ์"
             aria-label={`ชื่อรายได้อื่นรายการที่ ${i + 1}`}
             onChange={e => setOther(other.map((r, j) => (j === i ? { ...r, label: e.target.value } : r)))}
-            style={{ flex: 1, minWidth: 120, fontSize: 13, padding: '7px 10px' }}
+            style={{ flex: 1, minWidth: 110, fontSize: 13, padding: '7px 10px' }}
           />
-          <MoneyInput key={`other-${i}`} value={row?.amount} ariaLabel={`จำนวนรายได้อื่นรายการที่ ${i + 1}`}
-            onChange={v => setOther(other.map((r, j) => (j === i ? { ...r, amount: v } : r)))} />
+          <MoneyField
+            field={`other:${i}`} stored={row?.amount} period={periodFor(periods, `other:${i}`)}
+            ariaLabel={`จำนวนรายได้อื่นรายการที่ ${i + 1}`} name={`รายได้อื่นรายการที่ ${i + 1}`}
+            width={110}
+            onStored={v => setOther(other.map((r, j) => (j === i ? { ...r, amount: v } : r)))}
+            onPeriod={p => onPeriod(`other:${i}`, p)}
+          />
           <button onClick={() => setOther(other.filter((_, j) => j !== i))} className="focus-ring"
             aria-label={`ลบรายได้อื่นรายการที่ ${i + 1}`}
             style={{ background: 'none', border: 0, color: 'var(--ink-3)', cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
@@ -612,11 +767,145 @@ function IncomeCard({ profile, result, onChange }) {
 
       <div style={{ height: 1, background: 'var(--hairline)', margin: '16px 0' }} />
 
-      <FormRow label="ภาษีหัก ณ ที่จ่าย ที่ถูกหักไปแล้ว" hint="ดูจากหนังสือรับรอง 50 ทวิ">
-        <MoneyInput key="wht" value={income.wht} ariaLabel="ภาษีหัก ณ ที่จ่าย"
-          onChange={v => onChange({ wht: v })} />
+      <FormRow
+        label="ภาษีหัก ณ ที่จ่าย ที่ถูกหักไปแล้ว"
+        hint={'ในสลิปมักอยู่ในช่อง "อื่นๆ" ของฝั่งรายการหัก · หรือดูหนังสือรับรอง 50 ทวิ'}>
+        <MoneyField
+          field="wht" stored={income.wht} period={periodFor(periods, 'wht')}
+          ariaLabel="ภาษีหัก ณ ที่จ่าย" name="ภาษีหัก ณ ที่จ่าย"
+          onStored={v => onChange({ wht: v })}
+          onPeriod={p => onPeriod('wht', p)}
+        />
       </FormRow>
+
+      <div style={{ marginTop: 12, textAlign: 'right' }}>
+        <LinkButton onClick={onSwitchToSlip}>← กลับไปกรอกจากสลิป</LinkButton>
+      </div>
     </Card>
+  );
+}
+
+/** A text link that is a real button — used for every "switch mode" affordance. */
+function LinkButton({ onClick, children, tone }) {
+  return (
+    <button
+      type="button" onClick={onClick} className="focus-ring"
+      style={{
+        background: 'none', border: 0, padding: 0, cursor: 'pointer',
+        fontSize: 12, color: tone || 'var(--accent)', textDecoration: 'underline',
+        textUnderlineOffset: 2,
+      }}>{children}</button>
+  );
+}
+
+// ── "กรอกจากสลิป" ───────────────────────────────────────────────────────────
+// The four boxes on a payslip, in the order they appear on the payslip, all
+// monthly except the bonus. Nothing here is a new number: each one writes the
+// same annual field the detailed form writes, through the same conversion.
+
+function SlipCard({ profile, result, onIncome, onPeriod, onSso, onSwitchToFull }) {
+  const income = profile.income || {};
+  const periods = periodsOf(income);
+  const sso = result.sso;
+  const d = derivations(result);
+
+  // ประกันสังคม is shown per month because that is how the slip shows it, and
+  // it starts out as the calculated figure — typing over it is the override.
+  const ssoShown = sso.mode === 'auto' ? sso.derived.monthly : toDisplay('sso', sso.typed, 'month');
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow="กรอกจากสลิป" title={`สลิปเงินเดือนของ ${profile.person_name}`}
+        meta="กรอกตัวเลขจากสลิปเดือนล่าสุดตามลำดับ — ระบบคูณ 12 ให้เอง ไม่ต้องคิดในหัว" />
+
+      <FormRow label="เงินเดือนค่าจ้าง / เดือน" hint={income.salaryMonthly > 0 ? d.salaryAnnual : 'ช่องแรกของฝั่งรายการได้'}>
+        <MoneyField
+          field="salary" stored={income.salaryMonthly} period={periodFor(periods, 'salary')}
+          ariaLabel="เงินเดือนต่อเดือน" name="เงินเดือน" showDerivation={false}
+          onStored={v => onIncome({ salaryMonthly: v })}
+          onPeriod={p => onPeriod('salary', p)}
+        />
+      </FormRow>
+
+      <FormRow
+        label="ประกันสังคม / เดือน"
+        hint={sso.mode === 'auto'
+          ? `${d.sso} = ${baht(sso.derived.annual)}/ปี`
+          : `${fmtNumber(ssoShown)} × 12 = ${baht(sso.typed)}/ปี · กรอกเอง`}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+          <MoneyInput
+            key={`slip-sso-${sso.mode}-${sso.derived.monthly}`}
+            value={ssoShown} ariaLabel="ประกันสังคมต่อเดือน"
+            onChange={v => onSso({ ssoMode: 'manual', socialSecurity: toStored('sso', v, 'month') })}
+          />
+          {sso.mode === 'manual' && sso.overridden && (
+            <LinkButton onClick={() => onSso({ ssoMode: 'auto' })}>
+              คำนวณใหม่ ({baht(sso.derived.monthly)}/เดือน)
+            </LinkButton>
+          )}
+        </div>
+      </FormRow>
+
+      <FormRow
+        label="ภาษีหัก ณ ที่จ่าย / เดือน"
+        hint={'ในสลิปมักอยู่ในช่อง "อื่นๆ" ของฝั่งรายการหัก'}>
+        <MoneyField
+          field="wht" stored={income.wht} period={periodFor(periods, 'wht')}
+          ariaLabel="ภาษีหัก ณ ที่จ่ายต่อเดือน" name="ภาษีหัก ณ ที่จ่าย"
+          onStored={v => onIncome({ wht: v })}
+          onPeriod={p => onPeriod('wht', p)}
+        />
+      </FormRow>
+
+      <FormRow label="โบนัส (ทั้งปี)" hint="ถ้ายังไม่ออก ใส่ที่คาดว่าจะได้ หรือเว้นไว้ก่อน">
+        <MoneyField
+          field="bonus" stored={income.bonus} period={periodFor(periods, 'bonus')}
+          ariaLabel="โบนัสทั้งปี" name="โบนัส"
+          onStored={v => onIncome({ bonus: v })}
+          onPeriod={p => onPeriod('bonus', p)}
+        />
+      </FormRow>
+
+      <div style={{
+        marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--hairline)',
+        display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.6 }}>
+          มีประกัน / SSF / RMF / บริจาค / คนในอุปการะ ให้กรอกในฟอร์มเต็ม
+        </span>
+        <LinkButton onClick={onSwitchToFull}>กรอกแบบละเอียด →</LinkButton>
+      </div>
+    </Card>
+  );
+}
+
+// ── Sanity warnings ─────────────────────────────────────────────────────────
+// Amber, never blocking, and never a modal: they say what looks off and what
+// it probably means, and the owner keeps typing.
+
+function SanityCard({ warnings }) {
+  if (!warnings.length) return null;
+  return (
+    <div style={{
+      background: 'var(--warning-soft)', border: '1px solid var(--warning)',
+      borderRadius: 'var(--radius-card)', padding: '12px 16px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      {warnings.map(w => (
+        <div key={w.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <span aria-hidden style={{ color: 'var(--accent-strong)', fontSize: 12, lineHeight: 1.7 }}>⚠</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, color: 'var(--accent-strong)', lineHeight: 1.6, fontWeight: 600 }}>
+              {w.text}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-2)', lineHeight: 1.7, marginTop: 2 }}>
+              {w.detail}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -637,9 +926,11 @@ function FormRow({ label, hint, children }) {
 
 // ── Deductions ──────────────────────────────────────────────────────────────
 
-function DeductionsCard({ profile, result, onChange, onCustomChange }) {
+function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomChange }) {
   const ded = profile.deductions || {};
   const custom = Array.isArray(ded.custom) ? ded.custom : [];
+  const periods = periodsOf(ded);
+  const d = derivations(result);
 
   return (
     <Card>
@@ -654,6 +945,9 @@ function DeductionsCard({ profile, result, onChange, onCustomChange }) {
         <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>
           ค่าใช้จ่าย 50% (สูงสุด {baht(EXPENSE_CAP)})
           <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)', marginLeft: 8 }}>อัตโนมัติ</span>
+          <span style={{ ...mono, display: 'block', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 }}>
+            {d.expense}
+          </span>
         </div>
         <div style={{ ...mono, fontSize: 13.5, color: 'var(--ink)' }}>{baht(result.expense)}</div>
       </div>
@@ -661,13 +955,22 @@ function DeductionsCard({ profile, result, onChange, onCustomChange }) {
       {SECTIONS.map(section => (
         <div key={section.title} style={{ marginBottom: 18 }}>
           <div style={{ ...label10, marginBottom: 6 }}>{section.title}</div>
-          {section.keys.map(key => (
-            <DeductionRow
-              key={key} spec={DEDUCTIONS.find(d => d.key === key)}
-              row={result.rows[key]} value={ded[key]}
-              onChange={v => onChange(key, v)}
+          {section.keys.map(key => (key === 'socialSecurity' ? (
+            <SocialSecurityRow
+              key={key} spec={DEDUCTIONS.find(x => x.key === key)}
+              row={result.rows[key]} sso={result.sso}
+              period={periodFor(periods, key)}
+              onSso={onSso} onPeriod={p => onPeriod(key, p)}
             />
-          ))}
+          ) : (
+            <DeductionRow
+              key={key} spec={DEDUCTIONS.find(x => x.key === key)}
+              row={result.rows[key]} value={ded[key]}
+              period={periodFor(periods, key)}
+              onChange={v => onChange(key, v)}
+              onPeriod={p => onPeriod(key, p)}
+            />
+          )))}
           {section.keys.includes('ssf') && result.retirement.trimmed > 0 && (
             <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
               ⚠ รวมกันเกินเพดาน {baht(RETIREMENT_COMBINED_CAP)} — ส่วนเกิน {baht(result.retirement.trimmed)} หักไม่ได้
@@ -691,10 +994,15 @@ function DeductionsCard({ profile, result, onChange, onCustomChange }) {
             className="input" value={row?.label || ''} placeholder="ชื่อรายการลดหย่อน"
             aria-label={`ชื่อลดหย่อนอื่นรายการที่ ${i + 1}`}
             onChange={e => onCustomChange(custom.map((r, j) => (j === i ? { ...r, label: e.target.value } : r)))}
-            style={{ flex: 1, minWidth: 120, fontSize: 13, padding: '7px 10px' }}
+            style={{ flex: 1, minWidth: 110, fontSize: 13, padding: '7px 10px' }}
           />
-          <MoneyInput key={`c-${i}`} value={row?.amount} ariaLabel={`จำนวนลดหย่อนอื่นรายการที่ ${i + 1}`}
-            onChange={v => onCustomChange(custom.map((r, j) => (j === i ? { ...r, amount: v } : r)))} />
+          <MoneyField
+            field={`custom:${i}`} stored={row?.amount} period={periodFor(periods, `custom:${i}`)}
+            ariaLabel={`จำนวนลดหย่อนอื่นรายการที่ ${i + 1}`} name={`ลดหย่อนอื่นรายการที่ ${i + 1}`}
+            width={110}
+            onStored={v => onCustomChange(custom.map((r, j) => (j === i ? { ...r, amount: v } : r)))}
+            onPeriod={p => onPeriod(`custom:${i}`, p)}
+          />
           <button onClick={() => onCustomChange(custom.filter((_, j) => j !== i))} className="focus-ring"
             aria-label={`ลบลดหย่อนอื่นรายการที่ ${i + 1}`}
             style={{ background: 'none', border: 0, color: 'var(--ink-3)', cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
@@ -707,7 +1015,7 @@ function DeductionsCard({ profile, result, onChange, onCustomChange }) {
   );
 }
 
-function DeductionRow({ spec, row, value, onChange }) {
+function DeductionRow({ spec, row, value, period, onChange, onPeriod }) {
   const claimed = Number(value) || 0;
   const [open, setOpen] = useState(claimed > 0);
   if (!spec || !row) return null;
@@ -767,10 +1075,157 @@ function DeductionRow({ spec, row, value, onChange }) {
               {baht(row.allowed)}
             </span>
           </>
+        ) : spec.monthlyable ? (
+          <MoneyField
+            field={`ded:${spec.key}`} stored={value} period={period}
+            ariaLabel={`จำนวน ${spec.label}`} name={spec.label}
+            onStored={onChange} onPeriod={onPeriod}
+          />
         ) : (
           <MoneyInput value={value} ariaLabel={`จำนวน ${spec.label}`} onChange={onChange} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ── ประกันสังคม ─────────────────────────────────────────────────────────────
+// The only row the page fills in by itself. It is derived from the salary the
+// owner already typed, from two parameters he can see and edit, and it shows
+// its own arithmetic — because a number that appears without being typed and
+// without an explanation is exactly the kind of thing nobody checks.
+
+function SocialSecurityRow({ spec, row, sso, period, onSso, onPeriod }) {
+  const [openSettings, setOpenSettings] = useState(false);
+  if (!spec || !row) return null;
+
+  const claiming = sso.mode === 'auto' || sso.typed > 0;
+  const s = sso.settings;
+
+  const toggle = (on) => {
+    // Turning it back on returns to the calculated figure — that is the
+    // sensible default, and the manual box is one click away.
+    onSso(on ? { ssoMode: 'auto' } : { ssoMode: 'manual', socialSecurity: 0 });
+  };
+
+  return (
+    <div style={{ padding: '7px 0', borderTop: '1px solid var(--hairline)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, flex: 1, minWidth: 150, cursor: 'pointer' }}>
+          <input
+            type="checkbox" checked={claiming} aria-label={`ใช้ลดหย่อน ${spec.label}`}
+            onChange={e => toggle(e.target.checked)}
+            style={{ marginTop: 3, accentColor: 'var(--accent)', flexShrink: 0 }}
+          />
+          <span style={{ minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: 'var(--ink)', lineHeight: 1.45 }}>{spec.label}</span>
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>
+              {sso.mode === 'auto'
+                ? `คำนวณให้จากเงินเดือน · ${sso.derived.formula}`
+                : `กรอกเอง · เพดานทั้งปี ${baht(sso.legalMax)}`}
+            </span>
+            {row.capped && (
+              <span style={{
+                ...mono, display: 'inline-block', marginTop: 4, fontSize: 10,
+                color: 'var(--accent-strong)', background: 'var(--warning-soft)',
+                border: '1px solid var(--warning)', borderRadius: 999, padding: '1px 8px',
+              }}>
+                เกินเพดาน · หักได้ {baht(row.allowed)}
+              </span>
+            )}
+          </span>
+        </label>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+          {!claiming ? (
+            <span style={{ ...mono, fontSize: 12, color: 'var(--ink-4)', minWidth: 132, textAlign: 'right' }}>—</span>
+          ) : sso.mode === 'auto' ? (
+            <>
+              <span style={{ ...mono, fontSize: 13, color: 'var(--ink)', minWidth: 132, textAlign: 'right' }}>
+                {baht(sso.derived.annual)}
+              </span>
+              <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)' }}>
+                {baht(sso.derived.monthly)}/เดือน × {fmtNumber(s.monthsWorked)} เดือน
+              </span>
+              <LinkButton onClick={() => onSso({ ssoMode: 'manual', socialSecurity: sso.derived.annual })}>
+                กรอกเอง
+              </LinkButton>
+            </>
+          ) : (
+            <>
+              <MoneyField
+                field="ded:socialSecurity" stored={sso.typed} period={period}
+                ariaLabel={`จำนวน ${spec.label}`} name={spec.label}
+                onStored={v => onSso({ ssoMode: 'manual', socialSecurity: v })}
+                onPeriod={onPeriod}
+              />
+              {sso.overridden && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <span style={{ ...mono, fontSize: 10.5, color: 'var(--accent-strong)' }}>กรอกเอง (ทับค่าที่คำนวณ)</span>
+                  <LinkButton onClick={() => onSso({ ssoMode: 'auto' })}>คำนวณใหม่</LinkButton>
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 4, textAlign: 'right' }}>
+        <LinkButton onClick={() => setOpenSettings(v => !v)} tone="var(--ink-3)">
+          {openSettings ? 'ซ่อนเกณฑ์ประกันสังคม' : 'เกณฑ์ประกันสังคม'}
+        </LinkButton>
+      </div>
+
+      {openSettings && (
+        <div style={{
+          marginTop: 8, padding: '10px 12px', background: 'var(--fill)',
+          borderRadius: 'var(--radius-field)', display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <SettingRow label="ฐานค่าจ้างสูงสุด / เดือน">
+            <MoneyInput
+              key={`sso-ceiling-${s.wageCeiling}`} value={s.wageCeiling} width={110}
+              ariaLabel="ฐานค่าจ้างสูงสุดของประกันสังคม"
+              onChange={v => onSso({ ssoSettings: { ...s, wageCeiling: v } })}
+            />
+          </SettingRow>
+          <SettingRow label="อัตราฝั่งลูกจ้าง (%)">
+            <input
+              className="input" inputMode="decimal" aria-label="อัตราประกันสังคมเป็นเปอร์เซ็นต์"
+              defaultValue={String(Math.round(s.rate * 10000) / 100)}
+              onChange={e => {
+                const n = Number(String(e.target.value).replace(/[^\d.]/g, ''));
+                if (Number.isFinite(n) && n > 0 && n <= 100) onSso({ ssoSettings: { ...s, rate: n / 100 } });
+              }}
+              style={{ ...mono, width: 72, textAlign: 'right', padding: '7px 10px', fontSize: 13 }}
+            />
+          </SettingRow>
+          <SettingRow label="จำนวนเดือนที่ส่งเงินสมทบปีนี้">
+            <input
+              className="input" type="number" min={0} max={12} aria-label="จำนวนเดือนที่ส่งเงินสมทบ"
+              value={s.monthsWorked}
+              onChange={e => {
+                const n = Math.max(0, Math.min(12, Number(e.target.value) || 0));
+                onSso({ ssoSettings: { ...s, monthsWorked: n } });
+              }}
+              style={{ ...mono, width: 72, textAlign: 'right', padding: '7px 10px', fontSize: 13 }}
+            />
+          </SettingRow>
+          <div style={{ fontSize: 11, color: 'var(--ink-2)', lineHeight: 1.7 }}>
+            ฐานค่าจ้างสูงสุดและอัตราเป็น<b>พารามิเตอร์ที่รัฐกำหนดและเปลี่ยนได้</b> —
+            ตรวจกับประกาศของสำนักงานประกันสังคมทุกปีก่อนยื่น ·
+            เพดานลดหย่อนทั้งปีคิดจากค่าพวกนี้ = {baht(sso.legalMax)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingRow({ label, children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>{label}</span>
+      {children}
     </div>
   );
 }
@@ -780,17 +1235,21 @@ function DeductionRow({ spec, row, value, onChange }) {
 function ResultCard({ result }) {
   const owed = result.balance > 0;
   const bands = result.bands.filter(b => b.amount > 0);
+  const d = derivations(result);
 
   return (
     <Card>
       <CardHeader eyebrow="ผลการคำนวณ" title="เงินได้สุทธิ & ภาษี" />
 
-      <Line label="เงินได้พึงประเมิน" value={baht(result.income.gross)} />
+      <Line label="เงินได้พึงประเมิน" value={baht(result.income.gross)} hint={d.gross} />
       <Line label={`หักค่าใช้จ่าย 50%${result.expenseCapped ? ` (ชนเพดาน ${baht(EXPENSE_CAP)})` : ''}`}
-        value={'− ' + baht(result.expense)} />
-      <Line label="หักค่าลดหย่อน" value={'− ' + baht(result.deductionTotal)} />
+        value={'− ' + baht(result.expense)} hint={d.expense} />
+      <Line label="หักค่าลดหย่อน" value={'− ' + baht(result.deductionTotal)}
+        hint={`ส่วนตัว ${baht(result.rows.personal.allowed)}`
+          + (result.rows.socialSecurity.allowed > 0 ? ` + ประกันสังคม ${baht(result.rows.socialSecurity.allowed)}` : '')
+          + ` + อื่น ๆ ${baht(result.deductionTotal - result.rows.personal.allowed - result.rows.socialSecurity.allowed)}`} />
       <div style={{ height: 1, background: 'var(--border-strong)', margin: '8px 0' }} />
-      <Line label="เงินได้สุทธิ" value={baht(result.netIncome)} strong />
+      <Line label="เงินได้สุทธิ" value={baht(result.netIncome)} strong hint={d.netIncome} />
 
       <div style={{ ...label10, marginTop: 18, marginBottom: 6 }}>ภาษีตามขั้นบันได</div>
       {bands.length === 0 ? (
@@ -827,7 +1286,7 @@ function ResultCard({ result }) {
       )}
 
       <div style={{ height: 1, background: 'var(--border-strong)', margin: '10px 0 6px' }} />
-      <Line label="ภาษีที่ต้องเสียทั้งปี" value={baht(result.tax)} strong />
+      <Line label="ภาษีที่ต้องเสียทั้งปี" value={baht(result.tax)} strong hint={d.tax} />
       <Line label="หัก ณ ที่จ่าย ที่จ่ายไปแล้ว" value={'− ' + baht(result.income.wht)} />
 
       <div style={{
@@ -838,19 +1297,30 @@ function ResultCard({ result }) {
         <span style={{ fontSize: 13.5, fontWeight: 600, color: owed ? 'var(--loss)' : 'var(--profit)' }}>
           {result.balance === 0 ? 'พอดี ไม่ต้องจ่ายเพิ่มและไม่มีคืน' : owed ? 'ต้องจ่ายเพิ่ม' : 'ขอคืนได้'}
         </span>
-        <span style={{ ...mono, fontSize: 22, fontWeight: 500, color: owed ? 'var(--loss)' : 'var(--profit)' }}>
-          {baht(Math.abs(result.balance))}
+        <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <span style={{ ...mono, fontSize: 22, fontWeight: 500, color: owed ? 'var(--loss)' : 'var(--profit)' }}>
+            {baht(Math.abs(result.balance))}
+          </span>
+          <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)' }}>{d.balance}</span>
         </span>
       </div>
     </Card>
   );
 }
 
-function Line({ label, value, strong }) {
+function Line({ label, value, strong, hint }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '4px 0' }}>
-      <span style={{ fontSize: strong ? 14 : 13, color: strong ? 'var(--ink)' : 'var(--ink-2)', fontWeight: strong ? 600 : 400 }}>
-        {label}
+      <span style={{ minWidth: 0 }}>
+        <span style={{
+          display: 'block', fontSize: strong ? 14 : 13,
+          color: strong ? 'var(--ink)' : 'var(--ink-2)', fontWeight: strong ? 600 : 400,
+        }}>{label}</span>
+        {hint && (
+          <span style={{ ...mono, display: 'block', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 1, lineHeight: 1.5 }}>
+            {hint}
+          </span>
+        )}
       </span>
       <span style={{ ...mono, fontSize: strong ? 16 : 13, color: 'var(--ink)', fontWeight: strong ? 500 : 400, whiteSpace: 'nowrap' }}>
         {value}
