@@ -26,8 +26,12 @@ import {
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
 import {
   TAX_BRACKETS, EXPENSE_CAP, RETIREMENT_COMBINED_CAP, DEDUCTIONS,
+  SSO_WAGE_CEILING, SSO_RATE, WHT_TOLERANCE,
   taxFromNetIncome, marginalRate, computeTax, deductionHeadroom,
   planningSummary, baht, toBE, toCE, taxYearOf,
+  storedUnit, defaultPeriod, periodFor, toStored, toDisplay, annualOf,
+  periodDerivation, ssoSettings, deriveSSO, ssoLegalMax, resolveSSO,
+  sanityWarnings, derivations, fmtNumber, pct,
 } from '../src/lib/taxTH.js';
 import {
   listProfiles, listYears, createProfile, updateProfile, deleteProfile,
@@ -2033,7 +2037,8 @@ section('D4 · เพดานลดหย่อนรายช่อง — ท
       baht(r.rows[key].allowed));
   };
   capCase('spouse', 100000, 60000);
-  capCase('socialSecurity', 12000, 9000);
+  // NOT ฿9,000 — that figure was stale. The ceiling is ฿17,500 × 5% × 12.
+  capCase('socialSecurity', 12000, 10500);
   capCase('lifeInsurance', 150000, 100000);
   capCase('healthInsurance', 40000, 25000);
   capCase('parentsHealth', 30000, 15000);
@@ -2338,6 +2343,258 @@ section('D14 · บันทึกจริง · คัดลอกจากป
 
   const years = await listYears();
   check('รายการปีที่มีข้อมูล เรียงใหม่สุดก่อน', years.years.join(',') === '2027,2026');
+}
+
+// ═══════════════ E · กรอกจากสลิป — เดือน/ปี, ประกันสังคม, คำเตือน (v4.29) ═══
+// The owner's complaint in one line: "ตรงที่ต้องคำนวณเองแล้วใส่เป็นก้อน …
+// คือแค่ลดความผิดพลาดแหละ". Everything in this section exists to make sure the
+// app does the multiplying, and that doing it never changes what an already
+// saved figure means.
+
+section('E1 · หน่วย เดือน/ปี ต่อช่อง — และค่าเริ่มต้นของแถวเก่า');
+{
+  check('เงินเดือนเก็บเป็นรายเดือน · ช่องอื่นเก็บเป็นรายปี',
+    storedUnit('salary') === 'month' && storedUnit('wht') === 'year'
+    && storedUnit('ded:ssf') === 'year');
+
+  // THE backward-compatibility case: a v4.28 row has no `periods` key at all.
+  // Reading a missing period as anything other than what the old label said
+  // would multiply or divide every saved figure by 12, silently.
+  check('แถวที่บันทึกไว้ก่อน v4.29 ไม่มีคีย์ periods → ช่องเงินเดือนคือ "เดือน" ตามป้ายเดิม',
+    periodFor(undefined, 'salary') === 'month' && defaultPeriod('salary') === 'month');
+  check('… และช่องอื่นทุกช่องคือ "ปี" ตามที่ UI เดิมหมายถึง',
+    periodFor(undefined, 'wht') === 'year' && periodFor({}, 'ded:lifeInsurance') === 'year'
+    && periodFor({ wht: 'ขยะ' }, 'wht') === 'year' && defaultPeriod('bonus') === 'year');
+
+  // A legacy row read through the new code must compute EXACTLY what v4.28
+  // computed for it — same salary, same WHT, same tax, to the satang.
+  const legacy = { income: { salaryMonthly: 150000, bonus: 300000, wht: 180000 },
+                   deductions: { ssf: 200000, rmf: 300000, socialSecurity: 9000 } };
+  const legacyOut = computeTax(legacy);
+  check('แถว v4.28 คำนวณออกมาเท่าเดิมทุกบาท (สุทธิ ฿1,431,000 · ภาษี ฿222,750)',
+    near(legacyOut.income.gross, 2100000) && near(legacyOut.netIncome, 1431000)
+    && near(legacyOut.tax, 222750), `${baht(legacyOut.netIncome)} → ${baht(legacyOut.tax)}`);
+
+  // Round trip: what he types monthly is what he sees monthly, after the
+  // stored annual figure has been through the database and back.
+  check('พิมพ์ 5,410.42/เดือน → เก็บ ฿64,925.04/ปี → แสดงกลับเป็น 5,410.42/เดือน',
+    near(toStored('wht', 5410.42, 'month'), 64925.04)
+    && near(toDisplay('wht', 64925.04, 'month'), 5410.42),
+    `${toStored('wht', 5410.42, 'month')}`);
+  check('พิมพ์ 875/เดือน → ฿10,500/ปี · และกลับมาเป็น 875 พอดี',
+    near(toStored('ded:socialSecurity', 875, 'month'), 10500)
+    && near(toDisplay('ded:socialSecurity', 10500, 'month'), 875));
+  check('ช่องเงินเดือนสลับเป็น "ปี": พิมพ์ 1,080,000 → เก็บเป็น 90,000/เดือน',
+    near(toStored('salary', 1080000, 'year'), 90000)
+    && near(toDisplay('salary', 90000, 'year'), 1080000));
+  check('สลับหน่วยไปกลับไม่ทำให้ตัวเลขเพี้ยน',
+    near(toDisplay('bonus', toStored('bonus', 12345.67, 'month'), 'month'), 12345.67));
+  check('ยอดรายปีอ่านได้จากค่าที่เก็บ ไม่ว่าช่องนั้นเก็บหน่วยอะไร',
+    near(annualOf('salary', 90000), 1080000) && near(annualOf('wht', 64925.04), 64925.04));
+
+  check('ใต้ช่องที่ตั้งเป็น "เดือน" มีบรรทัดโชว์การคูณให้เห็น',
+    periodDerivation('ded:socialSecurity', 10500, 'month') === '875 × 12 = ฿10,500/ปี',
+    periodDerivation('ded:socialSecurity', 10500, 'month'));
+  check('ช่องเงินเดือนที่ตั้งเป็น "ปี" โชว์การหารกลับเป็นรายเดือน',
+    periodDerivation('salary', 90000, 'year') === '1,080,000 ÷ 12 = ฿90,000/เดือน',
+    periodDerivation('salary', 90000, 'year'));
+  check('ช่องที่พิมพ์ในหน่วยเดียวกับที่เก็บ ไม่ต้องมีบรรทัดอธิบาย',
+    periodDerivation('wht', 64925.04, 'year') === null);
+}
+
+section('E2 · ประกันสังคม — คำนวณให้ตามกฎหมาย');
+{
+  check('ค่าตั้งต้นตามสลิปจริง: ฐาน ฿17,500 × 5% = ฿875/เดือน',
+    SSO_WAGE_CEILING === 17500 && SSO_RATE === 0.05
+    && near(deriveSSO(90000).monthly, 875) && near(deriveSSO(90000).annual, 10500),
+    baht(deriveSSO(90000).annual));
+  check('เงินเดือนต่ำกว่าเพดาน → คิดจากเงินเดือนจริง ไม่ใช่เพดาน',
+    near(deriveSSO(10000).monthly, 500) && near(deriveSSO(10000).annual, 6000),
+    baht(deriveSSO(10000).annual));
+  check('ยังไม่กรอกเงินเดือน → ประกันสังคมเป็นศูนย์ ไม่ใช่ ฿10,500 ลอย ๆ',
+    deriveSSO(0).annual === 0);
+
+  // Part-year: joined in June, seven months of contributions.
+  const part = deriveSSO(90000, { monthsWorked: 7 });
+  check('เข้างานกลางปี ส่งสมทบ 7 เดือน → ฿6,125 ไม่ใช่ ฿10,500',
+    near(part.annual, 6125) && part.monthsWorked === 7, baht(part.annual));
+  check('… และบรรทัดที่มาที่ไปบอกจำนวนเดือนตรงตามที่ตั้ง',
+    part.formula === '5% ของ ฿17,500 × 7 เดือน', part.formula);
+
+  // Both parameters are editable — they are government numbers, not constants.
+  const tweaked = deriveSSO(90000, { wageCeiling: 20000, rate: 0.03 });
+  check('เพดานค่าจ้างและอัตราแก้ได้ — ฐาน ฿20,000 อัตรา 3% → ฿600/เดือน',
+    near(tweaked.monthly, 600) && near(tweaked.annual, 7200), baht(tweaked.annual));
+  check('เพดานลดหย่อนทั้งปีมาจากค่าเดียวกัน ไม่ใช่เลขฝังตาย ฿9,000',
+    near(ssoLegalMax(), 10500) && near(ssoLegalMax({ wageCeiling: 20000, rate: 0.03 }), 7200),
+    baht(ssoLegalMax()));
+  check('ค่าตั้งค่าที่กรอกมั่ว ถูกแทนที่ด้วยค่าเริ่มต้น ไม่ทำให้ผลลัพธ์เพี้ยน',
+    ssoSettings({ wageCeiling: -5, rate: 9, monthsWorked: 99 }).wageCeiling === 17500
+    && ssoSettings({}).rate === 0.05 && ssoSettings({ monthsWorked: 99 }).monthsWorked === 12);
+
+  // Mode precedence.
+  const auto = resolveSSO({ income: { salaryMonthly: 90000 }, deductions: { ssoMode: 'auto' } });
+  check('โหมดอัตโนมัติ: ไม่ต้องกรอกอะไรเลย ได้ ฿10,500 พร้อมที่มา',
+    auto.mode === 'auto' && near(auto.amount, 10500) && auto.overridden === false,
+    baht(auto.amount));
+
+  const manual = resolveSSO({
+    income: { salaryMonthly: 90000 },
+    deductions: { ssoMode: 'manual', socialSecurity: 12000 },
+  });
+  check('กรอกเองชนะเสมอ — ระบบไม่แอบเขียนทับตัวเลขที่พิมพ์',
+    manual.mode === 'manual' && near(manual.amount, 12000) && manual.overridden === true,
+    baht(manual.amount));
+  check('… แต่ก็ยังบอกว่าเลขที่คำนวณได้คือเท่าไหร่ เผื่อจะกด "คำนวณใหม่"',
+    near(manual.derived.annual, 10500));
+
+  const same = resolveSSO({
+    income: { salaryMonthly: 90000 },
+    deductions: { ssoMode: 'manual', socialSecurity: 10500 },
+  });
+  check('กรอกเองด้วยตัวเลขเดียวกับที่คำนวณได้ ไม่ถือว่า "ทับค่า"', same.overridden === false);
+
+  // …and the legacy row, which has no mode at all.
+  const old9k = resolveSSO({ income: { salaryMonthly: 90000 }, deductions: { socialSecurity: 9000 } });
+  check('แถวเก่าที่ไม่มีคีย์ ssoMode → ใช้ตัวเลขที่บันทึกไว้เหมือนเดิม ไม่ถูกคำนวณทับ',
+    old9k.mode === 'manual' && near(old9k.amount, 9000), baht(old9k.amount));
+  const oldEmpty = resolveSSO({ income: { salaryMonthly: 90000 }, deductions: {} });
+  check('แถวเก่าที่ไม่เคยติ๊กประกันสังคม → ยังเป็นศูนย์ ไม่ถูกเติมให้เอง',
+    oldEmpty.amount === 0);
+
+  // The deduction row itself, through computeTax.
+  const overMax = computeTax({
+    income: { salaryMonthly: 90000 },
+    deductions: { ssoMode: 'manual', socialSecurity: 12000 },
+  });
+  check('กรอกเกินเพดาน → หักได้แค่ ฿10,500 (เพดานใหม่ ไม่ใช่ ฿9,000)',
+    near(overMax.rows.socialSecurity.allowed, 10500) && overMax.rows.socialSecurity.capped === true,
+    baht(overMax.rows.socialSecurity.allowed));
+  const tightCeiling = computeTax({
+    income: { salaryMonthly: 90000 },
+    deductions: { ssoMode: 'manual', socialSecurity: 12000, ssoSettings: { wageCeiling: 20000, rate: 0.03 } },
+  });
+  check('เพดานลดหย่อนขยับตามค่าที่ตั้งไว้ — ฐาน ฿20,000 อัตรา 3% → หักได้ ฿7,200',
+    near(tightCeiling.rows.socialSecurity.allowed, 7200),
+    baht(tightCeiling.rows.socialSecurity.allowed));
+  check('ไม่มีเลข 9000 ฝังอยู่ในแค็ตตาล็อกลดหย่อนอีกแล้ว',
+    !DEDUCTIONS.some(d => d.key === 'socialSecurity' && d.cap != null));
+}
+
+section('E3 · สลิปจริง มิ.ย. 2569 — กรอกรายเดือน แล้วออกมาเป็นทั้งปี');
+{
+  // บริษัท อเดลล่า กรุ๊ป · เงินเดือน 90,000 · ประกันสังคม 875 · "อื่นๆ" 5,410.42
+  // (875 + 5,410.42 = 6,285 = รวมเงินหักในสลิป) · เงินได้สุทธิในสลิป 83,715.
+  const SLIP = { salary: 90000, sso: 875, wht: 5410.42, netPay: 83715 };
+  // The slip itself prints รวมเงินหัก and เงินได้สุทธิ rounded to the baht —
+  // 875 + 5,410.42 is 6,285.42, and 90,000 − that is 83,714.58. Allowing one
+  // baht here is the honest tolerance; anything wider would stop being a check.
+  check('สลิปสอดคล้องกันเอง: 875 + 5,410.42 ≈ ฿6,285 และ 90,000 − 6,285 ≈ ฿83,715',
+    near(SLIP.sso + SLIP.wht, 6285, 1) && near(SLIP.salary - SLIP.sso - SLIP.wht, SLIP.netPay, 1),
+    `${SLIP.sso + SLIP.wht} · ${SLIP.salary - SLIP.sso - SLIP.wht}`);
+
+  // What the owner actually types: three monthly boxes, nothing multiplied.
+  const profile = {
+    income: {
+      entryMode: 'slip',
+      salaryMonthly: toStored('salary', SLIP.salary, 'month'),
+      wht: toStored('wht', SLIP.wht, 'month'),
+      periods: { salary: 'month', wht: 'month' },
+    },
+    deductions: { ssoMode: 'auto' },
+  };
+  const r = computeTax(profile);
+
+  check('เงินเดือน 90,000/เดือน → เงินได้พึงประเมิน ฿1,080,000',
+    near(r.income.salaryAnnual, 1080000) && near(r.income.gross, 1080000), baht(r.income.gross));
+  check('ประกันสังคมคำนวณให้เอง = ฿10,500/ปี (875 × 12) โดยไม่ต้องกรอก',
+    near(r.sso.amount, 10500) && near(r.sso.derived.monthly, SLIP.sso)
+    && near(r.rows.socialSecurity.allowed, 10500), baht(r.sso.amount));
+  check('ภาษีหัก ณ ที่จ่าย 5,410.42/เดือน → ฿64,925.04/ปี ครบสตางค์',
+    near(r.income.wht, 64925.04), `${r.income.wht}`);
+  check('หักค่าใช้จ่าย ฿100,000 (ชนเพดาน) + ส่วนตัว ฿60,000 + ประกันสังคม ฿10,500',
+    near(r.expense, 100000) && r.expenseCapped === true && near(r.deductionTotal, 70500),
+    baht(r.deductionTotal));
+  check('เงินได้สุทธิ ฿909,500 · ภาษีทั้งปี ฿96,900 · ขั้นภาษีสูงสุด 20%',
+    near(r.netIncome, 909500) && near(r.tax, 96900) && r.marginalRate === 0.20,
+    `${baht(r.netIncome)} → ${baht(r.tax)}`);
+  check('เทียบกับที่ถูกหักไปแล้ว → ต้องจ่ายเพิ่ม ฿31,974.96 (ไม่ใช่ได้คืน)',
+    near(r.payable, 31974.96) && r.refund === 0, `${r.payable}`);
+
+  // Reload: the row goes to jsonb and comes back, and means the same thing.
+  const reloaded = JSON.parse(JSON.stringify(profile));
+  check('บันทึกลง jsonb แล้วโหลดกลับ — หน่วยที่เลือกไว้ยังอยู่ ตัวเลขไม่ขยับ',
+    periodFor(reloaded.income.periods, 'salary') === 'month'
+    && periodFor(reloaded.income.periods, 'wht') === 'month'
+    && near(toDisplay('wht', reloaded.income.wht, 'month'), SLIP.wht)
+    && near(computeTax(reloaded).tax, 96900));
+
+  // Same slip, entered the other way round — the annual boxes — must agree.
+  const typedYearly = computeTax({
+    income: { salaryMonthly: toStored('salary', 1080000, 'year'), wht: 64925.04 },
+    deductions: { ssoMode: 'auto' },
+  });
+  check('กรอกเป็นรายปีแทน ได้ตัวเลขเดียวกันเป๊ะ — หน่วยเป็นเรื่องการพิมพ์ ไม่ใช่การคำนวณ',
+    near(typedYearly.tax, r.tax) && near(typedYearly.netIncome, r.netIncome));
+
+  const d = derivations(r);
+  check('ทุกเลขที่คำนวณให้ มีบรรทัดบอกที่มา ไม่มีเลขลอย',
+    d.gross === 'เงินเดือน 90,000 × 12 = ฿1,080,000'
+    && d.expense === '50% ของ ฿1,080,000 สูงสุด ฿100,000'
+    && d.sso === '5% ของ ฿17,500 × 12 เดือน'
+    && d.netIncome === '฿1,080,000 − ฿100,000 − ฿70,500'
+    && d.balance === '฿96,900 − หัก ณ ที่จ่าย ฿64,925',
+    d.gross);
+  check('ตัวเลขในบรรทัดที่มามีทศนิยมเมื่อจำเป็น และมีคอมมาเสมอ',
+    fmtNumber(5410.42) === '5,410.42' && fmtNumber(90000) === '90,000'
+    && pct(0.05) === '5%' && pct(0.155) === '15.5%');
+}
+
+section('E4 · คำเตือนสติ — เตือนแต่ไม่ขวาง');
+{
+  const clean = { income: { salaryMonthly: 90000, wht: 96900 }, deductions: { ssoMode: 'auto' } };
+  check('กรอกครบและสมเหตุสมผล → ไม่มีคำเตือนสักข้อ', sanityWarnings(clean).length === 0);
+  check('เพดานหัก ณ ที่จ่ายผ่อนผันได้ 25% ก่อนจะเตือน', WHT_TOLERANCE === 0.25);
+  check('ต่างกันแค่ 20% ยังไม่เตือน — ชีวิตจริงมันไม่เป๊ะ',
+    sanityWarnings({ income: { salaryMonthly: 90000, wht: 77520 }, deductions: { ssoMode: 'auto' } })
+      .length === 0);
+
+  const low = sanityWarnings({ income: { salaryMonthly: 90000, wht: 64925.04 }, deductions: { ssoMode: 'auto' } });
+  check('หัก ณ ที่จ่ายน้อยกว่าภาษีเกิน 25% → เตือนว่าน่าจะต้องจ่ายเพิ่ม พร้อมยอด',
+    low.length === 1 && low[0].key === 'whtLow' && /ต้องจ่ายเพิ่มอีก ฿31,975/.test(low[0].detail),
+    low[0]?.text);
+
+  const high = sanityWarnings({ income: { salaryMonthly: 90000, wht: 150000 }, deductions: { ssoMode: 'auto' } });
+  check('หัก ณ ที่จ่ายมากกว่าภาษีเกิน 25% → เตือนว่าน่าจะได้คืน พร้อมยอด',
+    high.length === 1 && high[0].key === 'whtHigh' && /ขอคืนได้ ฿53,100/.test(high[0].detail),
+    high[0]?.text);
+  check('… และทิศทางของคำเตือนสองแบบนี้ตรงข้ามกันจริง ๆ ไม่ใช่ข้อความเดียวกัน',
+    /ต้องจ่ายเพิ่ม/.test(low[0].detail) && /ขอคืน/.test(high[0].detail)
+    && !/ขอคืน/.test(low[0].detail));
+
+  const over = sanityWarnings({
+    income: { salaryMonthly: 90000, wht: 96900 },
+    deductions: { ssoMode: 'manual', socialSecurity: 12000 },
+  });
+  check('กรอกประกันสังคมเกินเพดานตามกฎหมาย → เตือน พร้อมบอกว่าหักได้จริงเท่าไหร่',
+    over.some(w => w.key === 'ssoOverMax' && /฿10,500/.test(w.text) && /฿10,500/.test(w.detail)),
+    over.find(w => w.key === 'ssoOverMax')?.text);
+  check('… โหมดคำนวณอัตโนมัติไม่มีทางเกินเพดาน จึงไม่เตือน',
+    !sanityWarnings(clean).some(w => w.key === 'ssoOverMax'));
+  check('… และกรอกเองแบบพอดีเพดาน ก็ไม่เตือน',
+    !sanityWarnings({ income: { salaryMonthly: 90000, wht: 96900 },
+                      deductions: { ssoMode: 'manual', socialSecurity: 10500 } })
+      .some(w => w.key === 'ssoOverMax'));
+
+  const noIncome = sanityWarnings({ income: {}, deductions: { ssf: 200000 } });
+  check('กรอกลดหย่อนไว้แต่ยังไม่มีรายได้ → เตือนว่ายังไม่ช่วยอะไร',
+    noIncome.some(w => w.key === 'zeroIncome' && /฿200,000/.test(w.text)),
+    noIncome.find(w => w.key === 'zeroIncome')?.text);
+  check('… โปรไฟล์ว่างเปล่าที่ยังไม่ได้กรอกอะไรเลย ไม่ต้องเตือน',
+    sanityWarnings({ income: {}, deductions: {} }).length === 0);
+  check('คำเตือนเป็นข้อความล้วน ไม่มีสถานะบล็อกการกรอก',
+    [...low, ...high, ...over, ...noIncome].every(w => typeof w.text === 'string' && w.text.length > 0
+      && typeof w.detail === 'string' && !('blocking' in w)));
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
