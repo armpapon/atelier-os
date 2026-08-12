@@ -834,6 +834,44 @@ export async function reassignTransactionsAccount(fromAccountId, toAccountId) {
 }
 
 /**
+ * Reassign every transaction to another account AND archive the source — as
+ * ONE unit (audit batch C · B3).
+ *
+ * The two-request version left an unrecoverable middle state: the ledger
+ * already moved, the source account still active and now empty, and a retry
+ * unable to tell the difference (the reassign half is idempotent and reports
+ * "nothing to move"). reassign_and_archive_account does both inside one
+ * transaction, so a failure at either stage leaves BOTH accounts and every
+ * transaction link exactly as they were.
+ *
+ * @returns { moved, atomic } — `moved` is the transaction count when the
+ *          server could report it, null on the fallback path.
+ */
+export async function reassignAndArchiveAccount(fromAccountId, toAccountId = null) {
+  if (!supabase) throw new Error('Supabase not configured');
+  if (!fromAccountId) throw new Error('ต้องระบุบัญชีต้นทาง');
+
+  const { data, error } = await supabase.rpc('reassign_and_archive_account', {
+    p_from: fromAccountId,
+    p_to:   toAccountId || null,
+  });
+  if (!error) return { moved: Number(data) || 0, atomic: true };
+  if (!isRpcMissing(error)) throw error;
+
+  // ── FALLBACK while migration_add_account_reassign_rpc.sql is unrun ──────
+  // CAVEAT — NOT atomic. These are two PostgREST requests with no shared
+  // transaction: if the archive fails after the reassign committed, the
+  // transactions have moved while the source account is still active and
+  // empty. Throwing here surfaces it, but the half-done state stays on the
+  // server; only the RPC above closes the window. This path exists solely so
+  // a deploy that reaches production before the SQL is run keeps working.
+  // ────────────────────────────────────────────────────────────────────────
+  if (toAccountId) await reassignTransactionsAccount(fromAccountId, toAccountId);
+  await archiveAccount(fromAccountId);
+  return { moved: null, atomic: false };
+}
+
+/**
  * Set an account's balance as an ANCHOR: stores the balance + the moment it
  * was true (balance_anchor_at). Displayed balance is then
  *   anchor + SUM(ledger transactions after the anchor)

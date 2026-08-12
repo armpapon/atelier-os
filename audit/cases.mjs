@@ -14,7 +14,7 @@ import {
   importTransactionsBatch,
   multisetDedupRows, getExistingTxnKeyCounts,
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
-  pocketSourceKey, extractAccountsFromMapped,
+  pocketSourceKey, extractAccountsFromMapped, reassignAndArchiveAccount,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
@@ -1622,6 +1622,98 @@ section('C · B2 · imported accounts have a stable identity (source_key)');
   check('… and the pre-migration import still matches by name (old behaviour)',
     preMigAgain.get('ซองก่อน migration') === preMig.id && preMig.balance === 90);
   __config.missingColumns = {};
+}
+
+section('C · B3 · reassign + archive is one transaction, or nothing');
+{
+  const seedPair = (tag) => {
+    __tables.accounts.push(
+      { id: `${tag}-src`, user_id: 'user-1', name: `ต้นทาง ${tag}`, scope: 'personal', balance: 0, is_active: true },
+      { id: `${tag}-dst`, user_id: 'user-1', name: `ปลายทาง ${tag}`, scope: 'personal', balance: 0, is_active: true },
+    );
+    __tables.transactions.push(
+      { id: `${tag}-t1`, user_id: 'user-1', scope: 'personal', account_id: `${tag}-src`,
+        title: 'ค่ากาแฟ', amount: -65, type: 'food', occurred_at: '2026-08-01T10:00:00+07:00' },
+      { id: `${tag}-t2`, user_id: 'user-1', scope: 'personal', account_id: `${tag}-src`,
+        title: 'ค่าเน็ต', amount: -599, type: 'bills', occurred_at: '2026-08-02T10:00:00+07:00' },
+    );
+  };
+  const stateOf = (tag) => ({
+    srcActive: __tables.accounts.find(a => a.id === `${tag}-src`).is_active,
+    dstActive: __tables.accounts.find(a => a.id === `${tag}-dst`).is_active,
+    links: __tables.transactions.filter(t => t.id.startsWith(`${tag}-t`)).map(t => t.account_id),
+  });
+
+  // ── The RPC installed: one call, one transaction. ────────────────────────
+  seedPair('b3ok');
+  let rpcArgs = null;
+  __config.rpcHandlers['reassign_and_archive_account'] = (args) => {
+    // Mirrors migration_add_account_reassign_rpc.sql: p_to NULL ⇒ archive
+    // only, no transaction touched; both effects in one unit either way.
+    rpcArgs = args;
+    let moved = 0;
+    if (args.p_to != null) {
+      const rows = __tables.transactions.filter(t => t.account_id === args.p_from);
+      rows.forEach(t => { t.account_id = args.p_to; });
+      moved = rows.length;
+    }
+    __tables.accounts.find(a => a.id === args.p_from).is_active = false;
+    return { data: moved, error: null };
+  };
+  const okRes = await reassignAndArchiveAccount('b3ok-src', 'b3ok-dst');
+  const ok = stateOf('b3ok');
+  check('the RPC path moves every link and archives in ONE call',
+    okRes.atomic === true && okRes.moved === 2
+    && ok.srcActive === false && ok.links.every(l => l === 'b3ok-dst'),
+    JSON.stringify({ ...okRes, ...ok }));
+  check('both account ids are handed to the server, not resolved client-side',
+    rpcArgs.p_from === 'b3ok-src' && rpcArgs.p_to === 'b3ok-dst');
+
+  // "archive without moving anything" — p_to is NULL, no transaction touched.
+  seedPair('b3keep');
+  const keepRes = await reassignAndArchiveAccount('b3keep-src', null);
+  const keep = stateOf('b3keep');
+  check('archiving WITHOUT a target moves nothing and still archives',
+    keepRes.moved === 0 && keep.srcActive === false
+    && keep.links.every(l => l === 'b3keep-src'), JSON.stringify(keep));
+
+  // ── The RPC raising: the whole unit rolls back. ──────────────────────────
+  seedPair('b3fail');
+  __config.rpcHandlers['reassign_and_archive_account'] =
+    () => ({ data: null, error: { code: 'P0001', message: 'บัญชีปลายทางไม่ใช่ของผู้ใช้นี้' } });
+  let raised = null;
+  try { await reassignAndArchiveAccount('b3fail-src', 'b3fail-dst'); }
+  catch (e) { raised = e.message; }
+  const failed = stateOf('b3fail');
+  check('a failure inside the transaction leaves BOTH accounts unchanged …',
+    failed.srcActive === true && failed.dstActive === true, JSON.stringify(failed));
+  check('… and every transaction link unchanged',
+    failed.links.every(l => l === 'b3fail-src'), JSON.stringify(failed.links));
+  check('the error reaches the user rather than being swallowed',
+    raised === 'บัญชีปลายทางไม่ใช่ของผู้ใช้นี้', String(raised));
+  delete __config.rpcHandlers['reassign_and_archive_account'];
+
+  // ── The RPC absent: the documented non-atomic fallback still works. ──────
+  seedPair('b3old');
+  const oldRes = await reassignAndArchiveAccount('b3old-src', 'b3old-dst');
+  const old = stateOf('b3old');
+  check('RPC missing → the two-step fallback still completes the job',
+    oldRes.atomic === false && old.srcActive === false
+    && old.links.every(l => l === 'b3old-dst'), JSON.stringify({ ...oldRes, ...old }));
+
+  // …and the caveat, demonstrated: the fallback CAN split. This is the state
+  // the RPC exists to prevent — asserted so the regression is visible if the
+  // client ever stops preferring the RPC.
+  seedPair('b3split');
+  __config.opFailures = { 'update:accounts': 1 };
+  let splitThrew = false;
+  try { await reassignAndArchiveAccount('b3split-src', 'b3split-dst'); }
+  catch { splitThrew = true; }
+  __config.opFailures = {};
+  const split = stateOf('b3split');
+  check('CAVEAT (fallback only): a mid-sequence failure DOES split — hence the RPC',
+    splitThrew && split.srcActive === true && split.links.every(l => l === 'b3split-dst'),
+    JSON.stringify(split));
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);

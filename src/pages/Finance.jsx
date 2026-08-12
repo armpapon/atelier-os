@@ -5,7 +5,7 @@ import { toneColor } from '../lib/helpers.js';
 import {
   listTransactions, listTransactionsRange, createTransaction, updateTransaction, deleteTransaction,
   listAccounts, createAccount, updateAccount,
-  archiveAccount, reassignTransactionsAccount, setAccountBalanceAnchor, loadEffectiveBalances,
+  reassignAndArchiveAccount, setAccountBalanceAnchor, loadEffectiveBalances,
   listBudgets, listGoals, createGoal, deleteGoal,
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
@@ -505,8 +505,10 @@ function AccountModal({ scope, initial = null, accounts = [], onSave, onClose })
     if (!confirm(msg)) return;
     setSaving(true);
     try {
-      if (moveTo) await reassignTransactionsAccount(initial.id, moveTo.id);
-      await archiveAccount(initial.id);
+      // Batch C · B3: ONE transaction on the server. The old two-request
+      // sequence could leave the ledger moved and this account still active
+      // and empty; reassignAndArchiveAccount either does both or neither.
+      await reassignAndArchiveAccount(initial.id, moveTo?.id || null);
       onSave(); onClose();
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
