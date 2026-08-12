@@ -1,15 +1,37 @@
 # Audit evidence harness
 
 Executable acceptance evidence for the independent finance audit
-(rounds 1–11 + the closing follow-up, v4.14 – v4.25).
+(rounds 1–11 + the closing follow-up, plus Codex's clean-slate batch A —
+v4.14 – v4.26).
 
 ## Run it
 
 ```bash
 npm install          # once — needs the repo's own devDependencies
-node audit/evidence.mjs   # pure-logic evidence (155 checks)
-npm run test:ui           # MOUNTED CSVImporter orchestration tests (34, rounds 6–11)
+node audit/evidence.mjs   # pure-logic evidence (214 checks)
+npm run test:ui           # MOUNTED component tests (44)
 ```
+
+`npm run test:ui` covers two files:
+`audit/ui/importer.test.jsx` (41 — CSVImporter orchestration, rounds 6–11 +
+batch A B6/B7/B11) and `audit/ui/balances.test.jsx` (3 — the real
+`FinanceView` page, batch A B4).
+
+## Batch A (v4.26) — Codex clean-slate review
+
+| # | Claim | Where the evidence lives |
+|---|---|---|
+| B1 | same-month balance rewind | `cases.mjs` § `A · B1` — instant compare + `user` > `import` tie-break |
+| B4 | effective-balance failure shown as truth | `cases.mjs` § `A · B4` + `ui/balances.test.jsx` |
+| B6 | debt auto-link crosses scope | `cases.mjs` § `A · B6` + `ui/importer.test.jsx` (B6, B6b) |
+| B7 | history-load failure read as "no payments" | `ui/importer.test.jsx` (B7, B7b, B7c) |
+| B10 | "Bangkok today" follows the device TZ | `cases.mjs` § `A · B10` — `withFrozenNow`, identical under all three TZs |
+| B11 | missing/unparseable CSV dates become now() | `cases.mjs` § `A · B11` + `ui/importer.test.jsx` (B11, B11b) |
+
+Batch A also extended the rig: the vitest supabase alias now covers `src/pages`
+(so a whole page can mount), the mock gained `financial_goals` /
+`recurring_expenses` and `__config.opFailurePredicate` (fail ONE read of a
+table while the rest of the page loads), and `parseCSV` reports `rowLines`.
 
 `npm run test:ui` renders the real `CSVImporter` under jsdom (vitest +
 Testing Library, config in `audit/ui/vitest.config.mjs`) against the same
@@ -66,8 +88,9 @@ Exit code `0` = every check passed. Run under different timezones to verify
 device-TZ independence:
 
 ```bash
-TZ=Asia/Bangkok    node audit/evidence.mjs
+TZ=Asia/Bangkok     node audit/evidence.mjs
 TZ=America/New_York node audit/evidence.mjs
+TZ=UTC              node audit/evidence.mjs
 ```
 
 ## What it does
