@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, Button, Badge } from '../ui/index.js';
-import { createScopeTransfer } from '../../lib/api/finance.js';
+import { createScopeTransfer, listAccounts } from '../../lib/api/finance.js';
 import { todayStr } from '../../lib/dates.js';
 
 const SCOPE_META = {
@@ -17,6 +17,21 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
   const [note,      setNote]      = useState('');
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState(null);
+  // Batch C · B5: each leg records its own account endpoint, so a transfer is
+  // visible in the balances it actually moves. Optional — "ไม่ระบุบัญชี"
+  // reproduces the previous behaviour exactly (account_id stays null).
+  const [accounts,  setAccounts]  = useState([]);
+  const [fromAcct,  setFromAcct]  = useState('');
+  const [toAcct,    setToAcct]    = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    listAccounts()
+      .then(rows => { if (alive) setAccounts(rows || []); })
+      .catch(() => { if (alive) setAccounts([]); });   // pickers just stay empty
+    return () => { alive = false; };
+  }, []);
+  const acctsIn = (sc) => accounts.filter(a => (a.scope || 'personal') === sc);
 
   const fromMeta = SCOPE_META[fromScope];
   const toMeta   = SCOPE_META[toScope];
@@ -24,6 +39,8 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
   const swap = () => {
     setFromScope(toScope);
     setToScope(fromScope);
+    setFromAcct(toAcct);
+    setToAcct(fromAcct);
   };
 
   const handleSubmit = async (e) => {
@@ -38,6 +55,8 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
         occurred_at: date,
         title:      title.trim() || null,
         note:       note.trim() || null,
+        from_account_id: fromAcct || null,
+        to_account_id:   toAcct   || null,
       });
       onSaved?.();
       onClose();
@@ -130,6 +149,24 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             onFocus={focusRing} onBlur={blurRing}
             style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
         </Field>
+
+        {/* Account endpoints — optional; each leg records its own side */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Field label={`บัญชีต้นทาง (${fromMeta.label}) · optional`}>
+            <select value={fromAcct} onChange={e => setFromAcct(e.target.value)}
+              onFocus={focusRing} onBlur={blurRing} style={inputStyle}>
+              <option value="">ไม่ระบุบัญชี</option>
+              {acctsIn(fromScope).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+          <Field label={`บัญชีปลายทาง (${toMeta.label}) · optional`}>
+            <select value={toAcct} onChange={e => setToAcct(e.target.value)}
+              onFocus={focusRing} onBlur={blurRing} style={inputStyle}>
+              <option value="">ไม่ระบุบัญชี</option>
+              {acctsIn(toScope).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+        </div>
 
         {/* Title — optional, has smart defaults */}
         <Field label='ชื่อรายการ (ปล่อยว่างก็ได้ — auto: "โอนไปครอบครัว" / "รับจากส่วนตัว")'>

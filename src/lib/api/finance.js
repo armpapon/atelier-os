@@ -554,15 +554,41 @@ export async function updateTransaction(id, patch) {
   return data;
 }
 
+/** A uuid without requiring a secure context (http dev servers included). */
+function newUuid() {
+  const fromCrypto = globalThis.crypto?.randomUUID?.();
+  if (fromCrypto) return fromCrypto;
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+  });
+}
+
+/** Fields that describe the transfer as a whole, so both legs must agree. */
+const TRANSFER_PAIRED_FIELDS = ['title', 'occurred_at', 'note'];
+
 /**
  * Create a pair of transactions representing money moving between scopes.
  * E.g. transfer ฿80,000 from personal Cashbox to family fund:
  *   personal: -80,000 (out)  ·  family: +80,000 (in)
  *
- * Both rows inserted atomically. Title is shared (with directional suffix
- * if not customized). Useful for monthly allocation between scopes.
+ * PAIR INTEGRITY (audit batch C · B5): both legs carry the same
+ * `transfer_group_id`, and each leg records its own account endpoint in
+ * `account_id`. Without the shared id the two rows were only related by
+ * coincidence of date and amount — deleting one left the other behind as
+ * phantom income, and editing the title or date of one split them for good.
+ *
+ * The insert is ONE PostgREST statement, so it was already all-or-nothing;
+ * the uuid is generated here and written into both rows of that statement.
+ * See migration_add_transfer_group.sql for why no RPC is involved.
+ *
+ * While that migration is unrun the column is absent (PGRST204): the insert
+ * is retried without it, exactly reproducing today's un-paired behaviour.
  */
-export async function createScopeTransfer({ from_scope, to_scope, amount, occurred_at, title, note }) {
+export async function createScopeTransfer({
+  from_scope, to_scope, amount, occurred_at, title, note,
+  from_account_id = null, to_account_id = null,
+}) {
   if (!supabase) throw new Error('Supabase not configured');
   if (from_scope === to_scope) throw new Error('From และ To scope ห้ามเหมือนกัน');
   if (!amount || Number(amount) <= 0)  throw new Error('จำนวนต้องมากกว่า 0');
@@ -577,6 +603,7 @@ export async function createScopeTransfer({ from_scope, to_scope, amount, occurr
   const inTitle   = baseTitle || `รับจาก${fromLabel}`;
 
   const amt = Math.abs(Number(amount));
+  const groupId = newUuid();
   const rows = [
     {
       user_id: user.id,
@@ -587,6 +614,8 @@ export async function createScopeTransfer({ from_scope, to_scope, amount, occurr
       scope:    from_scope,
       occurred_at,
       note: note || null,
+      account_id: from_account_id || null,
+      transfer_group_id: groupId,
     },
     {
       user_id: user.id,
@@ -597,19 +626,82 @@ export async function createScopeTransfer({ from_scope, to_scope, amount, occurr
       scope:    to_scope,
       occurred_at,
       note: note || null,
+      account_id: to_account_id || null,
+      transfer_group_id: groupId,
     },
   ];
 
-  const { data, error } = await supabase
-    .from('transactions').insert(rows).select();
+  let { data, error } = await supabase.from('transactions').insert(rows).select();
+  if (error && isColumnMissing(error)) {
+    // Migration unrun → the legs go in un-paired, i.e. the pre-B5 behaviour.
+    const bare = rows.map(({ transfer_group_id, ...r }) => r);
+    ({ data, error } = await supabase.from('transactions').insert(bare).select());
+  }
   if (error) throw error;
   return data;
+}
+
+/** Both legs of a transfer, oldest-scope-first is irrelevant — order is by sign. */
+export async function getTransferPair(groupId) {
+  if (!supabase || !groupId) return [];
+  const { data, error } = await supabase
+    .from('transactions').select('*').eq('transfer_group_id', groupId);
+  if (error) {
+    if (isColumnMissing(error)) return [];
+    throw error;
+  }
+  return data || [];
 }
 
 export async function deleteTransaction(id) {
   if (!supabase) throw new Error('Supabase not configured');
   const { error } = await supabase.from('transactions').delete().eq('id', id);
   if (error) throw error;
+}
+
+/**
+ * Delete a transaction, taking its transfer counterpart with it.
+ *
+ * A grouped pair goes in ONE statement — the two legs can never be left
+ * half-deleted. A legacy transfer leg with no group (the migration's backfill
+ * deliberately refuses ambiguous matches) is deleted alone and reported as
+ * `orphan: true`, so the UI can warn that the other side may need removing by
+ * hand rather than pretending the pair was handled.
+ *
+ * @returns { deleted, orphan } — `deleted` counts the rows removed.
+ */
+export async function deleteTransactionWithPair(txn) {
+  if (!supabase) throw new Error('Supabase not configured');
+  const groupId = txn?.transfer_group_id;
+  if (groupId) {
+    const { data, error } = await supabase
+      .from('transactions').delete().eq('transfer_group_id', groupId).select('id');
+    if (!error) return { deleted: (data || []).length, orphan: false };
+    if (!isColumnMissing(error)) throw error;
+  }
+  await deleteTransaction(txn.id);
+  return { deleted: 1, orphan: !groupId && isTransfer(txn) };
+}
+
+/**
+ * Update a transaction; when it is one leg of a grouped transfer and the
+ * patch only touches fields that describe the transfer as a whole
+ * (title / date / note), apply it to BOTH legs in one statement so the pair
+ * cannot drift apart. The amount is never in this set — it stays locked, as
+ * the UI already enforces.
+ */
+export async function updateTransactionMaybePaired(txn, patch) {
+  const keys = Object.keys(patch || {});
+  const pairable = txn?.transfer_group_id
+    && keys.length > 0
+    && keys.every(k => TRANSFER_PAIRED_FIELDS.includes(k));
+  if (!pairable) return updateTransaction(txn.id, patch);
+
+  const { data, error } = await supabase
+    .from('transactions').update(patch).eq('transfer_group_id', txn.transfer_group_id).select();
+  if (!error) return (data || []).find(r => r.id === txn.id) || data?.[0] || null;
+  if (!isColumnMissing(error)) throw error;
+  return updateTransaction(txn.id, patch);
 }
 
 /** List transactions in an arbitrary date range — used by analytics */

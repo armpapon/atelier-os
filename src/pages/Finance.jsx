@@ -3,7 +3,8 @@ import { Icon } from '../components/Icon.jsx';
 import { CSVImporter } from '../components/CSVImporter.jsx';
 import { toneColor } from '../lib/helpers.js';
 import {
-  listTransactions, listTransactionsRange, createTransaction, updateTransaction, deleteTransaction,
+  listTransactions, listTransactionsRange, createTransaction, updateTransaction,
+  updateTransactionMaybePaired, deleteTransactionWithPair, getTransferPair,
   listAccounts, createAccount, updateAccount,
   reassignAndArchiveAccount, setAccountBalanceAnchor, loadEffectiveBalances,
   listBudgets, listGoals, createGoal, deleteGoal,
@@ -288,7 +289,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
       } else {
         amount = abs * (isIncome ? 1 : -1);
       }
-      const payload = {
+      const fullPayload = {
         title: form.title.trim(), amount,
         // Never rewrite 'โอนภายใน' → 'transfer': the transfer category/type
         // pair is preserved verbatim on transfer rows.
@@ -304,7 +305,14 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           : `${form.occurred_at}T12:00:00+07:00`,
         scope,
       };
-      if (isEdit) await updateTransaction(initialTxn.id, payload);
+      // Batch C · B5: editing a transfer leg touches only the fields that
+      // describe the transfer as a whole — and those are written to BOTH legs
+      // so the pair cannot drift apart. Everything else on a transfer row is
+      // already locked to its original value above.
+      const payload = isTransferEdit
+        ? { title: fullPayload.title, occurred_at: fullPayload.occurred_at, note: fullPayload.note }
+        : fullPayload;
+      if (isEdit) await updateTransactionMaybePaired(initialTxn, payload);
       else        await createTransaction(payload);
       onSave(); onClose();
     } catch (err) { setError(err.message); } finally { setSaving(false); }
@@ -841,6 +849,40 @@ export function FinanceView({ scope }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // ── Delete a transaction — a transfer leg takes its counterpart with it ────
+  // Batch C · B5. A grouped pair is deleted in ONE statement after a confirm
+  // that names BOTH sides; a legacy leg with no group (the backfill refuses
+  // ambiguous matches) is deleted alone and the user is told the other side
+  // may need removing by hand — never a silent half-transfer.
+  const scopeLabel = (s) => (s === 'family' ? 'ครอบครัว' : 'ส่วนตัว');
+  const legLine = (l) => `${scopeLabel(l.scope)}: ${Number(l.amount) < 0 ? '−' : '+'}฿${Math.abs(Number(l.amount)).toLocaleString('th', { maximumFractionDigits: 0 })} · ${l.title}`;
+  const handleDeleteTxn = useCallback(async (t) => {
+    let message = 'ลบรายการนี้?';
+    if (t.transfer_group_id) {
+      let legs = [];
+      try { legs = await getTransferPair(t.transfer_group_id); } catch { legs = []; }
+      const both = (legs.length ? legs : [t])
+        .slice().sort((a, b) => Number(a.amount) - Number(b.amount));
+      message = 'ลบเงินโอนนี้ทั้งคู่?\n'
+        + both.map(legLine).join('\n')
+        + '\n\n(ลบข้างเดียวไม่ได้ — จะทำให้ยอดอีก scope เพี้ยน)';
+    } else if (isTransfer(t)) {
+      message = 'ลบขาโอนนี้?\n'
+        + '⚠️ รายการนี้เป็นเงินโอนรุ่นเก่าที่ยังไม่ได้จับคู่ไว้ — อีกฝั่งจะไม่ถูกลบ\n'
+        + 'ต้องไปลบเองที่ scope อีกฝั่ง ไม่งั้นยอดจะเพี้ยน';
+    }
+    if (!confirm(message)) return;
+    try {
+      const res = await deleteTransactionWithPair(t);
+      if (res.orphan) {
+        alert('ลบขาโอนนี้แล้ว — อย่าลืมไปลบอีกฝั่งด้วยตัวเอง (รายการโอนรุ่นเก่ายังไม่ได้จับคู่)');
+      }
+    } catch (err) {
+      alert(err.message || 'ลบไม่สำเร็จ');
+    }
+    refresh();
+  }, [refresh]);
+
   // ── Computed ────────────────────────────────────────────────────────────────
   const thisSum = useMemo(() => summarize(txns),     [txns]);
   const prevSum = useMemo(() => summarize(prevTxns), [prevTxns]);
@@ -1298,7 +1340,8 @@ export function FinanceView({ scope }) {
                               // Edit value + display + save all speak Bangkok:
                               // the old UTC split showed "1 ก.ค." but opened
                               // 30 มิ.ย., and re-saving walked the date back.
-                              await updateTransaction(t.id, { occurred_at: withBangkokTime(date, t.occurred_at) });
+                              // B5: on a transfer leg this moves BOTH legs.
+                              await updateTransactionMaybePaired(t, { occurred_at: withBangkokTime(date, t.occurred_at) });
                               refresh();
                             }}
                             cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
@@ -1344,7 +1387,7 @@ export function FinanceView({ scope }) {
                                 placeholder="+ เพิ่มโน้ต"
                                 hint="คลิกเพื่อแก้ไขโน้ต"
                                 onSave={async note => {
-                                  await updateTransaction(t.id, { note: note || null });
+                                  await updateTransactionMaybePaired(t, { note: note || null });
                                   refresh();
                                 }}
                                 cellStyle={{ fontSize: 13, color: t.note ? 'var(--text-secondary)' : 'var(--text-muted)', padding: '1px 4px' }}
@@ -1358,7 +1401,7 @@ export function FinanceView({ scope }) {
                             placeholder="+ เพิ่มโน้ต"
                             hint="คลิกเพื่อแก้ไขโน้ต"
                             onSave={async note => {
-                              await updateTransaction(t.id, { note: note || null });
+                              await updateTransactionMaybePaired(t, { note: note || null });
                               refresh();
                             }}
                             cellStyle={{ fontSize: 13, color: t.note ? 'var(--text-secondary)' : 'var(--text-muted)', padding: '1px 4px' }}
@@ -1434,7 +1477,7 @@ export function FinanceView({ scope }) {
                           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
                           ⋯
                         </button>
-                        <button onClick={() => { if (confirm('ลบรายการนี้?')) deleteTransaction(t.id).then(refresh); }}
+                        <button onClick={() => handleDeleteTxn(t)}
                           title="ลบ" aria-label="ลบ"
                           style={{
                             color: 'var(--text-muted)', fontSize: 15, background: 'none', border: 0,

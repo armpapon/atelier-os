@@ -15,6 +15,7 @@ import {
   multisetDedupRows, getExistingTxnKeyCounts,
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
   pocketSourceKey, extractAccountsFromMapped, reassignAndArchiveAccount,
+  createScopeTransfer, updateTransactionMaybePaired, deleteTransactionWithPair,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
@@ -1714,6 +1715,90 @@ section('C · B3 · reassign + archive is one transaction, or nothing');
   check('CAVEAT (fallback only): a mid-sequence failure DOES split — hence the RPC',
     splitThrew && split.srcActive === true && split.links.every(l => l === 'b3split-dst'),
     JSON.stringify(split));
+}
+
+section('C · B5 · a scope transfer is one pair, not two loose rows');
+{
+  const legs = await createScopeTransfer({
+    from_scope: 'personal', to_scope: 'family', amount: 8000,
+    occurred_at: '2026-09-02T12:00:00+07:00', title: 'งบครอบครัว ก.ย.', note: 'รอบเดือน',
+    from_account_id: 'acct-out', to_account_id: 'acct-in',
+  });
+  const gid = legs[0].transfer_group_id;
+  check('both legs carry the SAME transfer_group_id',
+    !!gid && legs[1].transfer_group_id === gid, String(gid));
+  check('each leg records its own account endpoint',
+    legs.find(l => l.amount < 0).account_id === 'acct-out'
+    && legs.find(l => l.amount > 0).account_id === 'acct-in');
+  check('the pair is written by ONE insert statement — mirrored and opposite',
+    legs.length === 2 && legs[0].amount === -8000 && legs[1].amount === 8000
+    && legs[0].scope === 'personal' && legs[1].scope === 'family');
+
+  // Editing the shared fields moves BOTH legs.
+  const outLeg = legs.find(l => l.amount < 0);
+  await updateTransactionMaybePaired(outLeg, {
+    title: 'งบครอบครัว ก.ย. (แก้ชื่อ)', occurred_at: '2026-09-05T12:00:00+07:00', note: 'แก้โน้ต',
+  });
+  const bothAfterEdit = __tables.transactions.filter(t => t.transfer_group_id === gid);
+  check('editing title / date / note applies to BOTH legs',
+    bothAfterEdit.length === 2
+    && bothAfterEdit.every(l => l.title === 'งบครอบครัว ก.ย. (แก้ชื่อ)'
+      && l.occurred_at === '2026-09-05T12:00:00+07:00' && l.note === 'แก้โน้ต'),
+    JSON.stringify(bothAfterEdit.map(l => l.title)));
+  check('the amounts stay locked and mirrored through the edit',
+    bothAfterEdit.map(l => Number(l.amount)).sort((a, b) => a - b).join(',') === '-8000,8000');
+
+  // A patch that is NOT purely pair-level stays on the single row it targets.
+  await updateTransactionMaybePaired(outLeg, { account_id: 'acct-other' });
+  const stillPaired = __tables.transactions.filter(t => t.transfer_group_id === gid);
+  check('a non-pair field (account endpoint) edits only the leg it belongs to',
+    stillPaired.find(l => l.amount < 0).account_id === 'acct-other'
+    && stillPaired.find(l => l.amount > 0).account_id === 'acct-in');
+
+  // Deleting either visible leg deletes the pair.
+  const inLeg = stillPaired.find(l => l.amount > 0);
+  const delRes = await deleteTransactionWithPair(inLeg);
+  check('deleting EITHER leg removes the pair in one statement',
+    delRes.deleted === 2 && delRes.orphan === false
+    && __tables.transactions.filter(t => t.transfer_group_id === gid).length === 0,
+    JSON.stringify(delRes));
+
+  // Legacy ungrouped legs keep working, and say what they could not do.
+  __tables.transactions.push(
+    { id: 'legacy-out', user_id: 'user-1', scope: 'personal', title: 'โอนไปครอบครัว',
+      amount: -5000, category: 'โอนภายใน', type: 'transfer', occurred_at: '2026-05-02T12:00:00+07:00' },
+    { id: 'legacy-in', user_id: 'user-1', scope: 'family', title: 'รับจากส่วนตัว',
+      amount: 5000, category: 'โอนภายใน', type: 'transfer', occurred_at: '2026-05-02T12:00:00+07:00' },
+  );
+  const legacyRes = await deleteTransactionWithPair(
+    __tables.transactions.find(t => t.id === 'legacy-out'));
+  check('an UNGROUPED legacy leg still deletes …',
+    legacyRes.deleted === 1 && !__tables.transactions.some(t => t.id === 'legacy-out'));
+  check('… and reports orphan:true so the UI can warn about the counterpart',
+    legacyRes.orphan === true && __tables.transactions.some(t => t.id === 'legacy-in'));
+
+  // A plain (non-transfer) row is never described as an orphaned leg.
+  __tables.transactions.push({ id: 'plain-1', user_id: 'user-1', scope: 'personal',
+    title: 'ค่ากาแฟ', amount: -65, type: 'food', occurred_at: '2026-05-03T12:00:00+07:00' });
+  const plainRes = await deleteTransactionWithPair(
+    __tables.transactions.find(t => t.id === 'plain-1'));
+  check('an ordinary row deletes alone and is never called an orphan leg',
+    plainRes.deleted === 1 && plainRes.orphan === false);
+
+  // MIGRATION UNRUN: the column is absent → today's un-paired behaviour.
+  __config.missingColumns = { transactions: ['transfer_group_id'] };
+  const bare = await createScopeTransfer({
+    from_scope: 'personal', to_scope: 'family', amount: 1200,
+    occurred_at: '2026-09-10T12:00:00+07:00', title: 'ก่อน migration', note: null,
+  });
+  check('transfer_group_id column missing → both legs still land, un-paired',
+    bare.length === 2 && bare.every(l => !('transfer_group_id' in l))
+    && bare[0].amount === -1200 && bare[1].amount === 1200,
+    JSON.stringify(bare.map(l => l.amount)));
+  const bareEdit = await updateTransactionMaybePaired(bare[0], { title: 'แก้ก่อน migration' });
+  check('… and an edit before the migration still updates its own row',
+    bareEdit.title === 'แก้ก่อน migration');
+  __config.missingColumns = {};
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
