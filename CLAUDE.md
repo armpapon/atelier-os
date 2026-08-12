@@ -29,6 +29,7 @@
 | Learning Hub | `src/pages/Learning.jsx` + `src/lib/api/learning.js` |
 | Family | `src/pages/Family.jsx` + `src/components/family/` + `src/lib/api/family.js` |
 | Journal | `src/pages/Journal.jsx` + `src/lib/api/journal.js` |
+| Tax planner | `src/pages/TaxPlanner.jsx` + `src/lib/api/tax.js` + **`src/lib/taxTH.js`** (pure brackets/caps/headroom — put tax rules THERE, never in the page) |
 | Version history (sidebar version + changelog UI) | `src/components/VersionHistory.jsx` — **bump `CHANGELOG[0]` on every user-visible commit** |
 | Supabase client | `src/lib/supabase.js` |
 | SQL migrations | `supabase/migration_*.sql` (run manually in Supabase SQL Editor — no migration runner) |
@@ -126,13 +127,14 @@ Types: `feat`, `fix`, `docs`, `refactor`. Scopes are loose: `finance`, `learning
 ### Open SQL migrations user must run in Supabase
 Each is idempotent — safe to re-run.
 
-**4 PENDING as of v4.27 (audit batch C).** Run them in this order in the Supabase
+**5 PENDING as of v4.28.** Run them in this order in the Supabase
 SQL Editor. Every one is idempotent, and the app works normally before they run —
-each client call site detects the missing column (PGRST204) or function (PGRST202)
-and falls back to the previous behaviour.
+each client call site detects the missing table (42P01/PGRST205), column
+(PGRST204) or function (PGRST202) and falls back to the previous behaviour.
 
 | Status | Migration | Suggested tab name | What it does |
 |---|---|---|---|
+| ⏳ pending | `migration_add_tax_planner.sql` | `loop_tax_planner` | `tax_profiles` (one row per person per tax year, `income`/`deductions` as jsonb) + unique index + owner-only RLS. Powers the new **วางแผนภาษี** page; before it runs the page shows a Thai "ยังไม่ได้รันไฟล์ SQL" card and the rest of the app is unaffected. |
 | ⏳ pending | `migration_add_account_source_key.sql` | `loop_account_source_key` | `accounts.source_key` + partial unique index + `accounts_upsert_by_source_key()`. Imported accounts stop being identified by their editable name. Backfills the key from current names where unambiguous. |
 | ⏳ pending | `migration_add_account_reassign_rpc.sql` | `loop_account_reassign_archive_rpc` | `reassign_and_archive_account()` — move a ledger and archive the account in one transaction. |
 | ⏳ pending | `migration_add_transfer_group.sql` | `loop_transfer_group_id` | `transactions.transfer_group_id` + index + backfill of unambiguous legacy transfer pairs. |
