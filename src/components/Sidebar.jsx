@@ -24,6 +24,7 @@ export const NAV_GROUPS = [
   { group: 'ชีวิต', children: [
     { id: 'family', label: 'ครอบครัว',       icon: 'family', badge: '4'    },
     { id: 'life-calendar', label: 'Life Calendar', icon: 'hourglass', badge: null },
+    { id: 'tax',    label: 'วางแผนภาษี',      icon: 'tax',    badge: null   },
     { id: 'goals',  label: 'เป้าหมาย & OKR', icon: 'target', badge: 'Soon' },
     { id: 'brain',  label: 'Second Brain',   icon: 'brain',  badge: null   },
   ]},
@@ -45,6 +46,9 @@ const PAGE_ACCESS = {
   // App.jsx still routes the legacy 'finance' id to PersonalFinance, so it has
   // to carry the same access rule or it becomes a back door into that page.
   'finance':          [ARM],
+  // Household tax planning holds both salaries and everyone's deductions —
+  // owner-only, same as the rest of the money pages.
+  'tax':              [ARM],
 };
 
 const KNOWN_ACCOUNTS = [ARM, PAT];

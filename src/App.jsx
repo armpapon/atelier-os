@@ -17,6 +17,7 @@ import { Family } from './pages/Family.jsx';
 import { SecondBrain } from './pages/SecondBrain.jsx';
 import { LifeCalendar } from './pages/LifeCalendar.jsx';
 import { PettyCash } from './pages/PettyCash.jsx';
+import { TaxPlanner } from './pages/TaxPlanner.jsx';
 import { Team } from './pages/Team.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { useMediaQuery, MOBILE_QUERY } from './lib/useMediaQuery.js';
@@ -29,7 +30,7 @@ import { LoopBrand } from './components/LoopMark.jsx';
 // horizontal-pan container on mobile — readable & tappable in the meantime.
 const MOBILE_READY = new Set([
   'dashboard', 'journal', 'personal-finance', 'family-finance', 'finance',
-  'trading', 'learning', 'family', 'brain', 'life-calendar',
+  'trading', 'learning', 'family', 'brain', 'life-calendar', 'tax',
 ]);
 
 // ── Preview mode: ?preview=1 in URL bypasses login (for design review) ──────
@@ -156,6 +157,7 @@ export default function App() {
       case 'family-finance':   return <FamilyFinance />;
       case 'family':           return <Family />;
       case 'petty-cash':       return <PettyCash />;
+      case 'tax':              return <TaxPlanner />;
       case 'team':             return <Team />;
       case 'goals':     return <ComingSoon eyebrow="เป้าหมาย & OKR" title="Goals" emoji="◎" description="ตั้งเป้าหมายระยะยาว แบ่งเป็น quarter และ checklist รายสัปดาห์" />;
       case 'brain':     return <SecondBrain />;
