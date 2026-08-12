@@ -126,7 +126,19 @@ Types: `feat`, `fix`, `docs`, `refactor`. Scopes are loose: `finance`, `learning
 ### Open SQL migrations user must run in Supabase
 Each is idempotent — safe to re-run.
 
-All of these have now been run (user confirmed 2026-08-01). Nothing is pending.
+**4 PENDING as of v4.27 (audit batch C).** Run them in this order in the Supabase
+SQL Editor. Every one is idempotent, and the app works normally before they run —
+each client call site detects the missing column (PGRST204) or function (PGRST202)
+and falls back to the previous behaviour.
+
+| Status | Migration | Suggested tab name | What it does |
+|---|---|---|---|
+| ⏳ pending | `migration_add_account_source_key.sql` | `loop_account_source_key` | `accounts.source_key` + partial unique index + `accounts_upsert_by_source_key()`. Imported accounts stop being identified by their editable name. Backfills the key from current names where unambiguous. |
+| ⏳ pending | `migration_add_account_reassign_rpc.sql` | `loop_account_reassign_archive_rpc` | `reassign_and_archive_account()` — move a ledger and archive the account in one transaction. |
+| ⏳ pending | `migration_add_transfer_group.sql` | `loop_transfer_group_id` | `transactions.transfer_group_id` + index + backfill of unambiguous legacy transfer pairs. |
+| ⏳ pending | `migration_add_debt_terms_rpc.sql` | `loop_debt_update_terms_rpc` | `debt_update_terms()` — editing a debt's terms recomputes `remaining_balance` under a row lock. |
+
+Everything below was run earlier (user confirmed 2026-08-01).
 
 | Status | Migration | Reason |
 |---|---|---|

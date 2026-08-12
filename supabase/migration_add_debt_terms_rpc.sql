@@ -84,7 +84,9 @@ begin
     v_rem := greatest(0, (d.total_months - coalesce(d.months_paid, 0)) * coalesce(d.monthly_payment, 0));
   end if;
 
+  -- Wrapped in a CTE so RETURN QUERY is handed a plain SELECT.
   return query
+  with upd as (
   update debts set
     name               = d.name,
     creditor           = d.creditor,
@@ -104,6 +106,8 @@ begin
     remaining_balance  = v_rem,
     updated_at         = now()
   where id = p_id
-  returning *;
+  returning *
+  )
+  select * from upd;
 end;
 $$;
