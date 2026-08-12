@@ -127,18 +127,23 @@ Types: `feat`, `fix`, `docs`, `refactor`. Scopes are loose: `finance`, `learning
 ### Open SQL migrations user must run in Supabase
 Each is idempotent — safe to re-run.
 
-**5 PENDING as of v4.28.** Run them in this order in the Supabase
-SQL Editor. Every one is idempotent, and the app works normally before they run —
-each client call site detects the missing table (42P01/PGRST205), column
-(PGRST204) or function (PGRST202) and falls back to the previous behaviour.
+**ALL MIGRATIONS ARE RUN** (owner confirmed 2026-08-12 with a
+`to_regclass`/`to_regprocedure` check returning true for every one). Nothing is
+pending. Each file is idempotent, so re-running is harmless.
 
-| Status | Migration | Suggested tab name | What it does |
-|---|---|---|---|
-| ⏳ pending | `migration_add_tax_planner.sql` | `loop_tax_planner` | `tax_profiles` (one row per person per tax year, `income`/`deductions` as jsonb) + unique index + owner-only RLS. Powers the new **วางแผนภาษี** page; before it runs the page shows a Thai "ยังไม่ได้รันไฟล์ SQL" card and the rest of the app is unaffected. |
-| ⏳ pending | `migration_add_account_source_key.sql` | `loop_account_source_key` | `accounts.source_key` + partial unique index + `accounts_upsert_by_source_key()`. Imported accounts stop being identified by their editable name. Backfills the key from current names where unambiguous. |
-| ⏳ pending | `migration_add_account_reassign_rpc.sql` | `loop_account_reassign_archive_rpc` | `reassign_and_archive_account()` — move a ledger and archive the account in one transaction. |
-| ⏳ pending | `migration_add_transfer_group.sql` | `loop_transfer_group_id` | `transactions.transfer_group_id` + index + backfill of unambiguous legacy transfer pairs. |
-| ⏳ pending | `migration_add_debt_terms_rpc.sql` | `loop_debt_update_terms_rpc` | `debt_update_terms()` — editing a debt's terms recomputes `remaining_balance` under a row lock. |
+| Status | Migration | What it added |
+|---|---|---|
+| ✅ run | `migration_add_tax_planner.sql` | `tax_profiles` + unique index + owner-only RLS — powers the **วางแผนภาษี** page (v4.28) |
+| ✅ run | `migration_add_account_source_key.sql` | `accounts.source_key` + partial unique index + `accounts_upsert_by_source_key()` |
+| ✅ run | `migration_add_account_reassign_rpc.sql` | `reassign_and_archive_account()` — move a ledger and archive in one transaction |
+| ✅ run | `migration_add_transfer_group.sql` | `transactions.transfer_group_id` + index + legacy pair backfill |
+| ✅ run | `migration_add_debt_terms_rpc.sql` | `debt_update_terms()` — term edits recompute `remaining_balance` under a row lock |
+| ✅ run | `migration_add_import_rpc.sql` | `import_receipts` + `import_transactions()` v8 (receipts-first recovery, two-tier identity, 90-day purge) |
+| ✅ run | `migration_add_month_summary_rpc.sql` | `finance_month_summary()` — server-side monthly aggregate |
+| ✅ run | `migration_add_debt_rpc.sql` | `debt_mark_paid()` / `debt_unmark_paid()` — single lock order, no deadlock |
+| ✅ run | `migration_add_account_archive.sql` | `balance_anchor_at` + `balance_anchor_source` + `touch_account_anchor` trigger |
+| ✅ run | `migration_reconcile_anchor_v416.sql` | one-shot materialising anchor reconciliation |
+| ✅ run | `migration_fix_budget_scope_key.sql` | budgets unique key now includes `scope` |
 
 Everything below was run earlier (user confirmed 2026-08-01).
 
