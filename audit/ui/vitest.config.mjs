@@ -16,8 +16,11 @@ export default defineConfig({
       name: 'mock-supabase-alias',
       enforce: 'pre',
       resolveId(source, importer) {
+        // Any module under src/ that reaches for the client gets the mock —
+        // pages import it too (Finance.jsx reads isSupabaseConfigured), and
+        // letting the real one through made the page render "not configured".
         if (source.endsWith('supabase.js') && importer
-            && importer.includes(path.join('src', 'lib'))) {
+            && importer.includes(path.sep + 'src' + path.sep)) {
           return path.resolve(REPO, 'audit', 'mock-supabase.mjs');
         }
         if (source.endsWith('kbankPdfParser.js')) {

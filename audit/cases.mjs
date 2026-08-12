@@ -17,7 +17,7 @@ import {
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
-  isDefinitiveServerError, currentYearMonth, getDebtStatus,
+  isDefinitiveServerError, currentYearMonth, getDebtStatus, loadEffectiveBalances,
 } from '../src/lib/api/finance.js';
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
 import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
@@ -1214,6 +1214,59 @@ section('A · B1 · the never-rewind guard compares INSTANTS, and ties go to the
   check('END TO END: a genuinely newer statement DOES apply and re-stamps provenance',
     acc.balance === 55555 && acc.balance_anchor_at === '2026-08-13T20:00:00+07:00'
     && acc.balance_anchor_source === 'import', `balance now ฿${acc.balance}`);
+}
+
+section('A · B4 · a failed effective-balance overlay is never presented as truth');
+{
+  // acc-b4 is anchored at ฿10,000 on 1 ส.ค. with −2,500 of ledger after it:
+  // the CONFIRMED balance is 7,500 and the raw anchor 10,000 is a lie.
+  __tables.accounts.push(
+    { id: 'acc-b4', user_id: 'user-1', name: 'KBank ออมทรัพย์', scope: 'personal',
+      balance: 10000, balance_anchor_at: '2026-08-01T12:00:00+07:00', is_active: true },
+    { id: 'acc-b4-plain', user_id: 'user-1', name: 'กระปุก', scope: 'personal',
+      balance: 300, is_active: true },
+  );
+  __tables.transactions.push(
+    { id: 'b4t1', user_id: 'user-1', scope: 'personal', account_id: 'acc-b4',
+      title: 'ค่าเช่า', amount: -2500, type: 'home', occurred_at: '2026-08-04T12:00:00+07:00' },
+  );
+
+  const ok = await loadEffectiveBalances(__tables.accounts.filter(a => a.id.startsWith('acc-b4')));
+  check('happy path: the overlay applies and nothing is flagged',
+    ok.unconfirmed === false
+    && ok.accounts.find(a => a.id === 'acc-b4').balance === 7500
+    && !ok.accounts.some(a => a._balance_unconfirmed), `฿${ok.accounts[0].balance}`);
+
+  // Now the ledger read fails — exactly the case Finance.jsx used to swallow.
+  __config.opFailures['select:transactions'] = 1;
+  const bad = await loadEffectiveBalances(__tables.accounts.filter(a => a.id.startsWith('acc-b4')));
+  __config.opFailures['select:transactions'] = 0;
+
+  check('failure is REPORTED, not swallowed', bad.unconfirmed === true);
+  const anchored = bad.accounts.find(a => a.id === 'acc-b4');
+  check('the anchored account is flagged unconfirmed', anchored._balance_unconfirmed === true);
+  check('…and its raw anchor is NOT dressed up as an effective balance',
+    anchored.balance === 10000 && anchored._stored_balance === 10000,
+    'the number survives for display, but only alongside the flag');
+  const plain = bad.accounts.find(a => a.id === 'acc-b4-plain');
+  check('an un-anchored account is untouched — nothing about it is in doubt',
+    plain._balance_unconfirmed === undefined && plain.balance === 300);
+
+  // Net Worth and the emergency fund are computed from the SAME list, so the
+  // flag has to travel with it — the page reads `unconfirmed` once and labels
+  // all three surfaces (Finance.jsx:1023-1025 + the account list).
+  check('every anchored account in the list carries the flag',
+    bad.accounts.filter(a => a.balance_anchor_at).every(a => a._balance_unconfirmed === true));
+
+  // Don't cry wolf: a failure with nothing anchored is not a warning.
+  __config.opFailures['select:transactions'] = 1;
+  const noAnchor = await loadEffectiveBalances([{ id: 'acc-b4-plain', balance: 300 }]);
+  __config.opFailures['select:transactions'] = 0;
+  check('no anchored accounts → no overlay was owed → no warning',
+    noAnchor.unconfirmed === false && noAnchor.accounts[0].balance === 300);
+
+  __tables.accounts = __tables.accounts.filter(a => !a.id.startsWith('acc-b4'));
+  __tables.transactions = __tables.transactions.filter(t => t.id !== 'b4t1');
 }
 
 section('A · B6 · debt auto-link can never cross personal/family scope');

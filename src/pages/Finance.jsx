@@ -5,7 +5,7 @@ import { toneColor } from '../lib/helpers.js';
 import {
   listTransactions, listTransactionsRange, createTransaction, updateTransaction, deleteTransaction,
   listAccounts, createAccount, updateAccount,
-  archiveAccount, reassignTransactionsAccount, setAccountBalanceAnchor, applyEffectiveBalances,
+  archiveAccount, reassignTransactionsAccount, setAccountBalanceAnchor, loadEffectiveBalances,
   listBudgets, listGoals, createGoal, deleteGoal,
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
@@ -726,6 +726,9 @@ export function FinanceView({ scope }) {
   // Partial-load failures (debts/recurring/…): the page stays alive but says
   // so, instead of silently rendering "empty".
   const [loadWarning, setLoadWarning] = useState(null);
+  // Audit B4: the post-anchor ledger could not be read, so every anchored
+  // balance on screen is a stale anchor — labelled, never passed off as real.
+  const [balancesUnconfirmed, setBalancesUnconfirmed] = useState(false);
 
   const [showTxnForm, setShowTxnForm]   = useState(false);
   const [editingTxn,  setEditingTxn]    = useState(null);
@@ -809,12 +812,18 @@ export function FinanceView({ scope }) {
 
       // Displayed balance = anchor + ledger after the anchor (accounts
       // without an anchor keep the stored snapshot).
-      const aEff = await applyEffectiveBalances(a || []).catch(() => a || []);
+      //
+      // Audit B4: if that overlay fails we must NOT quietly fall back to the
+      // raw anchors — they omit every transaction since. The accounts come
+      // back flagged and the amber banner below says the numbers are not
+      // confirmed.
+      const { accounts: aEff, unconfirmed } = await loadEffectiveBalances(a || []);
 
       if (myReq !== reqSeq.current) return;   // a newer load already won
       setTxns(t || []); setPrevTxns(p || []); setTrend12(r12 || []);
       setMonthSummary(ms);
-      setAccounts(aEff); setBudgets(b || []); setGoals(g || []);
+      setAccounts(aEff); setBalancesUnconfirmed(unconfirmed);
+      setBudgets(b || []); setGoals(g || []);
       setDebts(d || []); setDebtPayments(dp || []);
       setRecurring(rec || []);
       setLoadWarning(failedParts.length
@@ -933,6 +942,20 @@ export function FinanceView({ scope }) {
             <Button variant="ghost" size="sm" onClick={refresh}>↻ ลองใหม่</Button>
           </div>
         )}
+        {/* Audit B4 — the post-anchor ledger could not be read. Say it. */}
+        {!error && balancesUnconfirmed && (
+          <div style={{
+            padding: '12px 16px', background: 'var(--warning-soft)', color: 'var(--warning)',
+            border: 'none', borderRadius: 'var(--radius-field)', fontSize: 13,
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          }}>
+            <span style={{ flex: 1 }}>
+              ⚠️ คำนวณยอดคงเหลือปัจจุบันไม่สำเร็จ — ตัวเลขบัญชี, Net Worth และกองทุนฉุกเฉิน
+              ที่แสดงอยู่เป็น “ยอด ณ วันตั้งต้น” ยังไม่รวมรายการหลังจากนั้น ถือว่ายังไม่ยืนยัน
+            </span>
+            <Button variant="ghost" size="sm" onClick={refresh}>↻ ลองใหม่</Button>
+          </div>
+        )}
         {loading && (
           <div style={{
             padding: '8px 14px', background: 'var(--fill)', color: 'var(--text-secondary)',
@@ -1020,8 +1043,9 @@ export function FinanceView({ scope }) {
 
         {/* Row 5: Net Worth + Emergency Fund + Heatmap */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1.2fr', gap: 14 }}>
-          <NetWorthCard accounts={accounts} />
-          <EmergencyFundCard coverage={emergencyFund} accounts={accounts} onAccountToggle={refresh} />
+          <NetWorthCard accounts={accounts} unconfirmed={balancesUnconfirmed} />
+          <EmergencyFundCard coverage={emergencyFund} accounts={accounts}
+            unconfirmed={balancesUnconfirmed} onAccountToggle={refresh} />
           <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
         </div>
 
@@ -1036,9 +1060,14 @@ export function FinanceView({ scope }) {
                 </div>
                 <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
                   {accounts.length} บัญชี · รวม{' '}
-                  <strong style={{ color: 'var(--ink-2)' }}>
+                  <strong style={{ color: balancesUnconfirmed ? 'var(--warning)' : 'var(--ink-2)' }}>
                     ฿{accounts.reduce((s, a) => s + Number(a.balance || 0), 0).toLocaleString('th', { maximumFractionDigits: 0 })}
                   </strong>
+                  {balancesUnconfirmed && (
+                    <span style={{ color: 'var(--warning)', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em', marginLeft: 6 }}>
+                      · ยังไม่ยืนยัน
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -1084,13 +1113,21 @@ export function FinanceView({ scope }) {
                           <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : 400 }}>{a.name}</div>
                           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
                             {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
-                            {a.balance_anchor_at && ` · ยอด ณ ${txDate(a.balance_anchor_at)} + รายการหลังจากนั้น`}
+                            {a.balance_anchor_at && (a._balance_unconfirmed
+                              ? ` · ยอด ณ ${txDate(a.balance_anchor_at)} · ยังไม่รวมรายการหลังจากนั้น`
+                              : ` · ยอด ณ ${txDate(a.balance_anchor_at)} + รายการหลังจากนั้น`)}
                           </div>
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: Number(a.balance) >= 0 ? 'var(--text-primary)' : 'var(--danger)' }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: a._balance_unconfirmed ? 'var(--warning)' : (Number(a.balance) >= 0 ? 'var(--text-primary)' : 'var(--danger)') }}
+                          title={a._balance_unconfirmed ? 'ยังไม่ยืนยัน — อ่านรายการหลังวันตั้งต้นไม่สำเร็จ' : undefined}>
                           ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
+                          {a._balance_unconfirmed && (
+                            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 500, letterSpacing: '0.1em', marginLeft: 5 }}>
+                              ยังไม่ยืนยัน
+                            </span>
+                          )}
                         </div>
                         {/* Edit + archive replaced the hard delete — deleting
                             an account nulled account_id on its whole history

@@ -381,7 +381,9 @@ export function CashFlowForecastCard({ forecast }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  3. Emergency Fund Gauge
 // ════════════════════════════════════════════════════════════════════════════
-export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
+// `unconfirmed` (audit B4): the account balances this coverage is computed
+// from are stale anchors — the post-anchor ledger could not be read.
+export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onAccountToggle }) {
   const [picking, setPicking] = useState(false);
   // No scope filter: the emergency-fund flag applies to family accounts too,
   // and the caller already passes the accounts for the scope being viewed.
@@ -441,6 +443,15 @@ export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
         </div>
       )}
 
+      {unconfirmed && (
+        <div style={{
+          fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em',
+          color: 'var(--warning)', marginBottom: 10,
+        }}>
+          ⚠️ ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
+        </div>
+      )}
+
       {/* Gauge visualization */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 14 }}>
         <div style={{
@@ -464,7 +475,7 @@ export function EmergencyFundCard({ coverage, accounts, onAccountToggle }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4, fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: unconfirmed ? 'var(--warning)' : 'var(--text-primary)', fontWeight: 600, marginBottom: 4, fontVariantNumeric: 'tabular-nums' }}>
             {fmt(coverage.total)}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>

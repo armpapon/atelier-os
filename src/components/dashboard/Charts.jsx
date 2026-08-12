@@ -201,7 +201,9 @@ export function BudgetProgress({ budgets, categoryActuals, onAddBudget }) {
 }
 
 // ── Net Worth Card ──────────────────────────────────────────────────────────
-export function NetWorthCard({ accounts }) {
+// `unconfirmed` (audit B4): the post-anchor ledger could not be read, so the
+// figures below are stale anchors. They are shown — labelled — never as truth.
+export function NetWorthCard({ accounts, unconfirmed = false }) {
   if (!accounts?.length) {
     return (
       <Card style={{ height: '100%' }}>
@@ -230,12 +232,21 @@ export function NetWorthCard({ accounts }) {
       <CardHeader
         eyebrow={`มูลค่าสุทธิ · ${accounts.length} บัญชี`}
         title="Net Worth"
-        meta="สินทรัพย์ − หนี้สิน"
+        meta={unconfirmed ? 'สินทรัพย์ − หนี้สิน · ยังไม่ยืนยัน' : 'สินทรัพย์ − หนี้สิน'}
       />
+
+      {unconfirmed && (
+        <div style={{
+          fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em',
+          color: 'var(--warning)', marginBottom: 8,
+        }}>
+          ⚠️ ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
+        </div>
+      )}
 
       <div style={{
         fontFamily: 'var(--f-display)', fontSize: 34, fontWeight: 600,
-        color: net >= 0 ? 'var(--text-primary)' : 'var(--danger)',
+        color: unconfirmed ? 'var(--warning)' : (net >= 0 ? 'var(--text-primary)' : 'var(--danger)'),
         marginBottom: 16, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums',
       }}>
         ฿{net.toLocaleString('th', { maximumFractionDigits: 0 })}

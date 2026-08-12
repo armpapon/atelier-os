@@ -16,6 +16,10 @@ export const __tables = {
   budgets:         [],
   accounts:        [],
   import_receipts: [],
+  // The remaining finance tables — needed once a whole PAGE is mounted
+  // (audit batch A / B4 renders FinanceView, which loads all of them).
+  financial_goals:    [],
+  recurring_expenses: [],
 };
 
 export const __config = {
@@ -28,6 +32,10 @@ export const __config = {
   // Scripted table-op failures (round 7): { 'update:accounts': 2 } fails the
   // next 2 UPDATEs on accounts with a 500, then behaves normally.
   opFailures: {},
+  // Batch A / B4: a predicate for when a COUNT is too blunt — several reads
+  // hit the same table in one page load and only one of them must fail.
+  //   ({ op, table, selectCols }) => boolean
+  opFailurePredicate: null,
 };
 
 const UNIQUES = {
@@ -125,6 +133,10 @@ class Query {
     if ((__config.opFailures[opKey] || 0) > 0) {
       __config.opFailures[opKey]--;
       return { data: null, error: { code: '500', message: `simulated ${opKey} failure` } };
+    }
+    if (typeof __config.opFailurePredicate === 'function'
+        && __config.opFailurePredicate({ op: this.op, table: this.table, selectCols: this.selectCols })) {
+      return { data: null, error: { code: '500', message: `simulated ${opKey} failure (predicate)` } };
     }
 
     if (this.op === 'insert' || this.op === 'upsert') {

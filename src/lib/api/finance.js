@@ -823,6 +823,44 @@ export async function applyEffectiveBalances(accounts) {
     : a);
 }
 
+/**
+ * Flag anchored accounts whose post-anchor ledger could NOT be read, so the
+ * UI can say so instead of printing the raw anchor as if it were current.
+ * Un-anchored accounts are untouched — their stored balance IS the balance.
+ */
+export function markBalancesUnconfirmed(accounts) {
+  return (accounts || []).map(a => a.balance_anchor_at
+    ? { ...a, _stored_balance: Number(a.balance || 0), _balance_unconfirmed: true }
+    : a);
+}
+
+/**
+ * applyEffectiveBalances with an HONEST failure mode (audit batch A / B4).
+ *
+ * The page used to `.catch(() => a)` here, which hands back the raw anchors —
+ * numbers that predate every transaction entered since — and then renders
+ * them as Net Worth, emergency-fund coverage and the account list with no
+ * hint that a whole slice of the ledger is missing. A stale balance shown as
+ * confirmed is worse than no balance.
+ *
+ * Returns { accounts, unconfirmed }. On failure the anchored accounts come
+ * back carrying `_balance_unconfirmed` and `unconfirmed` is true, so the
+ * caller must show its warning and label the numbers.
+ */
+export async function loadEffectiveBalances(accounts) {
+  const list = accounts || [];
+  try {
+    return { accounts: await applyEffectiveBalances(list), unconfirmed: false };
+  } catch {
+    return {
+      accounts: markBalancesUnconfirmed(list),
+      // Nothing was anchored → there was nothing to overlay and nothing is
+      // in doubt; don't cry wolf.
+      unconfirmed: list.some(a => a.balance_anchor_at),
+    };
+  }
+}
+
 // ── Account auto-create from Make pocket import ──────────────────────────────
 
 /**
