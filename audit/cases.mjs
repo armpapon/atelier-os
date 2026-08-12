@@ -1216,6 +1216,53 @@ section('A · B1 · the never-rewind guard compares INSTANTS, and ties go to the
     && acc.balance_anchor_source === 'import', `balance now ฿${acc.balance}`);
 }
 
+section('A · B6 · debt auto-link can never cross personal/family scope');
+{
+  // The personal importer maps BOTH scopes out of one Make export while the
+  // page hands it personal debts only, so scope has to be a hard gate.
+  const personalDebt = { id: 'b6-p', name: 'บัตรเครดิต', creditor: 'KTC BANK',
+    monthly_payment: 4500, scope: 'personal' };
+  const familyDebt   = { id: 'b6-f', name: 'บัตรเครดิต', creditor: 'KTC BANK',
+    monthly_payment: 4500, scope: 'family' };
+  const familyTxn = { _rid: 1, title: 'KTC BANK ผ่อนบัตร', amount: -4500, scope: 'family',
+    occurred_at: '2026-08-05T12:00:00+07:00' };
+  const personalTxn = { _rid: 2, title: 'KTC BANK ผ่อนบัตร', amount: -4500, scope: 'personal',
+    occurred_at: '2026-08-05T12:00:00+07:00' };
+
+  check('a FAMILY transaction produces zero suggestions against a personal debt',
+    suggestDebtPaymentLinks([familyTxn], [personalDebt]).length === 0);
+  check('…and a PERSONAL transaction produces none against a family debt',
+    suggestDebtPaymentLinks([personalTxn], [familyDebt]).length === 0);
+
+  const sameScope = suggestDebtPaymentLinks([personalTxn], [personalDebt]);
+  check('a matching SAME-scope debt still scores',
+    sameScope.length === 1 && sameScope[0].debt.id === 'b6-p' && sameScope[0].confidence >= 80,
+    `confidence ${sameScope[0]?.confidence}`);
+  const famSame = suggestDebtPaymentLinks([familyTxn], [familyDebt]);
+  check('…in the family scope too', famSame.length === 1 && famSame[0].debt.id === 'b6-f');
+
+  // The realistic mixed batch: both debts loaded (the B6 caller fix), both
+  // transactions present — each must land on its OWN side.
+  const mixed = suggestDebtPaymentLinks([personalTxn, familyTxn], [personalDebt, familyDebt]);
+  check('a mixed batch against BOTH scopes pairs each txn with its own scope',
+    mixed.length === 2
+    && mixed.find(s => s.txn._rid === 2).debt.id === 'b6-p'
+    && mixed.find(s => s.txn._rid === 1).debt.id === 'b6-f');
+
+  // 'personal' is the schema default: a row with no scope is personal, and
+  // must not be treated as a wildcard that matches everything.
+  const noScopeTxn = { _rid: 3, title: 'KTC BANK ผ่อนบัตร', amount: -4500,
+    occurred_at: '2026-08-05T12:00:00+07:00' };
+  const noScopeDebt = { id: 'b6-n', name: 'บัตรเครดิต', creditor: 'KTC BANK', monthly_payment: 4500 };
+  check('a scope-less transaction is personal — it matches a personal debt',
+    suggestDebtPaymentLinks([noScopeTxn], [personalDebt]).length === 1);
+  check('…and is refused by a family debt',
+    suggestDebtPaymentLinks([noScopeTxn], [familyDebt]).length === 0);
+  check('a scope-less DEBT is personal too',
+    suggestDebtPaymentLinks([personalTxn], [noScopeDebt]).length === 1
+    && suggestDebtPaymentLinks([familyTxn], [noScopeDebt]).length === 0);
+}
+
 section('A · B10 · "Bangkok today" no longer follows the device timezone');
 {
   // 2026-09-01 00:30 Bangkok. The same instant is 2026-08-31 13:30 in New

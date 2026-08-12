@@ -1347,3 +1347,138 @@ describe('CSVImporter quota boundary (round-11 follow-up)', () => {
     expect(__tables.transactions).toHaveLength(0);
   });
 });
+
+// ═══════════════════════ AUDIT BATCH A (v4.26) ═══════════════════════════
+// Codex clean-slate review: B6 (scope-crossing auto-link) and B7 (a failed
+// history load read as "nothing was ever paid").
+
+const KTC_DEBT = {
+  id: 'dd2', user_id: 'user-1', name: 'KTC บัตรเครดิต', creditor: 'KTC Krungthai',
+  monthly_payment: 5200, months_paid: 0, total_months: 12, scope: 'personal', is_active: true,
+};
+const KTC_CSV = 'Date,Description,Amount\n05/08/2026,KTC Krung ชำระบัตร,-5200\n';
+
+describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
+
+  it('(B6) a personal page importing a FAMILY pocket loads the family debts and links inside the right scope', async () => {
+    installImportRpcV8();
+    // The page is showing 'personal', so it hands the importer personal debts
+    // only — but this Make export contains a กองทุนครอบครัว (family) pocket.
+    const familyDebt = {
+      id: 'dd-fam', user_id: 'user-1', name: 'ผ่อนรถครอบครัว', creditor: 'Toyota Leasing',
+      monthly_payment: 8800, months_paid: 0, total_months: 60, scope: 'family', is_active: true,
+    };
+    __tables.debts.push(KTC_DEBT, familyDebt);
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[KTC_DEBT]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
+      '05/08/2026,09:15,Cashbox,Payment,-5200,1000,อื่นๆ,,KTC Krung ชำระบัตร\n' +
+      '06/08/2026,10:00,กองทุนครอบครัว,Payment,-8800,7000,อื่นๆ,,Toyota Leasing งวดรถ\n');
+
+    // BOTH suggestions are offered — the family one only exists because the
+    // importer went and loaded the family scope's debts itself.
+    await screen.findByText(/AUTO-LINK · 2 \/ 2/);
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import สำเร็จ!/);
+
+    const links = [...__tables.debt_payments].sort((a, b) => a.debt_id.localeCompare(b.debt_id));
+    expect(links).toHaveLength(2);
+    // Each payment is attached to the debt of its OWN scope — never crossed.
+    const byDebt = Object.fromEntries(links.map(l => [l.debt_id, l]));
+    const txnById = Object.fromEntries(__tables.transactions.map(t => [t.id, t]));
+    expect(txnById[byDebt['dd2'].transaction_id].scope).toBe('personal');
+    expect(txnById[byDebt['dd-fam'].transaction_id].scope).toBe('family');
+    expect(Number(byDebt['dd-fam'].amount_paid)).toBe(8800);
+  });
+
+  it('(B6b) a family transaction never produces a suggestion when only personal debts exist', async () => {
+    installImportRpcV8();
+    // A family pocket paying the exact monthly amount of a PERSONAL debt.
+    __tables.debts.push(KTC_DEBT);
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[KTC_DEBT]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
+      '05/08/2026,09:15,กองทุนครอบครัว,Payment,-5200,1000,อื่นๆ,,KTC Krung ชำระบัตร\n');
+
+    await screen.findByText(/ตัวเลือก IMPORT/);
+    expect(screen.queryByText(/🔗 AUTO-LINK/)).toBeNull();
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(__tables.transactions[0].scope).toBe('family');
+    expect(__tables.debt_payments).toHaveLength(0);   // no cross-scope link
+  });
+
+  it('(B7) a failed debt-payment history load DISABLES auto-linking, warns in Thai, and retry restores it', async () => {
+    installImportRpcV8();
+    __tables.debts.push(KTC_DEBT);
+    __config.opFailures['select:debt_payments'] = 1;      // the history read fails once
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[KTC_DEBT]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container, KTC_CSV);
+
+    // The warning is visible, retryable, and NOT presented as "no payments".
+    await screen.findByText(/AUTO-LINK ปิดอยู่/);
+    expect(screen.getByText(/โหลดประวัติการจ่ายหนี้ไม่สำเร็จ/)).toBeTruthy();
+    expect(screen.queryByText(/🔗 AUTO-LINK/)).toBeNull();   // ZERO suggestions
+
+    // Retry — the second read succeeds and the suggestion comes back.
+    fireEvent.click(screen.getByRole('button', { name: /ลองใหม่/ }));
+    await screen.findByText(/🔗 AUTO-LINK · 1 \/ 1/);
+    expect(screen.queryByText(/AUTO-LINK ปิดอยู่/)).toBeNull();
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(__tables.debt_payments).toHaveLength(1);
+    expect(__tables.debt_payments[0].debt_id).toBe('dd2');
+  });
+
+  it('(B7b) while the history is unreadable an ALREADY-PAID month is not re-offered and no link is overwritten', async () => {
+    installImportRpcV8();
+    __tables.debts.push(KTC_DEBT);
+    // August is already recorded against a transaction the user entered by hand.
+    __tables.debt_payments.push({
+      id: 'dp-existing', user_id: 'user-1', debt_id: 'dd2', pay_month: '2026-08-01',
+      amount_paid: 5200, transaction_id: 'hand-entered-txn', paid_at: '2026-08-05T12:00:00+07:00',
+    });
+    __config.opFailures['select:debt_payments'] = 1;
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[KTC_DEBT]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container, KTC_CSV);
+    await screen.findByText(/AUTO-LINK ปิดอยู่/);
+
+    // The import still runs — only the guessing is switched off.
+    fireEvent.click(importButton());
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(__tables.transactions).toHaveLength(1);
+    expect(__tables.debt_payments).toHaveLength(1);
+    // The existing link still points at the hand-entered row, not the import.
+    expect(__tables.debt_payments[0].transaction_id).toBe('hand-entered-txn');
+  });
+
+  it('(B7c) a failed CROSS-SCOPE debt load disables auto-linking too, with its own message', async () => {
+    installImportRpcV8();
+    __tables.debts.push(KTC_DEBT);
+    __config.opFailures['select:debts'] = 1;   // the family-scope debt read fails
+
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[KTC_DEBT]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
+      '05/08/2026,09:15,Cashbox,Payment,-5200,1000,อื่นๆ,,KTC Krung ชำระบัตร\n' +
+      '06/08/2026,10:00,กองทุนครอบครัว,Payment,-8800,7000,อื่นๆ,,Toyota Leasing งวดรถ\n');
+
+    await screen.findByText(/AUTO-LINK ปิดอยู่/);
+    expect(screen.getByText(/โหลดรายการหนี้สินข้ามหมวดไม่สำเร็จ/)).toBeTruthy();
+    expect(screen.queryByText(/🔗 AUTO-LINK/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /ลองใหม่/ }));
+    await screen.findByText(/🔗 AUTO-LINK · 1 \/ 1/);   // the personal one returns
+  });
+});

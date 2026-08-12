@@ -1691,6 +1691,7 @@ export function calculateDebtMath(debt) {
 /**
  * Match imported transactions to existing debts.
  * A match requires:
+ *  - txn.scope === debt.scope (exact; missing = 'personal' on both sides)
  *  - amount within 5% of debt.monthly_payment (or ฿50 absolute, whichever is larger)
  *  - title contains debt.creditor (first 8 chars) OR debt.name (first 6 chars)
  *  - debt doesn't already have a payment recorded for that month
@@ -1714,6 +1715,12 @@ export function suggestDebtPaymentLinks(transactions, debts, existingPayments = 
     if (!ym) continue;
 
     for (const debt of debts) {
+      // Audit batch A / B6: scope is a HARD gate, not a scoring signal. The
+      // importer maps both scopes out of one Make export, so without this a
+      // family grocery run could be offered as a payment on a personal debt
+      // (and recordDebtPayment would then link them for good). 'personal' is
+      // the schema default — treat a missing scope as personal on both sides.
+      if ((txn.scope || 'personal') !== (debt.scope || 'personal')) continue;
       if (blocked.has(`${debt.id}|${ym}`)) continue;
       const mp = Number(debt.monthly_payment);
       if (!mp) continue;

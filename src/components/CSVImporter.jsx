@@ -4,7 +4,7 @@ import {
   bulkCreateTransactions, isMakeFormat,
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
   classifyImportRows, getExistingRowsForDedup, assignRowIds,
-  suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments,
+  suggestDebtPaymentLinks, recordDebtPayment, listDebtPayments, listDebts,
   getMonthBounds, bangkokMonth, bangkokDate,
   importTransactionsBatch, isRpcMissing, isDefinitiveServerError,
 } from '../lib/api/finance.js';
@@ -256,6 +256,10 @@ const POCKET_TONE_BG = {
   rose:   tint('--rose', 10),    brass:  tint('--brass', 10),
 };
 
+/** Shared empty list — a stable identity, so "no cross-scope debts" cannot
+ *  masquerade as a state change and re-trigger the loads that depend on it. */
+const NO_DEBTS = [];
+
 export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onImported, onClose }) {
   const [tab, setTab]           = useState('csv'); // 'csv' | 'pdf'
   const [step, setStep]         = useState('upload');
@@ -422,29 +426,96 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     [preview, makeFmt]
   );
 
-  // Debt payment auto-link suggestions.
+  // ── Debt payment auto-link suggestions ───────────────────────────────────
+  // Bumped by the "ลองใหม่" button on the auto-link warning — re-runs both
+  // loads below without touching the parsed preview.
+  const [linkRetry, setLinkRetry] = useState(0);
+
+  // Audit batch A / B6: ONE Make export carries both scopes, but the page
+  // hands us only the debts of the scope it is showing. suggestDebtPaymentLinks
+  // now refuses to cross scopes, so the debts of every OTHER scope present in
+  // the batch have to be loaded here — otherwise a family payment silently
+  // stops being offered at all.
+  //
+  // Both effects below key on STRINGS, and reset to the shared NO_DEBTS
+  // constant rather than a fresh []. A new array identity on every render
+  // re-ran the history load, and a second (succeeding) read silently cleared
+  // the warning the first (failing) one had just raised.
+  const missingScopeKey = useMemo(() => {
+    const scopes = [...new Set(preview.map(r => r.scope || 'personal'))].sort();
+    return scopes.filter(s => s !== defaultScope).join('|');
+  }, [preview, defaultScope]);
+
+  const [crossScopeDebts, setCrossScopeDebts] = useState(NO_DEBTS);
+  const [debtsLoadFailed, setDebtsLoadFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const scopes = missingScopeKey ? missingScopeKey.split('|') : [];
+    if (!scopes.length) { setCrossScopeDebts(NO_DEBTS); setDebtsLoadFailed(false); return; }
+    (async () => {
+      try {
+        const lists = await Promise.all(scopes.map(s => listDebts({ scope: s })));
+        if (alive) { setCrossScopeDebts(lists.flat().filter(Boolean)); setDebtsLoadFailed(false); }
+      } catch {
+        // Unknown debts is not "no debts" — same rule as the history below.
+        if (alive) { setCrossScopeDebts(NO_DEBTS); setDebtsLoadFailed(true); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [missingScopeKey, linkRetry]);
+
+  const scopedDebts = useMemo(
+    () => [...(debts || []), ...crossScopeDebts],
+    [debts, crossScopeDebts],
+  );
+
   // Real existing payments for the preview's months — passing [] used to
   // re-offer months that were already recorded (double increment risk).
+  //
+  // Audit batch A / B7: a FAILED history load used to be swallowed into [],
+  // which reads as "nothing has ever been paid" — the strongest possible
+  // claim, made from no evidence. An already-paid month was then offered
+  // again and recordDebtPayment's insert-or-noop would relink the row to a
+  // different transaction. A failure now DISABLES auto-linking entirely and
+  // says so, with a retry.
   const [existingPayments, setExistingPayments] = useState([]);
+  const [paymentsLoadFailed, setPaymentsLoadFailed] = useState(false);
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!preview.length || !debts.length) { if (alive) setExistingPayments([]); return; }
+      if (!preview.length || !scopedDebts.length) {
+        if (alive) { setExistingPayments([]); setPaymentsLoadFailed(false); }
+        return;
+      }
       const yms = [...new Set(preview.map(r => bangkokMonth(r.occurred_at)).filter(Boolean))].sort();
-      if (!yms.length) { if (alive) setExistingPayments([]); return; }
+      if (!yms.length) {
+        if (alive) { setExistingPayments([]); setPaymentsLoadFailed(false); }
+        return;
+      }
       try {
         const pays = await listDebtPayments({
           startMonth: `${yms[0]}-01`, endMonth: `${yms[yms.length - 1]}-01`,
         });
-        if (alive) setExistingPayments(pays || []);
-      } catch { if (alive) setExistingPayments([]); }
+        if (alive) { setExistingPayments(pays || []); setPaymentsLoadFailed(false); }
+      } catch {
+        if (alive) { setExistingPayments([]); setPaymentsLoadFailed(true); }
+      }
     })();
     return () => { alive = false; };
-  }, [preview, debts]);
+  }, [preview, scopedDebts, linkRetry]);
+
+  // One switch in front of every suggestion: if we could not read what is
+  // already recorded (or which debts exist), we offer nothing at all.
+  const autoLinkBlocked = paymentsLoadFailed || debtsLoadFailed;
+  const autoLinkBlockedMsg = debtsLoadFailed
+    ? 'โหลดรายการหนี้สินข้ามหมวดไม่สำเร็จ — ปิดการ link จ่ายหนี้อัตโนมัติไว้ก่อน '
+      + 'เพื่อไม่ให้บันทึกซ้ำ (นำเข้ารายการได้ตามปกติ)'
+    : 'โหลดประวัติการจ่ายหนี้ไม่สำเร็จ — ปิดการ link จ่ายหนี้อัตโนมัติไว้ก่อน '
+      + 'เพื่อไม่ให้บันทึกทับเดือนที่จ่ายไปแล้ว (นำเข้ารายการได้ตามปกติ)';
 
   const debtSuggestions = useMemo(
-    () => suggestDebtPaymentLinks(preview, debts, existingPayments),
-    [preview, debts, existingPayments]
+    () => (autoLinkBlocked ? [] : suggestDebtPaymentLinks(preview, scopedDebts, existingPayments)),
+    [preview, scopedDebts, existingPayments, autoLinkBlocked]
   );
   const [skippedSuggestions, setSkippedSuggestions] = useState(new Set());
   // 60–79 = "น่าจะใช่" only — auto-record needs the user's explicit tick, so
@@ -2063,6 +2134,27 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Auto-link disabled — history (or cross-scope debts) unreadable */}
+              {autoLinkBlocked && (
+                <div style={{
+                  background: tint('--warning', 8), border: '1px solid var(--warning)',
+                  borderRadius: 'var(--radius-card)', padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
+                      ⚠️ AUTO-LINK ปิดอยู่
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 3 }}>
+                      {autoLinkBlockedMsg}
+                    </div>
+                  </div>
+                  <button className="btn btn--ghost btn--sm" onClick={() => setLinkRetry(n => n + 1)}>
+                    ↻ ลองใหม่
+                  </button>
                 </div>
               )}
 
