@@ -176,6 +176,10 @@ export function parseCSV(text) {
 
   const headers = parseRow(lines[headerIdx]);
   const rows = [];
+  // 1-based line number in the FILE for each kept row. Blank lines are
+  // skipped, so the row index alone cannot point the user at the right line
+  // when a row has to be quarantined (audit batch A / B11).
+  const rowLines = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
@@ -184,8 +188,9 @@ export function parseCSV(text) {
     const row = {};
     headers.forEach((h, idx) => { row[h] = values[idx] ?? ''; });
     rows.push(row);
+    rowLines.push(i + 1);
   }
-  return { headers, rows };
+  return { headers, rows, rowLines };
 }
 
 /**
@@ -295,7 +300,44 @@ export function autoCategory(desc = '') {
  *
  * Generic format: all rows use defaultScope.
  */
-export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
+export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal', opts) {
+  return mapRowsWithQuarantine(rows, colMap, defaultScope, opts).rows;
+}
+
+/** `YYYY-MM-DD`, real calendar months and days only. */
+const VALID_YMD = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/**
+ * Why this row has no usable date — or null when it does.
+ *
+ * Audit batch A / B11: both mapping branches used to substitute
+ * `new Date().toISOString()` for a missing or unreadable date, so a wrong
+ * column mapping quietly imported a two-year-old statement as TODAY. A date
+ * is never invented now; the row is quarantined and the user is told which
+ * source line it came from and why.
+ */
+function dateProblem(rawDate, parsed) {
+  const raw = String(rawDate ?? '').trim();
+  if (!raw) return 'ไม่มีวันที่ (ช่องว่าง หรือยังไม่ได้เลือกคอลัมน์วันที่)';
+  if (!parsed || !VALID_YMD.test(parsed)) return `อ่านวันที่ไม่ออก: "${raw}"`;
+  const [y, m, d] = parsed.split('-').map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() + 1 !== m || probe.getUTCDate() !== d) {
+    return `วันที่ไม่มีอยู่จริง: "${raw}"`;
+  }
+  return null;
+}
+
+/**
+ * The same mapping, plus the rows it REFUSED to map.
+ *
+ * Returns { rows, quarantined }, where each quarantined entry is
+ * `{ sourceRow, rowIdx, reason, title, amount, rawDate }`. `sourceRow` is the
+ * 1-based line in the file (from parseCSV's rowLines when available, so blank
+ * lines don't throw the count off).
+ */
+export function mapRowsWithQuarantine(rows, colMap, defaultScope = 'personal', { rowLines = null } = {}) {
+  const quarantined = [];
   const {
     pocketCol, txTypeCol, txnCol, cpBalCol, categoryCol, memoCol, timeCol, noteCol,
     dateCol, descCol, amountCol, debitCol, creditCol,
@@ -323,7 +365,18 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
     return `${hh}:${mm}:${ss}`;
   };
 
-  return rows.flatMap((row, i) => {
+  const sourceRowOf = (i) => (rowLines && rowLines[i] != null) ? rowLines[i] : i + 2;
+  const quarantine = (i, row, reason, title, amount, rawDate) => {
+    quarantined.push({
+      sourceRow: sourceRowOf(i), rowIdx: i, reason,
+      title: title || '(ไม่มีชื่อ)',
+      amount: Number.isFinite(amount) ? amount : null,
+      rawDate: String(rawDate ?? '').trim(),
+    });
+    return [];
+  };
+
+  const mapped = rows.flatMap((row, i) => {
 
     // ── Make Cloud Pocket format ─────────────────────────────────────────────
     if (makeFmt) {
@@ -344,13 +397,20 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       // second-precision dedup key.
       const timePart = timeHit ? `${timeHit[1].padStart(2, '0')}:${timeHit[2]}` : '12:00';
       const clockKey = timeHit ? `${dateStr}T${timePart}` : dateStr;
-      const occurred_at = dateStr
-        ? `${dateStr}T${nextClock(clockKey, timePart)}+07:00`
-        : new Date().toISOString();
 
       // Skip ALL Move Money rows — internal pocket transfers
-      // (user will handle allocation tracking manually)
+      // (user will handle allocation tracking manually). Checked BEFORE the
+      // date, so a dateless transfer isn't quarantined for a row we drop.
       if (txType === 'Move Money') return [];
+
+      // B11: no date → no row. Never today's date.
+      const dateIssue = dateProblem(dateCol ? row[dateCol] : '', dateStr);
+      if (dateIssue) {
+        const merchantForQ = (noteCol ? row[noteCol] : '').trim();
+        return quarantine(i, row, dateIssue,
+          merchantForQ || memo || pocket, amount, dateCol ? row[dateCol] : '');
+      }
+      const occurred_at = `${dateStr}T${nextClock(clockKey, timePart)}+07:00`;
 
       // ── Regular transactions (Payment, Deposit, Transfer Withdraw, etc.) ─
       const scope = FAMILY_POCKETS.includes(pocket) ? 'family' : 'personal';
@@ -402,6 +462,10 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
     // the ledger silently.
     if (amount === null || !Number.isFinite(amount)) return [];
 
+    // B11: no date → no row. Never today's date.
+    const genericIssue = dateProblem(dateCol ? row[dateCol] : '', dateStr);
+    if (genericIssue) return quarantine(i, row, genericIssue, desc, amount, dateCol ? row[dateCol] : '');
+
     const { category, type } = autoCategory(desc);
     return [{
       _rowIdx:    i,
@@ -411,7 +475,7 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       title:      desc || '(ไม่มีชื่อ)',
       // Synthetic incrementing seconds (see clock comment above) — generic
       // bank CSVs are date-only, so noon + per-day row counter.
-      occurred_at: dateStr ? `${dateStr}T${nextClock(`g|${dateStr}`, '12:00')}+07:00` : new Date().toISOString(),
+      occurred_at: `${dateStr}T${nextClock(`g|${dateStr}`, '12:00')}+07:00`,
       amount,
       category,
       type,
@@ -420,6 +484,8 @@ export function mapRowsToTransactions(rows, colMap, defaultScope = 'personal') {
       account_id: null,
     }];
   }).filter(r => r.title !== '(ไม่มีชื่อ)' || r.amount !== 0);
+
+  return { rows: mapped, quarantined };
 }
 
 // ── Transactions ─────────────────────────────────────────────────────────────

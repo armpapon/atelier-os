@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import {
-  parseCSV, detectKBankColumns, mapRowsToTransactions,
+  parseCSV, detectKBankColumns, mapRowsWithQuarantine,
   bulkCreateTransactions, isMakeFormat,
   extractAccountsFromMapped, bulkUpsertAccountsByPocket,
   classifyImportRows, getExistingRowsForDedup, assignRowIds,
@@ -273,6 +273,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
   // Shared state
   const [preview, setPreview]   = useState([]);
   const [selected, setSelected] = useState(new Set());
+  // Audit batch A / B11 — rows whose date could not be read. They are NEVER
+  // given a fabricated date and never enter the import plan; the user either
+  // fixes the column mapping or ticks them off explicitly.
+  const [quarantined, setQuarantined] = useState([]);
+  const [quarantineAck, setQuarantineAck] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError]       = useState(null);
   const [fileName, setFileName] = useState('');
@@ -285,6 +290,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
   const fileRef    = useRef();
   const pdfFileRef = useRef();
+  // Source line numbers from parseCSV, kept for re-mapping (B11 reports them).
+  const rowLinesRef = useRef(null);
 
   // ── Round-9 M3: ONE gate in front of every action that starts new work ────
   // A stored session is unfinished work too: letting a new file through would
@@ -326,6 +333,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
         setHeaders(parsed.headers);
         setRows(parsed.rows);
+        rowLinesRef.current = parsed.rowLines || null;
 
         const detected = detectKBankColumns(parsed.headers);
         setColMap(detected);
@@ -333,10 +341,14 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
         // assignRowIds: the ONE place every source gets its immutable _rid —
         // all ambiguity/force/suggestion bookkeeping keys on it.
-        const txns = assignRowIds(mapRowsToTransactions(parsed.rows, detected, defaultScope));
+        const mapped = mapRowsWithQuarantine(parsed.rows, detected, defaultScope,
+          { rowLines: parsed.rowLines });
+        const txns = assignRowIds(mapped.rows);
         // new file = new idempotency session — only if the old one may go
         if (!resetImportSession()) { alert(REUSE_BLOCKED_MSG); return; }
         setPreview(txns);
+        setQuarantined(mapped.quarantined);
+        setQuarantineAck(false);
         setSelected(new Set(txns.map((_, i) => i)));
         setStep('preview');
       } catch (err) {
@@ -350,10 +362,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     if (blockNewWork('เปลี่ยน mapping')) return;
     const newMap = { ...colMap, [key]: val };
     setColMap(newMap);
-    const txns = assignRowIds(mapRowsToTransactions(rows, newMap, defaultScope));
+    const mapped = mapRowsWithQuarantine(rows, newMap, defaultScope, { rowLines: rowLinesRef.current });
+    const txns = assignRowIds(mapped.rows);
     // remapped columns = a different batch — only if the old one may go
     if (!resetImportSession()) { alert(REUSE_BLOCKED_MSG); return; }
     setPreview(txns);
+    // Fixing the mapping is the FIRST remedy B11 offers — so a remap always
+    // re-derives the quarantine and drops any acknowledgement of the old one.
+    setQuarantined(mapped.quarantined);
+    setQuarantineAck(false);
     setSelected(new Set(txns.map((_, i) => i)));
   };
 
@@ -371,6 +388,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       // new file = new idempotency session — only if the old one may go
       if (!resetImportSession()) { alert(REUSE_BLOCKED_MSG); return; }
       setPreview(txns);
+      setQuarantined([]); setQuarantineAck(false);
       setSelected(new Set(txns.map((_, i) => i)));
       setMakeFmt(false);
       setStep('preview');
@@ -411,6 +429,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
     setStep('upload'); setError(null);
     setPdfFile(null); setPdfPassword(''); setFileName('');
     setPreview([]); setSelected(new Set());
+    setQuarantined([]); setQuarantineAck(false);
+    rowLinesRef.current = null;
     setHeaders([]); setRows([]); setMakeFmt(false);
   };
 
@@ -506,6 +526,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
   // One switch in front of every suggestion: if we could not read what is
   // already recorded (or which debts exist), we offer nothing at all.
+  // B11: quarantined rows block the import until the user either fixes the
+  // column mapping (which re-derives them) or explicitly ticks them off.
+  const quarantineBlocks = quarantined.length > 0 && !quarantineAck;
+
   const autoLinkBlocked = paymentsLoadFailed || debtsLoadFailed;
   const autoLinkBlockedMsg = debtsLoadFailed
     ? 'โหลดรายการหนี้สินข้ามหมวดไม่สำเร็จ — ปิดการ link จ่ายหนี้อัตโนมัติไว้ก่อน '
@@ -964,6 +988,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
       // A resumed run reports the wipes IT executed (round-10 case 2); the
       // primary path still reports "every month in the plan".
       wipedMonths: S.wipedMonths ?? (S.wipeExecuted ? S.monthArr.length : 0),
+      // B11: the rows this import REFUSED to date. Reported so the count of
+      // what went in can be reconciled against the file.
+      quarantined: quarantined.length,
     });
     setStep('done');
     onImported?.();
@@ -2137,6 +2164,51 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 </div>
               )}
 
+              {/* Rows with no usable date — quarantined, never dated to today */}
+              {quarantined.length > 0 && (
+                <div style={{
+                  background: tint('--warning', 8), border: '1px solid var(--warning)',
+                  borderRadius: 'var(--radius-card)', padding: '14px 16px',
+                }}>
+                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
+                    ⛔ อ่านวันที่ไม่ได้ · {quarantined.length} แถว — ไม่นำเข้า
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 3, marginBottom: 10 }}>
+                    ระบบจะไม่เดาวันที่ให้ (เมื่อก่อนแถวแบบนี้ถูกบันทึกเป็น “วันนี้”) —
+                    ถ้าเลือกคอลัมน์วันที่ผิด ให้แก้ mapping ด้านบน หรือติ๊กยืนยันเพื่อข้ามแถวเหล่านี้
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 180, overflow: 'auto' }}>
+                    {quarantined.map(q => (
+                      <div key={q.rowIdx} style={{
+                        display: 'grid', gridTemplateColumns: '72px 1fr auto', gap: 10,
+                        padding: '7px 10px', background: 'var(--surface)',
+                        border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
+                        alignItems: 'center', fontSize: 12,
+                      }}>
+                        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                          แถวที่ {q.sourceRow}
+                        </span>
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {q.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--warning)' }}>{q.reason}</div>
+                        </div>
+                        <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                          {q.amount != null ? `฿${Math.abs(q.amount).toLocaleString('th', { maximumFractionDigits: 0 })}` : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={quarantineAck}
+                      onChange={(e) => setQuarantineAck(e.target.checked)}
+                      style={{ accentColor: 'var(--warning)' }} />
+                    <span>เข้าใจแล้ว — ข้าม {quarantined.length} แถวนี้ แล้วนำเข้าเฉพาะรายการที่มีวันที่จริง</span>
+                  </label>
+                </div>
+              )}
+
               {/* Auto-link disabled — history (or cross-scope debts) unreadable */}
               {autoLinkBlocked && (
                 <div style={{
@@ -2504,6 +2576,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   {importStats?.wipedMonths > 0 && (
                     <StatChip label="เดือนที่ล้าง" value={importStats.wipedMonths} accent="var(--loss)" />
                   )}
+                  {importStats?.quarantined > 0 && (
+                    <StatChip label="⛔ ไม่มีวันที่ — ไม่ได้นำเข้า" value={importStats.quarantined} accent="var(--warning)" />
+                  )}
                   {/* Round-9 F1: rows whose transaction was deleted after the
                       import — excluded from balances and debt links. */}
                   {importStats?.skippedDeleted > 0 && (
@@ -2577,8 +2652,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 ? 'กลับไม่ได้ — มีรายการที่บันทึกแล้วแต่ยังปิดงานไม่ครบ กด Import เพื่อทำต่อให้จบ'
                 : 'กลับไปเลือกไฟล์'}
               style={(importing || hasUnfinishedCommittedWork) ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}>← กลับ</button>
-            <button className="btn btn--primary" disabled={importing || sel.length === 0} onClick={handleImport}
-              style={{ minWidth: 200, justifyContent: 'center' }}>
+            <button className="btn btn--primary" disabled={importing || sel.length === 0 || quarantineBlocks}
+              onClick={handleImport}
+              title={quarantineBlocks
+                ? 'มีแถวที่อ่านวันที่ไม่ออก — แก้ mapping คอลัมน์วันที่ หรือติ๊กยืนยันว่าจะข้ามแถวเหล่านั้น'
+                : undefined}
+              style={{ minWidth: 200, justifyContent: 'center',
+                ...(quarantineBlocks ? { opacity: 0.4, cursor: 'not-allowed' } : null) }}>
               {importing
                 ? 'กำลัง Import...'
                 : `💾 Import ${sel.length} รายการ${familySel > 0 ? ` (${familySel} ครอบครัว)` : ''}`}

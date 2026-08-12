@@ -15,7 +15,7 @@ import {
   multisetDedupRows, getExistingTxnKeyCounts,
   createAccount, bulkUpsertAccountsByPocket, shouldApplyImportedBalance,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
-  parseCSV, detectKBankColumns, mapRowsToTransactions,
+  parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
   isDefinitiveServerError, currentYearMonth, getDebtStatus, loadEffectiveBalances,
 } from '../src/lib/api/finance.js';
@@ -1379,6 +1379,77 @@ section('A · B10 · "Bangkok today" no longer follows the device timezone');
     addDaysStr(1, '2026-08-31') === '2026-09-01' && addDaysStr(-1, '2026-09-01') === '2026-08-31');
   check('addDaysStr crosses a DST boundary in the device zone unharmed',
     addDaysStr(1, '2026-03-08') === '2026-03-09' && addDaysStr(-1, '2026-11-01') === '2026-10-31');
+}
+
+section('A · B11 · a row with no readable date is quarantined, never dated to now()');
+{
+  const CSV =
+    'Date,Description,Amount\n' +
+    '05/08/2026,ค่ากาแฟ,-65\n' +
+    ',ค่าไม่มีวันที่,-120\n' +           // empty date cell
+    '\n' +                                // blank line — must not shift numbering
+    'ไม่ใช่วันที่,ค่าอ่านไม่ออก,-300\n' + // unparseable
+    '31/02/2026,ค่าวันที่ไม่มีจริง,-400\n' + // 31 กุมภา
+    '06/08/2026,ค่าเน็ต,-599\n';
+
+  const parsed = parseCSV(CSV);
+  check('parseCSV reports the 1-based SOURCE line of every kept row',
+    JSON.stringify(parsed.rowLines) === JSON.stringify([2, 3, 5, 6, 7]),
+    JSON.stringify(parsed.rowLines));
+
+  const cols = detectKBankColumns(parsed.headers);
+  const out = mapRowsWithQuarantine(parsed.rows, cols, 'personal', { rowLines: parsed.rowLines });
+
+  check('only the dated rows are mapped', out.rows.length === 2,
+    out.rows.map(r => r.title).join(', '));
+  check('three rows are quarantined', out.quarantined.length === 3,
+    out.quarantined.map(q => q.title).join(', '));
+
+  // NEVER a fabricated date — the whole point of the blocker.
+  const todayYmd = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  check('NO mapped row carries today\'s date',
+    !out.rows.some(r => String(r.occurred_at).startsWith(todayYmd)),
+    `today = ${todayYmd}`);
+  check('every mapped occurred_at is a real instant from the FILE',
+    out.rows.every(r => !isNaN(new Date(r.occurred_at)))
+    && out.rows.map(r => String(r.occurred_at).slice(0, 10)).sort().join(',') === '2026-08-05,2026-08-06');
+
+  // Each quarantined row names its source line and its reason.
+  const byLine = Object.fromEntries(out.quarantined.map(q => [q.sourceRow, q]));
+  check('the empty date cell is reported at source line 3',
+    byLine[3] && /ไม่มีวันที่/.test(byLine[3].reason), byLine[3]?.reason);
+  check('the unparseable date is reported at line 5 — blank lines do not shift it',
+    byLine[5] && /อ่านวันที่ไม่ออก/.test(byLine[5].reason), byLine[5]?.reason);
+  check('31 กุมภาพันธ์ is refused as a date that does not exist',
+    byLine[6] && /ไม่มีอยู่จริง/.test(byLine[6].reason), byLine[6]?.reason);
+  check('a quarantined row keeps its title and amount so the user can find it',
+    byLine[3].title === 'ค่าไม่มีวันที่' && byLine[3].amount === -120);
+
+  // The legacy entry point keeps working and simply never returns the bad rows.
+  check('mapRowsToTransactions is unchanged in shape and excludes the quarantine',
+    mapRowsToTransactions(parsed.rows, cols, 'personal').length === 2);
+
+  // Make format: the same rule, on the other branch.
+  const makeCsv =
+    'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
+    '05/08/2026,09:15,Cashbox,Payment,-65,1000,ชา กาแฟ,,ร้านกาแฟ\n' +
+    ',10:00,Cashbox,Payment,-500,900,อื่นๆ,,ของบ้าน\n' +
+    '05/08/2026,11:00,Cashbox,Move Money,-100,800,อื่นๆ,,ย้ายเงิน\n';
+  const mp = parseCSV(makeCsv);
+  const mOut = mapRowsWithQuarantine(mp.rows, detectKBankColumns(mp.headers), 'personal',
+    { rowLines: mp.rowLines });
+  check('Make branch: the dateless row is quarantined too, at its source line',
+    mOut.rows.length === 1 && mOut.quarantined.length === 1
+    && mOut.quarantined[0].sourceRow === 3, JSON.stringify(mOut.quarantined));
+  check('Make branch: a Move Money row is still dropped, not quarantined',
+    !mOut.quarantined.some(q => q.title === 'ย้ายเงิน'));
+
+  // A file where every date is readable must produce an EMPTY quarantine —
+  // the section only ever appears when there is something to report.
+  const clean = parseCSV('Date,Description,Amount\n05/08/2026,ค่ากาแฟ,-65\n');
+  check('a clean file quarantines nothing',
+    mapRowsWithQuarantine(clean.rows, detectKBankColumns(clean.headers), 'personal',
+      { rowLines: clean.rowLines }).quarantined.length === 0);
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);

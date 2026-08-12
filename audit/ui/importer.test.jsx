@@ -1482,3 +1482,86 @@ describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
     await screen.findByText(/🔗 AUTO-LINK · 1 \/ 1/);   // the personal one returns
   });
 });
+
+describe('CSVImporter date quarantine (batch A · B11)', () => {
+
+  // Line 3 has no date, line 5 (after a blank line) has an unreadable one.
+  const MIXED_CSV =
+    'Date,Description,Amount\n' +
+    '05/08/2026,ค่ากาแฟ,-65\n' +
+    ',ค่าไม่มีวันที่,-120\n' +
+    '\n' +
+    'ไม่ใช่วันที่,ค่าอ่านไม่ออก,-300\n' +
+    '06/08/2026,ค่าเน็ต,-599\n';
+
+  it('(B11) quarantined rows are listed with source line + reason, blocked until acknowledged, then excluded from the import', async () => {
+    installImportRpcV8();
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container, MIXED_CSV);
+
+    // 1 · the section renders, naming both rows and why.
+    await screen.findByText(/อ่านวันที่ไม่ได้ · 2 แถว/);
+    expect(screen.getByText('แถวที่ 3')).toBeTruthy();
+    expect(screen.getByText('แถวที่ 5')).toBeTruthy();      // the blank line did not shift it
+    expect(screen.getByText(/ไม่มีวันที่ \(ช่องว่าง/)).toBeTruthy();
+    expect(screen.getByText(/อ่านวันที่ไม่ออก: "ไม่ใช่วันที่"/)).toBeTruthy();
+    expect(screen.getByText('ค่าไม่มีวันที่')).toBeTruthy();
+
+    // 2 · they are not in the plan: the button offers 2 rows, not 4.
+    expect(importButton().textContent).toMatch(/Import 2 รายการ/);
+
+    // 3 · the import is BLOCKED until the user decides.
+    expect(importButton().disabled).toBe(true);
+    fireEvent.click(importButton());
+    expect(simCalls).toHaveLength(0);
+
+    // 4 · acknowledging unblocks it; only the dated rows are imported.
+    fireEvent.click(screen.getByRole('checkbox', { name: /ข้าม 2 แถวนี้/ }));
+    expect(importButton().disabled).toBe(false);
+    fireEvent.click(importButton());
+    await screen.findByText(/Import สำเร็จ!/);
+
+    expect(__tables.transactions).toHaveLength(2);
+    expect(__tables.transactions.map(t => t.title).sort()).toEqual(['ค่ากาแฟ', 'ค่าเน็ต']);
+    // No fabricated date reached the ledger.
+    const days = __tables.transactions.map(t => t.occurred_at.slice(0, 10)).sort();
+    expect(days).toEqual(['2026-08-05', '2026-08-06']);
+
+    // 5 · the summary reports the count that did NOT go in.
+    expect(screen.getByText(/ไม่มีวันที่ — ไม่ได้นำเข้า/)).toBeTruthy();
+    const chip = screen.getByText(/ไม่มีวันที่ — ไม่ได้นำเข้า/).parentElement;
+    expect(chip.textContent).toMatch(/^2/);
+  });
+
+  it('(B11b) fixing the column mapping is the other remedy — it re-derives the quarantine and re-arms the gate', async () => {
+    installImportRpcV8();
+    // The date column is NOT auto-detected here (header "เมื่อไหร่"), so every
+    // row lands in quarantine until the user points at the right column.
+    const { container } = render(
+      <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
+    await uploadCsv(container,
+      'เมื่อไหร่,รายการ,Amount\n' +
+      '05/08/2026,ค่ากาแฟ,-65\n' +
+      '06/08/2026,ค่าเน็ต,-599\n');
+
+    await screen.findByText(/อ่านวันที่ไม่ได้ · 2 แถว/);
+    expect(importButton().textContent).toMatch(/Import 0 รายการ/);
+
+    // Acknowledge — then change the mapping. The acknowledgement must NOT
+    // survive: the batch it applied to no longer exists.
+    fireEvent.click(screen.getByRole('checkbox', { name: /ข้าม 2 แถวนี้/ }));
+    const dateSelect = screen.getByLabelText('วันที่');
+    fireEvent.change(dateSelect, { target: { value: 'เมื่อไหร่' } });
+
+    // Both rows are now dated and the quarantine is empty.
+    await waitFor(() => expect(importButton().textContent).toMatch(/Import 2 รายการ/));
+    expect(screen.queryByText(/อ่านวันที่ไม่ได้/)).toBeNull();
+    expect(importButton().disabled).toBe(false);
+
+    fireEvent.click(importButton());
+    await screen.findByText(/Import สำเร็จ!/);
+    expect(__tables.transactions.map(t => t.occurred_at.slice(0, 10)).sort())
+      .toEqual(['2026-08-05', '2026-08-06']);
+  });
+});
