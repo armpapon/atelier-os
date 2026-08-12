@@ -14,6 +14,8 @@ import {
   computeTax, deductionHeadroom, planningSummary, baht, toBE, taxYearOf,
   periodFor, toStored, toDisplay, periodDerivation,
   sanityWarnings, derivations, fmtNumber,
+  resolveStatutory, RESTORE_LABEL,
+  countCeiling, countDerivation, countBlockedNote, countPatch,
 } from '../lib/taxTH.js';
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, copyYear,
@@ -152,9 +154,11 @@ export function TaxPlanner() {
     patchProfile(active.id, { income: { ...(active.income || {}), ...patch } });
   }, [active, patchProfile]);
 
-  const setDeduction = useCallback((key, value) => {
+  // A patch, not a single key: some rows move two fields at once (lowering
+  // บุตร takes บุตรคนที่ 2 ขึ้นไป down with it — see countPatch in taxTH.js).
+  const setDeduction = useCallback((patch) => {
     if (!active) return;
-    patchProfile(active.id, { deductions: { ...(active.deductions || {}), [key]: value } });
+    patchProfile(active.id, { deductions: { ...(active.deductions || {}), ...patch } });
   }, [active, patchProfile]);
 
   // The เดือน/ปี switch stores nothing but the CHOICE — the figure itself is
@@ -690,18 +694,41 @@ function MoneyField({
   );
 }
 
-function CountInput({ value, onChange, ariaLabel, max }) {
+// ── นับเป็นคน ───────────────────────────────────────────────────────────────
+// บุตร and บิดามารดา are people, so the control counts people. − and + because
+// the answer is almost always 1, 2 or 3 and nobody should have to reach for a
+// keyboard; a real number input in the middle because it is what a label — and
+// therefore a test, and a screen reader — can hold on to.
+
+function CountStepper({ value, onChange, max, ariaLabel, name, disabled }) {
+  const ceiling = Number.isFinite(max) ? max : Infinity;
+  const n = Math.max(0, Math.min(Math.floor(Number(value) || 0), ceiling));
+  const set = (v) => onChange(Math.max(0, Math.min(Math.floor(v) || 0, ceiling)));
+  const btn = (on) => ({
+    ...mono, width: 26, height: 28, flexShrink: 0, fontSize: 15, lineHeight: 1,
+    borderRadius: 'var(--radius-btn)', border: '1px solid var(--hairline)',
+    background: 'var(--surface)', color: on ? 'var(--ink)' : 'var(--ink-4)',
+    cursor: on ? 'pointer' : 'default',
+  });
   return (
-    <input
-      className="input" type="number" min={0} max={max ?? undefined} aria-label={ariaLabel}
-      value={Number(value) > 0 ? Number(value) : ''}
-      placeholder="0"
-      onChange={e => {
-        const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
-        onChange(max != null ? Math.min(n, max) : n);
-      }}
-      style={{ ...mono, width: 72, textAlign: 'right', padding: '7px 10px', fontSize: 13, flexShrink: 0 }}
-    />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      <button
+        type="button" className="focus-ring" aria-label={`ลดจำนวน ${name}`}
+        disabled={disabled || n <= 0} onClick={() => set(n - 1)}
+        style={btn(!disabled && n > 0)}>−</button>
+      <input
+        className="input" type="number" min={0}
+        max={Number.isFinite(ceiling) ? ceiling : undefined}
+        aria-label={ariaLabel} value={n} disabled={disabled}
+        onChange={e => set(Number(e.target.value) || 0)}
+        style={{ ...mono, width: 54, textAlign: 'center', padding: '7px 6px', fontSize: 13 }}
+      />
+      <button
+        type="button" className="focus-ring" aria-label={`เพิ่มจำนวน ${name}`}
+        disabled={disabled || n >= ceiling} onClick={() => set(n + 1)}
+        style={btn(!disabled && n < ceiling)}>+</button>
+      <span style={{ fontSize: 12, color: 'var(--ink-3)', flexShrink: 0 }}>คน</span>
+    </div>
   );
 }
 
@@ -967,7 +994,10 @@ function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomCh
               key={key} spec={DEDUCTIONS.find(x => x.key === key)}
               row={result.rows[key]} value={ded[key]}
               period={periodFor(periods, key)}
-              onChange={v => onChange(key, v)}
+              ceiling={countCeiling(key, ded)}
+              derivation={countDerivation(key, ded)}
+              blocked={countBlockedNote(key, ded)}
+              onChange={v => onChange(countPatch(key, v, ded))}
               onPeriod={p => onPeriod(key, p)}
             />
           )))}
@@ -1015,18 +1045,29 @@ function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomCh
   );
 }
 
-function DeductionRow({ spec, row, value, period, onChange, onPeriod }) {
+function DeductionRow({ spec, row, value, period, ceiling, derivation, blocked, onChange, onPeriod }) {
   const claimed = Number(value) || 0;
   const [open, setOpen] = useState(claimed > 0);
+  // MoneyInput is uncontrolled, so the only way to push a figure INTO it is to
+  // remount it. Bumped when the row writes a number he did not type — never on
+  // his own keystrokes, which would steal the caret mid-word.
+  const [reseed, setReseed] = useState(0);
   if (!spec || !row) return null;
 
   const auto = spec.kind === 'auto';
   const isCount = spec.kind === 'count';
+  const statutory = resolveStatutory(spec.key, value);
   const capText = Number.isFinite(row.cap) && row.cap > 0 && !isCount ? `เพดาน ${baht(row.cap)}` : null;
 
+  // Ticking a row must never leave him staring at an empty box. A statutory
+  // flat row fills in the one legal figure; a headcount row starts at one
+  // person, because "I have children" and "I have zero children" are not the
+  // same statement. Unticking clears back to nothing either way.
   const toggle = (on) => {
     setOpen(on);
-    if (!on) onChange(0);
+    if (!on) { onChange(0); return; }
+    if (statutory) { onChange(statutory.statutory); return; }
+    if (isCount) onChange(Math.min(1, Number.isFinite(ceiling) ? ceiling : 1));
   };
 
   return (
@@ -1049,6 +1090,13 @@ function DeductionRow({ spec, row, value, period, onChange, onPeriod }) {
           <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3)', marginTop: 2, lineHeight: 1.5 }}>
             {spec.note}{capText && !spec.note?.includes('เกิน') ? ` · ${capText}` : ''}
           </span>
+          {/* Conditions that decide whether a claim is legal at all — shown
+              beside the stepper, not buried in a help page nobody opens. */}
+          {open && Array.isArray(spec.conditions) && (
+            <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3)', marginTop: 3, lineHeight: 1.6 }}>
+              {spec.conditions.map(c => <span key={c} style={{ display: 'block' }}>· {c}</span>)}
+            </span>
+          )}
           {row.capped && (
             <span style={{
               ...mono, display: 'inline-block', marginTop: 4, fontSize: 10,
@@ -1061,7 +1109,10 @@ function DeductionRow({ spec, row, value, period, onChange, onPeriod }) {
         </span>
       </label>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+        gap: 3, flexShrink: 0,
+      }}>
         {auto ? (
           <span style={{ ...mono, fontSize: 13, color: 'var(--ink)', minWidth: 132, textAlign: 'right' }}>
             {baht(row.allowed)}
@@ -1070,10 +1121,20 @@ function DeductionRow({ spec, row, value, period, onChange, onPeriod }) {
           <span style={{ ...mono, fontSize: 12, color: 'var(--ink-4)', minWidth: 132, textAlign: 'right' }}>—</span>
         ) : isCount ? (
           <>
-            <CountInput value={value} max={spec.maxCount} ariaLabel={`จำนวน ${spec.label}`} onChange={onChange} />
-            <span style={{ ...mono, fontSize: 12, color: 'var(--ink-2)', width: 52, textAlign: 'right' }}>
-              {baht(row.allowed)}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CountStepper
+                value={value} max={ceiling} disabled={Number.isFinite(ceiling) && ceiling <= 0}
+                ariaLabel={`จำนวน ${spec.label}`} name={spec.label} onChange={onChange}
+              />
+              <span style={{ ...mono, fontSize: 13, color: 'var(--ink)', width: 76, textAlign: 'right' }}>
+                {baht(row.allowed)}
+              </span>
+            </div>
+            {(blocked || derivation) && (
+              <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)', textAlign: 'right' }}>
+                {blocked || derivation}
+              </span>
+            )}
           </>
         ) : spec.monthlyable ? (
           <MoneyField
@@ -1082,7 +1143,22 @@ function DeductionRow({ spec, row, value, period, onChange, onPeriod }) {
             onStored={onChange} onPeriod={onPeriod}
           />
         ) : (
-          <MoneyInput value={value} ariaLabel={`จำนวน ${spec.label}`} onChange={onChange} />
+          <>
+            <MoneyInput
+              key={`${spec.key}-${reseed}`}
+              value={value} ariaLabel={`จำนวน ${spec.label}`} onChange={onChange}
+            />
+            {/* He typed something the law does not say. Keep it — a part-year
+                marriage is his to judge — but offer the standard figure back. */}
+            {statutory && statutory.overridden && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)' }}>{statutory.hint} ·</span>
+                <LinkButton onClick={() => { setReseed(s => s + 1); onChange(statutory.statutory); }}>
+                  {statutory.restore}
+                </LinkButton>
+              </span>
+            )}
+          </>
         )}
       </div>
     </div>
