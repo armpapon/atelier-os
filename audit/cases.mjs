@@ -17,10 +17,10 @@ import {
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
-  isDefinitiveServerError,
+  isDefinitiveServerError, currentYearMonth, getDebtStatus,
 } from '../src/lib/api/finance.js';
 import { getFinancePulse } from '../src/lib/api/lifeOS.js';
-import { toLocalYMD } from '../src/lib/dates.js';
+import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
 let pass = 0, fail = 0;
@@ -155,8 +155,10 @@ section('R1 · Blocker 3 · effective balance = anchor + ledger after anchor');
 section('R1 · Regressions · v4.6–v4.9 proofs still hold');
 {
   const at5amBkk = new Date('2026-08-10T22:00:00Z');
-  check('toLocalYMD at 05:00 Bangkok = next local day (TZ=' + process.env.TZ + ')',
-    process.env.TZ !== 'Asia/Bangkok' || toLocalYMD(at5amBkk) === '2026-08-11');
+  // Audit B10 hardened this: the assertion no longer needs the TZ escape
+  // hatch it was written with — the answer is Bangkok's in every device zone.
+  check('toLocalYMD at 05:00 Bangkok = next Bangkok day (TZ=' + process.env.TZ + ')',
+    toLocalYMD(at5amBkk) === '2026-08-11');
   const a = { occurred_at: '2026-07-15T14:30:00+07:00', amount: -123.45, title: 'GrabFood' };
   const b = { occurred_at: '2026-07-15T07:30:00+00:00', amount: -123.45, title: 'GrabFood' };
   check('txnKey matches across offsets', txnKey(a) === txnKey(b));
@@ -1129,6 +1131,92 @@ section('R10 · resume fidelity · per-group wipe/dedup are honoured group by gr
     rows: [{ ...marchTwin, _rid: 1004 }], importKey: 'K-r10-dedup-on' });
   check('the same row under dedup=true is skipped — so re-deriving the flag really does change the outcome',
     onRes.insertedCount === 0 && onRes.dupSkipped === 1 && inMonth('2027-02').length === 2);
+}
+
+// ═══════════════════════════ AUDIT BATCH A (v4.26) ═══════════════════════
+// Codex clean-slate review — B1, B6, B10, B11. (B4 and B7 are mounted-only;
+// they live in audit/ui/importer.test.jsx.)
+
+/**
+ * Freeze `new Date()` / `Date.now()` at one instant while `fn` runs, so a
+ * "what day is it" assertion has a single right answer in EVERY device
+ * timezone. Everything else about Date (parsing, Date.UTC, toLocaleDateString)
+ * is the real implementation.
+ */
+function withFrozenNow(iso, fn) {
+  const RealDate = Date;
+  const fixed = new RealDate(iso).getTime();
+  class FrozenDate extends RealDate {
+    constructor(...args) { if (args.length === 0) super(fixed); else super(...args); }
+    static now() { return fixed; }
+  }
+  globalThis.Date = FrozenDate;
+  try { return fn(); } finally { globalThis.Date = RealDate; }
+}
+
+section('A · B10 · "Bangkok today" no longer follows the device timezone');
+{
+  // 2026-09-01 00:30 Bangkok. The same instant is 2026-08-31 13:30 in New
+  // York and 2026-08-31 17:30 UTC — so a device-local implementation answers
+  // "August" on two of the three machines the harness runs on.
+  const NOW = '2026-08-31T17:30:00.000Z';
+  const TZ  = process.env.TZ || '(unset)';
+
+  withFrozenNow(NOW, () => {
+    const deviceMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    check(`device-local month under TZ=${TZ} is what the OLD code returned`,
+      deviceMonth === (TZ === 'Asia/Bangkok' ? '2026-09' : '2026-08'), deviceMonth);
+
+    // Finance.jsx:711 + dashboard/MonthNav.jsx:15 — the month the page opens on.
+    check('month-nav default = 2026-09 in every device timezone',
+      currentYearMonth() === '2026-09', currentYearMonth());
+
+    // Finance.jsx:244 — TxnForm's `occurred_at` default.
+    check('form default date = 2026-09-01 in every device timezone',
+      todayStr() === '2026-09-01', todayStr());
+    check('toLocalYMD reads the Bangkok calendar, not the device one',
+      toLocalYMD(new Date(NOW)) === '2026-09-01');
+
+    // getDebtStatus — September is the CURRENT month (day 1, due day 5).
+    const debt = { id: 'b10-d1', due_day: 5, monthly_payment: 5000 };
+    const sep = getDebtStatus(debt, [], '2026-09');
+    check('debt status: current Bangkok month, before the due day → pending',
+      sep.status === 'pending', sep.status);
+    const aug = getDebtStatus(debt, [], '2026-08');
+    check('debt status: the month that just ended, unpaid → overdue',
+      aug.status === 'overdue', aug.status);
+    const oct = getDebtStatus(debt, [], '2026-10');
+    check('debt status: a future month → upcoming', oct.status === 'upcoming', oct.status);
+    const paidSep = getDebtStatus(debt, [{ id: 'p1', pay_month: '2026-09-01', amount_paid: 5000 }], '2026-09');
+    check('debt status: a recorded payment still wins', paidSep.status === 'paid', paidSep.status);
+
+    // checkRecurringStatus — same three verdicts, same instant.
+    const bill = { id: 'b10-r1', name: 'ค่าเน็ต', vendor: 'AIS Fibre', amount: 599, due_day: 5 };
+    check('recurring status: current Bangkok month, before the due day → pending',
+      checkRecurringStatus(bill, [], '2026-09').status === 'pending');
+    check('recurring status: the month that just ended → overdue',
+      checkRecurringStatus(bill, [], '2026-08').status === 'overdue');
+    check('recurring status: a future month → upcoming',
+      checkRecurringStatus(bill, [], '2026-10').status === 'upcoming');
+    check('recurring status: a matching paid transaction still wins',
+      checkRecurringStatus(bill, [{ id: 't1', title: 'AIS Fibre', amount: -599, type: 'utility',
+        occurred_at: '2026-09-01T09:00:00+07:00' }], '2026-09').status === 'paid');
+  });
+
+  // The reverse boundary: 23:30 Bangkok on the last day of August is still
+  // August, even on a device that has already rolled over (UTC+13 etc.).
+  withFrozenNow('2026-08-31T16:30:00.000Z', () => {
+    check('23:30 Bangkok on 31 ส.ค. is still 2026-08 everywhere',
+      currentYearMonth() === '2026-08' && todayStr() === '2026-08-31');
+    check('…and the debt due on the 5th is overdue, not upcoming',
+      getDebtStatus({ id: 'x', due_day: 5, monthly_payment: 1 }, [], '2026-08').status === 'overdue');
+  });
+
+  // addDaysStr arithmetic must not be nudged by the device zone either.
+  check('addDaysStr crosses a month boundary identically in every TZ',
+    addDaysStr(1, '2026-08-31') === '2026-09-01' && addDaysStr(-1, '2026-09-01') === '2026-08-31');
+  check('addDaysStr crosses a DST boundary in the device zone unharmed',
+    addDaysStr(1, '2026-03-08') === '2026-03-09' && addDaysStr(-1, '2026-11-01') === '2026-10-31');
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);

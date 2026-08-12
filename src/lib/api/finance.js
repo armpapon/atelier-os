@@ -1,9 +1,14 @@
 import { supabase } from '../supabase.js';
+import { todayStr, currentMonthStr, todayDayOfMonth, ymdParts } from '../dates.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+/**
+ * The current month in the BANGKOK calendar, `YYYY-MM`.
+ * Audit B10: this used the device's local getters, so a laptop set to New
+ * York opened August while Bangkok had already rolled into September.
+ */
 export function currentYearMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return currentMonthStr();
 }
 
 export function getMonthBounds(yearMonth) {
@@ -1557,20 +1562,21 @@ export function getDebtStatus(debt, payments, yearMonth) {
     payment_id: paid.id,
   };
 
-  // Not paid yet — check if overdue
+  // Not paid yet — check if overdue.
+  // Audit B10: "today" is the BANGKOK calendar day, never the device's.
   const [y, m] = yearMonth.split('-').map(Number);
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === y && today.getMonth() + 1 === m;
+  const [ty, tm, td] = ymdParts(todayStr());
+  const isCurrentMonth = ty === y && tm === m;
   const dueDay = debt.due_day || 5;
 
   if (isCurrentMonth) {
-    if (today.getDate() > dueDay) return { status: 'overdue', dueDay };
+    if (td > dueDay) return { status: 'overdue', dueDay };
     return { status: 'pending', dueDay };
   }
 
-  // Past month and not paid → overdue
-  const monthDate = new Date(y, m - 1, dueDay);
-  if (monthDate < today) return { status: 'overdue', dueDay };
+  // Past month and not paid → overdue. Compared as calendar instants in UTC
+  // so the device zone cannot shift either side of the comparison.
+  if (Date.UTC(y, m - 1, dueDay) < Date.UTC(ty, tm - 1, td)) return { status: 'overdue', dueDay };
 
   // Future month
   return { status: 'upcoming', dueDay };
@@ -1957,15 +1963,16 @@ export function checkRecurringStatus(recurring, transactions, yearMonth) {
   });
   if (match) return { status: 'paid', txn: match };
 
+  // Audit B10: "today" is the BANGKOK calendar day, never the device's.
   const [y, m] = ym.split('-').map(Number);
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === y && today.getMonth() + 1 === m;
+  const [ty, tm, td] = ymdParts(todayStr());
+  const isCurrentMonth = ty === y && tm === m;
   const dueDay = recurring.due_day || 5;
   if (isCurrentMonth) {
-    if (today.getDate() > dueDay) return { status: 'overdue', dueDay };
+    if (td > dueDay) return { status: 'overdue', dueDay };
     return { status: 'pending', dueDay };
   }
-  const isPastMonth = (y < today.getFullYear()) || (y === today.getFullYear() && m < today.getMonth() + 1);
+  const isPastMonth = (y < ty) || (y === ty && m < tm);
   return { status: isPastMonth ? 'overdue' : 'upcoming', dueDay };
 }
 
