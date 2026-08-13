@@ -16,6 +16,7 @@ import {
   monthlyRecurringTotal,
   bangkokDate, bangkokTime, isTransfer,
 } from '../lib/api/finance.js';
+import { cashflowWindow, cashflowSeries, filterToMonths } from '../lib/cashflow.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
@@ -719,6 +720,10 @@ export function FinanceView({ scope }) {
   // (User can still navigate to other months via MonthNav during the session
   // — but we no longer persist that across sessions / page reloads.)
   const [yearMonth, setYearMonth] = useState(() => currentYearMonth());
+  // Today's month, pinned for the session. The cash-flow chart's 12-month
+  // window hangs off THIS, never off `yearMonth` — clicking a bar used to
+  // re-anchor the window and slide every later month off the chart.
+  const [todayYm] = useState(() => currentYearMonth());
   const [accountFilter, setAccountFilter] = useState(null);   // account_id or null
 
   const [txns, setTxns]         = useState([]);
@@ -790,11 +795,25 @@ export function FinanceView({ scope }) {
     setLoading(true); setError(null);
     try {
       const prev = previousMonth(yearMonth);
+      // Two windows now, and the fetch has to cover both:
+      //  · chartMonths — fixed, ends at THIS month. The chart never moves.
+      //  · months12    — the browsed window. Every other history consumer
+      //                  (MoneyLeaks / RecurringTracker / forecast / emergency
+      //                  fund / debt payments) has always read this one, and
+      //                  still does — see `history12` below.
+      // They're identical while you're on the current month, which is the
+      // default; the union only widens when you browse away.
+      const chartMonths = cashflowWindow(todayYm);
       const months12 = lastNMonths(12, yearMonth);
-      const { startTs: startTrend } = getMonthBounds(months12[0]);
-      const { endTs:   endTrend   } = getMonthBounds(months12[months12.length - 1]);
+      const rangeFrom = chartMonths[0] < months12[0] ? chartMonths[0] : months12[0];
+      const chartLast = chartMonths[chartMonths.length - 1];
+      const viewLast  = months12[months12.length - 1];
+      const rangeTo   = chartLast > viewLast ? chartLast : viewLast;
+      const { startTs: startTrend } = getMonthBounds(rangeFrom);
+      const { endTs:   endTrend   } = getMonthBounds(rangeTo);
 
-      // Date range for debt payments (12 months of history + future for forecast)
+      // Date range for debt payments — deliberately still the BROWSED window,
+      // unchanged from before this batch.
       const { start: paymentStart } = getMonthBounds(months12[0]);
       const { end:   paymentEnd   } = getMonthBounds(months12[months12.length - 1]);
 
@@ -816,7 +835,7 @@ export function FinanceView({ scope }) {
         softly(listRecurring({ scope }), 'บิลประจำ'),
         // Server-side month totals (transfer-excluded, Bangkok) — null when
         // the RPC migration hasn't been run; trendData falls back below.
-        financeMonthSummary({ scope, fromYm: months12[0], toYm: months12[months12.length - 1] })
+        financeMonthSummary({ scope, fromYm: rangeFrom, toYm: rangeTo })
           .catch(() => null),
       ]);
 
@@ -845,7 +864,7 @@ export function FinanceView({ scope }) {
     } finally {
       if (myReq === reqSeq.current) setLoading(false);
     }
-  }, [yearMonth, scope]);
+  }, [yearMonth, scope, todayYm]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -891,9 +910,18 @@ export function FinanceView({ scope }) {
     // Prefer the SQL aggregate (immune to the PostgREST 1000-row cap);
     // fall back to paginated client aggregation when the RPC isn't installed.
     const agg = monthSummary || aggregateByMonth(trend12);
-    const months = lastNMonths(12, yearMonth);
-    return months.map(ym => agg.find(a => a.ym === ym) || { ym, income: 0, expense: 0, net: 0, savingsRate: 0, count: 0 });
-  }, [monthSummary, trend12, yearMonth]);
+    // Anchored to TODAY — not to `yearMonth`. This is the whole fix.
+    return cashflowSeries(agg, todayYm);
+  }, [monthSummary, trend12, todayYm]);
+
+  // The browsed 12-month history. `trend12` now spans the union of the chart
+  // window and the browsed window, so every consumer that used to mean "the
+  // browsed window" reads this instead — their inputs stay byte-identical to
+  // what they were before the chart window was pinned.
+  const history12 = useMemo(
+    () => filterToMonths(trend12, lastNMonths(12, yearMonth)),
+    [trend12, yearMonth],
+  );
 
   const categories = useMemo(() => aggregateByCategory(txns), [txns]);
   const top10      = useMemo(() => topExpenses(txns, 10),      [txns]);
@@ -904,7 +932,7 @@ export function FinanceView({ scope }) {
     // Same monthlyization the forecast uses — reading r.amount raw counted a
     // yearly bill twelve times over against a monthly average.
     const recurringTotal = monthlyRecurringTotal(recurring);
-    const trendAgg = aggregateByMonth(trend12).slice(-3);
+    const trendAgg = aggregateByMonth(history12).slice(-3);
     const avgIncome   = trendAgg.length ? trendAgg.reduce((s, x) => s + x.income, 0) / trendAgg.length : 0;
     const avgExpense  = trendAgg.length ? trendAgg.reduce((s, x) => s + x.expense, 0) / trendAgg.length : 0;
     const debtTotal   = debts.reduce((s, d) => s + Number(d.monthly_payment || 0), 0);
@@ -916,14 +944,14 @@ export function FinanceView({ scope }) {
       avgVariableExpense: Math.round(avgVariable),
       monthsAhead: 3,
     });
-  }, [recurring, debts, trend12]);
+  }, [recurring, debts, history12]);
 
   // Emergency fund coverage
   const emergencyFund = useMemo(() => {
-    const trendAgg = aggregateByMonth(trend12).slice(-3);
+    const trendAgg = aggregateByMonth(history12).slice(-3);
     const avgExpense = trendAgg.length ? trendAgg.reduce((s, x) => s + x.expense, 0) / trendAgg.length : thisSum.expense;
     return computeEmergencyFundCoverage(accounts, avgExpense);
-  }, [accounts, trend12, thisSum.expense]);
+  }, [accounts, history12, thisSum.expense]);
 
   const deltas = useMemo(() => {
     const pct = (cur, prev) => prev > 0 ? ((cur - prev) / prev) * 100 : (cur > 0 ? 100 : 0);
@@ -1052,10 +1080,10 @@ export function FinanceView({ scope }) {
         </div>
 
         {/* Row 2: Cash Flow chart */}
-        <CashFlowChart data={trendData} currentYm={yearMonth} onMonthClick={setYearMonth} />
+        <CashFlowChart data={trendData} selectedYm={yearMonth} currentYm={todayYm} onMonthClick={setYearMonth} />
 
         {/* Row 2b: Money Leaks / Insights */}
-        <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={trend12} debts={debts} allCategories={allCategories} />
+        <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts} allCategories={allCategories} />
 
         {/* Row 2c: Cash Flow Forecast 3 เดือนข้างหน้า */}
         <CashFlowForecastCard forecast={forecast} />
@@ -1073,7 +1101,7 @@ export function FinanceView({ scope }) {
         {/* historyTxns = 12-month window: the suggestion detector needs 2+
             months of history — feeding it the single viewed month meant
             suggestions could NEVER appear. Status checks still use txns. */}
-        <RecurringTracker recurring={recurring} transactions={txns} historyTxns={trend12}
+        <RecurringTracker recurring={recurring} transactions={txns} historyTxns={history12}
           yearMonth={yearMonth} scope={scope} onChange={refresh} />
 
         {/* Row 4b: Debt Tracker */}
