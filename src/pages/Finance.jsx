@@ -40,6 +40,10 @@ const DEFAULT_CATEGORIES = [
   { id: 'other',     label: 'อื่น ๆ',   icon: '📦', type: 'other' },
 ];
 const CUSTOM_CATS_KEY = 'loop:custom-categories';
+// The เงินรั่ว card's debt row is a link, not a drill-down: the detail behind
+// "ดอกเบี้ยหนี้ที่ยังต้องจ่าย" is a set of loans, and the Debt Tracker on this
+// same page already renders them properly. Jump there instead of duplicating it.
+export const DEBT_TRACKER_ANCHOR = 'loop-debt-tracker';
 
 function loadCustomCats() {
   try { return JSON.parse(localStorage.getItem(CUSTOM_CATS_KEY) || '[]'); }
@@ -768,6 +772,15 @@ export function FinanceView({ scope }) {
       return next;
     });
   }, []);
+  // Explicit user click only — never fired on load, so the "no auto-scroll"
+  // rule (which is about forms moving the page unbidden) is untouched.
+  const scrollToDebts = useCallback(() => {
+    const el = typeof document !== 'undefined' && document.getElementById(DEBT_TRACKER_ANCHOR);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
   const removeCategory = useCallback((id) => {
     setCustomCats(prev => {
       const next = prev.filter(c => c.id !== id);
@@ -1083,7 +1096,8 @@ export function FinanceView({ scope }) {
         <CashFlowChart data={trendData} selectedYm={yearMonth} currentYm={todayYm} onMonthClick={setYearMonth} />
 
         {/* Row 2b: Money Leaks / Insights */}
-        <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts} allCategories={allCategories} />
+        <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
+          allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts} />
 
         {/* Row 2c: Cash Flow Forecast 3 เดือนข้างหน้า */}
         <CashFlowForecastCard forecast={forecast} />
@@ -1104,14 +1118,16 @@ export function FinanceView({ scope }) {
         <RecurringTracker recurring={recurring} transactions={txns} historyTxns={history12}
           yearMonth={yearMonth} scope={scope} onChange={refresh} />
 
-        {/* Row 4b: Debt Tracker */}
-        <DebtTracker
-          debts={debts}
-          payments={debtPayments}
-          yearMonth={yearMonth}
-          scope={scope}
-          onChange={refresh}
-        />
+        {/* Row 4b: Debt Tracker — the เงินรั่ว debt row links here (v4.34) */}
+        <div id={DEBT_TRACKER_ANCHOR}>
+          <DebtTracker
+            debts={debts}
+            payments={debtPayments}
+            yearMonth={yearMonth}
+            scope={scope}
+            onChange={refresh}
+          />
+        </div>
 
         {/* Row 5: Net Worth + Emergency Fund + Heatmap */}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1.2fr', gap: 14 }}>

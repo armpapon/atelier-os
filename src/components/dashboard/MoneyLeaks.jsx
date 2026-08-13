@@ -1,94 +1,174 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  summarize, aggregateByCategory, detectRecurringFromTransactions, calculateDebtMath,
-} from '../../lib/api/finance.js';
+  buildLeakInsights, sumExpense, leakDateLabel, normalizeCategory,
+} from '../../lib/moneyLeaks.js';
 import { formatBaht } from './KPICard.jsx';
 import { Card, CardHeader } from '../ui/index.js';
 
-// ── Small UI bits ─────────────────────────────────────────────────────────────
-function LeakRow({ icon, title, detail, value, tone = 'var(--text-primary)' }) {
+// ── Drill-down: the transactions behind one insight ───────────────────────────
+function TxnList({ items = [], accountName, nested = false, extraMeta }) {
+  const total = sumExpense(items);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--hairline)' }}>
-      <span style={{
-        fontSize: 15, flexShrink: 0, width: 28, height: 28, borderRadius: '50%',
-        background: 'var(--fill)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>{icon}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13.5, color: 'var(--text-primary)', fontWeight: 500 }}>{title}</div>
-        {detail && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>{detail}</div>}
+    <div className={'leak-detail' + (nested ? ' leak-detail--nested' : '')}>
+      <div style={{
+        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
+        fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
+        color: 'var(--text-muted)', padding: '6px 0 8px',
+      }}>
+        <span>{items.length} รายการ</span>
+        <span>·</span>
+        <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>รวม {formatBaht(total)}</span>
+        {extraMeta && <><span>·</span><span>{extraMeta}</span></>}
       </div>
-      {value != null && (
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 600, color: tone, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+
+      {items.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: 'var(--text-muted)', paddingBottom: 4 }}>
+          ไม่มีรายการที่จับคู่ได้
+        </div>
+      ) : (
+        <div className="leak-detail__scroll">
+          {items.map((t, i) => {
+            const acc = accountName?.(t);
+            return (
+              <div key={t.id ?? i} style={{
+                display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                gap: 10, alignItems: 'baseline', padding: '6px 0',
+                borderTop: i === 0 ? 'none' : '1px solid var(--hairline)',
+              }}>
+                <span style={{
+                  fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)',
+                  whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
+                }}>{leakDateLabel(t.occurred_at)}</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{
+                    display: 'block', fontSize: 12.5, color: 'var(--text-primary)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>{t.title || '(ไม่มีชื่อรายการ)'}</span>
+                  <span style={{
+                    display: 'block', fontFamily: 'var(--f-mono)', fontSize: 10,
+                    color: 'var(--text-muted)', overflow: 'hidden',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {normalizeCategory(t.category)}{acc ? ` · ${acc}` : ''}
+                  </span>
+                </span>
+                <span style={{
+                  fontFamily: 'var(--f-mono)', fontSize: 12.5, fontWeight: 600,
+                  color: 'var(--text-primary)', whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>{formatBaht(Math.abs(Number(t.amount) || 0))}</span>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
+// ── One insight row. A real <button> when it can be opened, so Enter/Space,
+//    focus-visible and screen-reader semantics all come from the platform. ──
+function LeakRow({
+  id, icon, title, detail, value, tone = 'var(--text-primary)',
+  onActivate, expanded = false, chevron = '›', nested = false, children,
+}) {
+  const body = (
+    <>
+      <span style={{
+        fontSize: nested ? 13 : 15, flexShrink: 0,
+        width: nested ? 22 : 28, height: nested ? 22 : 28, borderRadius: '50%',
+        background: nested ? 'transparent' : 'var(--fill-2)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{icon}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{
+          display: 'block', fontSize: nested ? 12.5 : 13.5,
+          color: 'var(--text-primary)', fontWeight: 500,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{title}</span>
+        {detail && (
+          <span style={{
+            display: 'block', fontFamily: 'var(--f-mono)', fontSize: 10.5,
+            color: 'var(--text-muted)', marginTop: 2,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{detail}</span>
+        )}
+      </span>
+      {value != null && (
+        <span style={{
+          fontFamily: 'var(--f-mono)', fontSize: nested ? 12.5 : 14, fontWeight: 600,
+          color: tone, flexShrink: 0, fontVariantNumeric: 'tabular-nums',
+        }}>{value}</span>
+      )}
+    </>
+  );
+
+  if (!onActivate) {
+    return (
+      <div className="leak-row" style={{ cursor: 'default' }} data-leak-row={id}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="leak-row focus-ring"
+        data-leak-row={id}
+        aria-expanded={children !== undefined ? expanded : undefined}
+        aria-controls={children !== undefined ? `leak-panel-${id}` : undefined}
+        onClick={onActivate}
+      >
+        {body}
+        <span className="leak-row__chev" aria-hidden="true">{chevron}</span>
+      </button>
+      {children !== undefined && expanded && (
+        <div id={`leak-panel-${id}`} role="region" data-leak-detail={id}>
+          {children}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── Money Leaks / Insights ─────────────────────────────────────────────────────
-export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [], allCategories = [] }) {
-  // aggregateByCategory groups on `transaction.category` — the Thai LABEL —
-  // while this map was keyed by category id, so every lookup missed and every
-  // icon fell back to 📦. Key by label, and fall back to the row's `type`.
-  const catOf = useMemo(() => {
+export function MoneyLeaks({
+  txns = [], prevTxns = [], trend12 = [], debts = [], allCategories = [],
+  accounts = [], onOpenDebts,
+}) {
+  // Icons only. The DISPLAY LABEL is the transaction's own category — see the
+  // header comment in lib/moneyLeaks.js for why resolving it through this map
+  // used to render 'กาแฟ' as a second 'อาหาร' row.
+  const iconOf = useMemo(() => {
     const byLabel = {}, byType = {};
     for (const c of allCategories) {
-      byLabel[c.label] = c;
-      if (c.type && !byType[c.type]) byType[c.type] = c;
+      if (c?.label) byLabel[c.label] = c.icon;
+      if (c?.type && !byType[c.type]) byType[c.type] = c.icon;
     }
-    return { byLabel, byType };
+    return (g) => byLabel[g?.category] || byType[g?.type] || '📦';
   }, [allCategories]);
-  const lookup = (row) => {
-    if (!row) return null;
-    const key = typeof row === 'string' ? row : row.category;
-    return catOf.byLabel[key] || (row && row.type ? catOf.byType[row.type] : null) || null;
-  };
-  const label = (row) => lookup(row)?.label || (typeof row === 'string' ? row : row?.category) || 'อื่น ๆ';
-  const icon  = (row) => lookup(row)?.icon || '📦';
 
-  const insights = useMemo(() => {
-    const thisSum = summarize(txns);
-    const prevSum = summarize(prevTxns);
-    const srDelta = thisSum.savingsRate - prevSum.savingsRate;
+  const accountName = useMemo(() => {
+    const byId = {};
+    for (const a of accounts) if (a?.id) byId[a.id] = a.name;
+    return (t) => (t?.account_id ? byId[t.account_id] : null) || null;
+  }, [accounts]);
 
-    // 1) Lifestyle creep — categories that grew vs last month
-    const thisCat = aggregateByCategory(txns);
-    const prevMap = {};
-    for (const c of aggregateByCategory(prevTxns)) prevMap[c.category] = c.amount;
-    const creep = thisCat
-      .map(c => ({ ...c, delta: c.amount - (prevMap[c.category] || 0) }))
-      .filter(c => c.delta >= 300 && prevSum.expense > 0)
-      .sort((a, b) => b.delta - a.delta)
-      .slice(0, 3);
+  const insights = useMemo(
+    () => buildLeakInsights({ txns, prevTxns, trend12, debts }),
+    [txns, prevTxns, trend12, debts],
+  );
 
-    // 2) Small-but-frequent — many transactions in a category
-    const frequent = thisCat
-      .filter(c => c.count >= 6)
-      .map(c => ({ ...c, avg: c.amount / c.count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 2);
+  const [openRow, setOpenRow] = useState(null);
+  const [openSub, setOpenSub] = useState(null);
+  const toggle = (id) => setOpenRow(cur => (cur === id ? null : id));
 
-    // 3) Subscriptions / recurring charges (detected across 12 months)
-    const recurring = detectRecurringFromTransactions(trend12).slice(0, 4);
-    const recurringTotal = recurring.reduce((s, r) => s + r.avgAmount, 0);
-
-    // 4) Debt interest leak
-    const activeDebts = debts.filter(d => d.is_active !== false);
-    let remainingInterest = 0;
-    let worst = null; // highest interest rate
-    for (const d of activeDebts) {
-      const math = calculateDebtMath(d);
-      remainingInterest += math.remainingInterest || 0;
-      const rate = Number(d.interest_rate || 0);
-      if (rate > 0 && (!worst || rate > Number(worst.interest_rate || 0))) worst = d;
-    }
-
-    // Top spending categories overall
-    const topCats = thisCat.slice(0, 5);
-
-    return { thisSum, prevSum, srDelta, creep, frequent, recurring, recurringTotal, remainingInterest, worst, topCats };
-  }, [txns, prevTxns, trend12, debts]);
-
-  const { thisSum, srDelta, creep, frequent, recurring, recurringTotal, remainingInterest, worst, topCats } = insights;
+  const {
+    thisSum, srDelta, creep, frequent, recurring, recurringTotal,
+    remainingInterest, worst, topCats,
+  } = insights;
 
   if (!txns.length) {
     return (
@@ -102,11 +182,14 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
   }
 
   const srColor = thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--accent)' : 'var(--danger)';
+  const nothingFlagged = creep.length === 0 && frequent.length === 0
+    && recurring.length === 0 && remainingInterest === 0;
 
   return (
     <Card>
       <CardHeader
         title="เงินรั่ว · Insights"
+        meta="แตะแถวไหนก็ได้เพื่อดูว่าตัวเลขนั้นมาจากรายการอะไรบ้าง"
         action={
           <span style={{
             fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.14em',
@@ -133,45 +216,98 @@ export function MoneyLeaks({ txns = [], prevTxns = [], trend12 = [], debts = [],
 
       <div style={{ marginTop: 10 }}>
         {/* Lifestyle creep */}
-        {creep.length > 0 && creep.map(c => (
-          <LeakRow key={'creep-' + c.category} icon={icon(c)}
-            title={`${label(c)} — โตขึ้นจากเดือนก่อน`}
-            detail={`เดือนนี้ ${formatBaht(c.amount)} · ${c.count} รายการ`}
-            value={`+${formatBaht(c.delta)}`} tone="var(--danger)" />
-        ))}
+        {creep.map(c => {
+          const id = 'creep-' + c.key;
+          return (
+            <LeakRow key={id} id={id} icon={iconOf(c)}
+              title={`${c.category} — โตขึ้นจากเดือนก่อน`}
+              detail={`เดือนนี้ ${formatBaht(c.amount)} · ${c.count} รายการ`}
+              value={`+${formatBaht(c.delta)}`} tone="var(--danger)"
+              expanded={openRow === id} onActivate={() => toggle(id)}>
+              <TxnList items={c.txns} accountName={accountName} />
+            </LeakRow>
+          );
+        })}
 
-        {/* Subscriptions */}
-        {recurring.length > 0 && (
-          <LeakRow icon="🔁"
-            title={`บิล/subscription ซ้ำ ${recurring.length} รายการ`}
-            detail={recurring.map(r => r.title).slice(0, 3).join(' · ')}
-            value={`${formatBaht(recurringTotal)}/ด`} tone="var(--accent-strong)" />
-        )}
+        {/* Subscriptions — the summary row opens the four bills, and each bill
+            opens its own charges across the 12-month window. */}
+        {recurring.length > 0 && (() => {
+          const id = 'subs';
+          return (
+            <LeakRow key={id} id={id} icon="🔁"
+              title={`บิล/subscription ซ้ำ ${recurring.length} รายการ`}
+              detail={recurring.map(r => r.title).slice(0, 3).join(' · ')}
+              value={`${formatBaht(recurringTotal)}/ด`} tone="var(--accent-strong)"
+              expanded={openRow === id} onActivate={() => toggle(id)}>
+              <div className="leak-detail">
+                <div style={{
+                  fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
+                  color: 'var(--text-muted)', padding: '6px 0 4px',
+                }}>
+                  {recurring.length} รายการ · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
+                </div>
+                {recurring.map((r, i) => {
+                  const subId = `${id}-${i}`;
+                  const charges = r.txns || [];
+                  const paid = sumExpense(charges);
+                  return (
+                    <LeakRow key={subId} id={subId} nested icon="•"
+                      title={r.title}
+                      detail={`${r.monthsCount} เดือน · จ่ายไปแล้ว ${formatBaht(paid)}`}
+                      value={`${formatBaht(r.avgAmount)}/ด`}
+                      expanded={openSub === subId}
+                      onActivate={() => setOpenSub(cur => (cur === subId ? null : subId))}>
+                      <TxnList items={charges} accountName={accountName} nested
+                        extraMeta={`เฉลี่ย ${formatBaht(r.avgAmount)}/ครั้ง`} />
+                    </LeakRow>
+                  );
+                })}
+              </div>
+            </LeakRow>
+          );
+        })()}
 
         {/* Small but frequent */}
-        {frequent.map(c => (
-          <LeakRow key={'freq-' + c.category} icon="☕"
-            title={`${label(c)} — เล็กแต่ถี่`}
-            detail={`${c.count} ครั้ง · เฉลี่ย ${formatBaht(c.avg)}/ครั้ง`}
-            value={formatBaht(c.amount)} />
-        ))}
+        {frequent.map(c => {
+          const id = 'freq-' + c.key;
+          return (
+            <LeakRow key={id} id={id} icon="☕"
+              title={`${c.category} — เล็กแต่ถี่`}
+              detail={`${c.count} ครั้ง · เฉลี่ย ${formatBaht(c.avg)}/ครั้ง`}
+              value={formatBaht(c.amount)}
+              expanded={openRow === id} onActivate={() => toggle(id)}>
+              <TxnList items={c.txns} accountName={accountName} />
+            </LeakRow>
+          );
+        })}
 
-        {/* Debt interest */}
+        {/* Debt interest — its detail is a debt, not a set of transactions,
+            so this one jumps to the Debt Tracker card instead of expanding. */}
         {remainingInterest > 0 && (
-          <LeakRow icon="🏦"
+          <LeakRow id="debt" icon="🏦"
             title="ดอกเบี้ยหนี้ที่ยังต้องจ่าย"
-            detail={worst ? `ถล่มก้อนดอกสูงสุดก่อน: ${worst.name} (${Number(worst.interest_rate).toFixed(1)}%)` : 'รวมทุกก้อน'}
-            value={formatBaht(remainingInterest)} tone="var(--danger)" />
+            detail={worst
+              ? `ถล่มก้อนดอกสูงสุดก่อน: ${worst.name} (${Number(worst.interest_rate).toFixed(1)}%) → ไปที่ตารางหนี้`
+              : 'รวมทุกก้อน → ไปที่ตารางหนี้'}
+            value={formatBaht(remainingInterest)} tone="var(--danger)"
+            chevron="↓"
+            onActivate={onOpenDebts} />
         )}
 
         {/* Fallback: top categories if nothing flagged */}
-        {creep.length === 0 && frequent.length === 0 && recurring.length === 0 && remainingInterest === 0 && (
+        {nothingFlagged && (
           <>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', margin: '4px 0 6px' }}>หมวดที่ใช้มากสุดเดือนนี้</div>
-            {topCats.map(c => (
-              <LeakRow key={'top-' + c.category} icon={icon(c)} title={label(c)}
-                detail={`${c.count} รายการ`} value={formatBaht(c.amount)} />
-            ))}
+            {topCats.map(c => {
+              const id = 'top-' + c.key;
+              return (
+                <LeakRow key={id} id={id} icon={iconOf(c)} title={c.category}
+                  detail={`${c.count} รายการ`} value={formatBaht(c.amount)}
+                  expanded={openRow === id} onActivate={() => toggle(id)}>
+                  <TxnList items={c.txns} accountName={accountName} />
+                </LeakRow>
+              );
+            })}
           </>
         )}
       </div>

@@ -168,6 +168,40 @@
   border-radius: var(--radius-field);
 }
 
+/* ── เงินรั่ว · Insights — tappable rows + inline drill-down (v4.34) ────── */
+/* Repeats 4-9× inside one card and needs :hover/:active, which inline
+   styles cannot express. Tokens only — light and dark both come free. */
+.leak-row {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 11px 8px 11px 0; margin: 0;
+  background: transparent; border: 0;
+  border-bottom: 1px solid var(--hairline);
+  color: inherit; font: inherit; text-align: left;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background 120ms ease;
+}
+.leak-row:hover  { background: var(--fill); }
+.leak-row:active { background: var(--fill-2); }
+.leak-row[aria-expanded='true'] { background: var(--fill); }
+.leak-row[aria-expanded='true'] { border-bottom-color: transparent; }
+.leak-row__chev {
+  flex-shrink: 0; color: var(--text-muted); font-size: 11px; line-height: 1;
+  transition: transform 160ms ease;
+}
+.leak-row[aria-expanded='true'] .leak-row__chev { transform: rotate(90deg); }
+
+.leak-detail {
+  padding: 2px 8px 14px 40px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--fill);
+}
+.leak-detail--nested { padding: 2px 0 8px 22px; background: transparent; border-bottom: 0; }
+@media (max-width: 520px) {
+  .leak-detail { padding-left: 12px; }
+  .leak-detail--nested { padding-left: 10px; }
+}
+.leak-detail__scroll { max-height: 264px; overflow-y: auto; overscroll-behavior: contain; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
