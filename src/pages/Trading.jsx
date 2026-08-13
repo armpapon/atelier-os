@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { TradeForm } from '../components/TradeForm.jsx';
-import { TradeImporter } from '../components/trading/TradeImporter.jsx';
 import { TradingPlaybook } from '../components/trading/TradingPlaybook.jsx';
 import { MissionDashboard } from '../components/trading/MissionDashboard.jsx';
 import { PnLCalendar } from '../components/trading/PnLCalendar.jsx';
@@ -30,12 +29,14 @@ export function Trading() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing]   = useState(null);
   const [viewing, setViewing]   = useState(null);
-  const [importerOpen, setImporterOpen] = useState(false);
 
   // Filters
   const [filtSession, setFiltSession] = useState('all');
   const [filtSetup,   setFiltSetup]   = useState('all');
   const [filtResult,  setFiltResult]  = useState('all');
+  // Legacy ICT trades (system = null) mix into every stat below unless scoped
+  // out. Default OFF — page is HA-50 by design, ICT is dead history.
+  const [showLegacy,  setShowLegacy]  = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -53,15 +54,23 @@ export function Trading() {
     return () => unsub();
   }, [user?.id, refresh]);
 
-  const sessions = useMemo(() => ['all', ...new Set(trades.map(t => t.session).filter(Boolean))], [trades]);
-  const setups   = useMemo(() => ['all', ...new Set(trades.map(t => t.setup).filter(Boolean))], [trades]);
+  // scopedTrades feeds every downstream consumer on this page (KPI row, equity
+  // curve, key metrics, PnLCalendar, trade log, filter-pill options). Only
+  // MissionDashboard bypasses this and gets the raw `trades` array — it does
+  // its own HA-50 filtering.
+  const scopedTrades = useMemo(() =>
+    showLegacy ? trades : trades.filter(t => t.system === 'HA-50'),
+  [trades, showLegacy]);
+
+  const sessions = useMemo(() => ['all', ...new Set(scopedTrades.map(t => t.session).filter(Boolean))], [scopedTrades]);
+  const setups   = useMemo(() => ['all', ...new Set(scopedTrades.map(t => t.setup).filter(Boolean))], [scopedTrades]);
   const results  = useMemo(() => ['all', 'WIN', 'LOSS', 'BREAKEVEN', 'OPEN'], []);
 
-  const filtered = useMemo(() => trades.filter(t =>
+  const filtered = useMemo(() => scopedTrades.filter(t =>
     (filtSession === 'all' || t.session === filtSession) &&
     (filtSetup   === 'all' || t.setup   === filtSetup) &&
     (filtResult  === 'all' || t.status  === filtResult)
-  ), [trades, filtSession, filtSetup, filtResult]);
+  ), [scopedTrades, filtSession, filtSetup, filtResult]);
 
   const stats = useMemo(() => computeStats(filtered), [filtered]);
 
@@ -87,19 +96,20 @@ export function Trading() {
 
   const latestBalance = equityPoints.length > 0 ? equityPoints[equityPoints.length - 1].equity : 0;
 
-  // Today's stats for Playbook
+  // Today's stats for Playbook — scoped the same way as the rest of the page,
+  // since this is about today's live HA-50 trading, not legacy ICT history.
   const today = todayStr();
-  const tradesToday  = trades.filter(t => t.trade_date === today).length;
+  const tradesToday  = scopedTrades.filter(t => t.trade_date === today).length;
   // Losing streak WITHIN TODAY only. Counting all-time meant the "แพ้ 3 ไม้ติด
   // ปิดจอ" block stayed red for days after the losses happened.
   const lossesInRow  = useMemo(() => {
-    const todays = trades
+    const todays = scopedTrades
       .filter(t => t.trade_date === today)
       .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
     let cnt = 0;
     for (const t of todays) { if (t.status === 'LOSS') cnt++; else break; }
     return cnt;
-  }, [trades, today]);
+  }, [scopedTrades, today]);
 
   return (
     <div className="page-body" style={{ padding: isMobile ? '16px 14px 40px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -115,16 +125,11 @@ export function Trading() {
             </div>
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 5 }}>
-            XAUUSD · 1h · Mission 30 ไม้ · London–NY 14:00–23:00
+            XAUUSD · 1h · Mission 30 ไม้ · 08:00–23:00 น.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button variant="ghost"     onClick={refresh}>🔄 Refresh</Button>
-          <a href="/playbook.html" target="_blank" rel="noreferrer"
-            style={{ textDecoration: 'none' }}>
-            <Button variant="ghost" type="button">📖 Playbook</Button>
-          </a>
-          <Button variant="secondary" onClick={() => setImporterOpen(true)}>📊 Import Excel</Button>
           <Button variant="primary"   onClick={() => setFormOpen(true)}>+ Log Trade</Button>
         </div>
       </div>
@@ -141,13 +146,12 @@ export function Trading() {
       {/* Playbook — session window + rules + checklist */}
       <TradingPlaybook tradesToday={tradesToday} lossesInRow={lossesInRow} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(5, 1fr)', gap: isMobile ? 10 : 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 12 }}>
         <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} />
         <KPI label="Win Rate"        value={`${stats.winRate}%`}
           color={stats.winRate >= 50 ? 'var(--success)' : 'var(--accent-strong)'} />
         <KPI label="Total P&L"       value={`${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}`}
           color={stats.totalPnl >= 0 ? 'var(--success)' : 'var(--danger)'} />
-        <KPI label="Avg RR"          value={stats.avgRR == null ? '—' : `1:${stats.avgRR.toFixed(1)}`} />
         <KPI label="Account Balance" value={`$${latestBalance.toFixed(2)}`}
           color="var(--accent-strong)" />
       </div>
@@ -163,6 +167,23 @@ export function Trading() {
           <FilterPills label="Setup"   value={filtSetup}   onChange={setFiltSetup}   options={setups} />
           <span style={{ color: 'var(--border-strong)' }}>·</span>
           <FilterPills label="Result"  value={filtResult}  onChange={setFiltResult}  options={results} />
+          <span style={{ color: 'var(--border-strong)' }}>·</span>
+          <button onClick={() => setShowLegacy(v => !v)} className="focus-ring"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 'var(--radius-pill)',
+              background: showLegacy ? 'var(--accent-soft)' : 'var(--surface)',
+              color: showLegacy ? 'var(--accent-strong)' : 'var(--text-secondary)',
+              border: '1px solid ' + (showLegacy ? 'var(--accent)' : 'var(--border)'),
+              fontSize: 11, fontFamily: 'var(--f-mono)', cursor: 'pointer',
+            }}>
+            <span style={{
+              width: 10, height: 10, borderRadius: 3,
+              border: '1px solid ' + (showLegacy ? 'var(--accent-strong)' : 'var(--border-strong)'),
+              background: showLegacy ? 'var(--accent-strong)' : 'transparent',
+            }} />
+            แสดงไม้เก่า (ICT)
+          </button>
           {(filtSession !== 'all' || filtSetup !== 'all' || filtResult !== 'all') && (
             <Button variant="ghost" size="sm" onClick={() => { setFiltSession('all'); setFiltSetup('all'); setFiltResult('all'); }}
               style={{ marginLeft: 'auto' }}>× Clear</Button>
@@ -198,14 +219,12 @@ export function Trading() {
 
         {filtered.length === 0 ? (
           <EmptyState icon="📈"
-            title={trades.length === 0 ? 'ยังไม่มี trade' : 'ไม่เจอ trade ที่ตรง filter'}
-            description={trades.length === 0
-              ? 'Import จาก Excel (Trading-Journal-2026.xlsx) หรือ Log Trade เอง'
+            title={scopedTrades.length === 0 ? 'ยังไม่มี trade' : 'ไม่เจอ trade ที่ตรง filter'}
+            description={scopedTrades.length === 0
+              ? 'เริ่มบันทึก trade แรกของคุณ'
               : 'ลองล้าง filter หรือเลือก option อื่น'}
-            actionLabel={trades.length === 0 ? '📊 Import จาก Excel' : '× Clear filters'}
-            onAction={trades.length === 0 ? () => setImporterOpen(true) : () => { setFiltSession('all'); setFiltSetup('all'); setFiltResult('all'); }}
-            secondaryLabel={trades.length === 0 ? '+ Log Trade' : null}
-            onSecondary={trades.length === 0 ? () => setFormOpen(true) : null}
+            actionLabel={scopedTrades.length === 0 ? '+ Log Trade' : '× Clear filters'}
+            onAction={scopedTrades.length === 0 ? () => setFormOpen(true) : () => { setFiltSession('all'); setFiltSetup('all'); setFiltResult('all'); }}
           />
         ) : (
           <TradeTable trades={filtered} onView={setViewing}
@@ -215,7 +234,6 @@ export function Trading() {
 
       {formOpen && <TradeForm open onClose={() => setFormOpen(false)} onSaved={() => { setFormOpen(false); refresh(); }} />}
       {editing && <TradeForm open initialTrade={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
-      {importerOpen && <TradeImporter onImported={refresh} onClose={() => setImporterOpen(false)} />}
       {viewing && <TradeDetailDrawer trade={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); }} />}
     </div>
   );
