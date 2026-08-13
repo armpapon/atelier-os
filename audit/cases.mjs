@@ -50,6 +50,11 @@ import {
   cashflowWindow, cashflowSeries, savingsRate, pctDelta, monthReadout,
   resolveSelection, filterToMonths, compactBaht, chartGeometry, barPath,
 } from '../src/lib/cashflow.js';
+import {
+  normalizeCategory, categoryKey, sortNewestFirst, sumExpense, leakDateLabel,
+  groupExpensesByCategory, buildLeakInsights,
+  CREEP_MIN_DELTA, FREQUENT_MIN_COUNT, OTHER_CATEGORY,
+} from '../src/lib/moneyLeaks.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
 let pass = 0, fail = 0;
@@ -2978,6 +2983,223 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
 
   check('… และตัดเดือนที่อยู่นอกหน้าต่างที่กำลังดูออกจริง',
     filterToMonths(rows, ['2025-01']).map(r => r.id).join(',') === 'c');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.34 · เงินรั่ว · Insights — drill-down rows + the duplicate-label defect
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const ts = (ymd, hh = '05') => `${ymd}T${hh}:00:00Z`;
+  const exp = (id, ymd, amount, category, type, extra = {}) =>
+    ({ id, occurred_at: ts(ymd), amount, category, type, title: id, ...extra });
+
+  section('v4.34 · จัดกลุ่มหมวด — คีย์รวม, ป้ายที่แยกจากกันได้จริง');
+
+  check('ช่องว่างหัวท้าย/ซ้ำ และตัวพิมพ์ใหญ่-เล็ก รวมเป็นกลุ่มเดียว',
+    (() => {
+      const g = groupExpensesByCategory([
+        exp('a', '2026-08-01', -100, 'อาหาร', 'food'),
+        exp('b', '2026-08-02', -100, '  อาหาร ', 'food'),
+        exp('c', '2026-08-03', -100, 'อาหาร  ', 'food'),
+        exp('d', '2026-08-04', -50, 'Grab', 'transport'),
+        exp('e', '2026-08-05', -50, 'grab', 'transport'),
+      ]);
+      return g.length === 2 && g[0].category === 'อาหาร' && g[0].count === 3
+        && g[1].category === 'Grab' && g[1].count === 2;
+    })());
+
+  check('หมวดว่าง/ไม่มี → "อื่น ๆ" กลุ่มเดียว',
+    (() => {
+      const g = groupExpensesByCategory([
+        exp('a', '2026-08-01', -10, '', 'other'),
+        exp('b', '2026-08-02', -10, null, 'other'),
+        exp('c', '2026-08-03', -10, '   ', 'other'),
+      ]);
+      return g.length === 1 && g[0].category === OTHER_CATEGORY && g[0].count === 3;
+    })(),
+    normalizeCategory('  ') + ' / ' + categoryKey(' อาหาร '));
+
+  check('รายรับและรายการโอนสกอปไม่ถูกนับเป็นรายจ่าย',
+    (() => {
+      const g = groupExpensesByCategory([
+        exp('a', '2026-08-01', -100, 'อาหาร', 'food'),
+        exp('b', '2026-08-02', 5000, 'รายรับ', 'income'),
+        { id: 'c', occurred_at: ts('2026-08-03'), amount: -9999, category: 'โอนภายใน', type: 'transfer' },
+      ]);
+      return g.length === 1 && g[0].amount === 100;
+    })());
+
+  check('รายการในกลุ่มเรียงใหม่สุดก่อน และผลรวมของรายการ = ยอดที่โชว์',
+    (() => {
+      const g = groupExpensesByCategory([
+        exp('old', '2026-08-01', -100, 'อาหาร', 'food'),
+        exp('new', '2026-08-20', -300, 'อาหาร', 'food'),
+        exp('mid', '2026-08-10', -200, 'อาหาร', 'food'),
+      ])[0];
+      return g.txns.map(t => t.id).join(',') === 'new,mid,old'
+        && sumExpense(g.txns) === g.amount && g.txns.length === g.count;
+    })());
+
+  check('sortNewestFirst ไม่แก้อาร์เรย์ต้นฉบับ และตัดสินเสมอด้วย id',
+    (() => {
+      const src = [exp('b', '2026-08-01', -1, 'x', 'other'), exp('a', '2026-08-01', -1, 'x', 'other')];
+      const out = sortNewestFirst(src);
+      return src[0].id === 'b' && out.map(t => t.id).join(',') === 'a,b';
+    })());
+
+  section('v4.34 · บั๊ก "อาหาร — เล็กแต่ถี่" โผล่สองแถว');
+
+  // The owner's screenshot: 27 ครั้ง เฉลี่ย ฿185 and 12 ครั้ง เฉลี่ย ฿99, both
+  // titled "อาหาร". Root cause: 'กาแฟ' is written by the importers
+  // (autoCategorize / kbankPdfParser) but is NOT in the category picker, so
+  // the card's label lookup missed and fell back to the first category with
+  // the same `type` — 'food' → 'อาหาร'. Two groups, one visible name.
+  {
+    const food   = Array.from({ length: 27 }, (_, i) => exp('f' + i, '2026-08-' + String((i % 28) + 1).padStart(2, '0'), -185, 'อาหาร', 'food'));
+    const coffee = Array.from({ length: 12 }, (_, i) => exp('c' + i, '2026-08-' + String((i % 28) + 1).padStart(2, '0'), -99, 'กาแฟ', 'food'));
+    const ins = buildLeakInsights({ txns: [...food, ...coffee], prevTxns: [], trend12: [], debts: [] });
+
+    check('สองหมวดที่ type เดียวกันยังคงเป็นสองแถวที่ชื่อ "ต่างกัน" ไม่ใช่ "อาหาร" ซ้ำสองครั้ง',
+      ins.frequent.length === 2
+      && new Set(ins.frequent.map(f => f.category)).size === 2
+      && ins.frequent.map(f => f.category).sort().join('|') === 'กาแฟ|อาหาร',
+      ins.frequent.map(f => `${f.category}(${f.count})`).join(' + '));
+
+    check('ตัวเลขของแต่ละแถวยังตรงกับที่ผู้ใช้เห็นในสกรีนช็อต',
+      (() => {
+        const byCat = Object.fromEntries(ins.frequent.map(f => [f.category, f]));
+        return byCat['อาหาร'].count === 27 && Math.round(byCat['อาหาร'].avg) === 185
+          && byCat['กาแฟ'].count === 12 && Math.round(byCat['กาแฟ'].avg) === 99;
+      })());
+
+    check('… และไม่มีรายการไหนหลุดข้ามหมวด — ทุกใบในแถวเป็นหมวดของแถวนั้นล้วน',
+      ins.frequent.every(f => f.txns.every(t => categoryKey(t.category) === f.key)));
+  }
+
+  section('v4.34 · ทุกแถวพกรายการที่ประกอบเป็นตัวเลขของตัวเอง');
+
+  const thisMonth = [
+    ...Array.from({ length: 6 }, (_, i) => exp('food' + i, '2026-08-0' + (i + 1), -200, 'อาหาร', 'food')),
+    ...Array.from({ length: 7 }, (_, i) => exp('cof' + i, '2026-08-1' + i, -100, 'กาแฟ', 'food')),
+    exp('shop1', '2026-08-20', -5000, 'ช้อปปิ้ง', 'shop'),
+    { id: 'inc', occurred_at: ts('2026-08-25'), amount: 50000, category: 'รายรับ', type: 'income', title: 'เงินเดือน' },
+  ];
+  const lastMonth = [
+    exp('pshop', '2026-07-10', -1000, 'ช้อปปิ้ง', 'shop'),
+    exp('pfood', '2026-07-11', -900, 'อาหาร', 'food'),
+    { id: 'pinc', occurred_at: ts('2026-07-25'), amount: 50000, category: 'รายรับ', type: 'income', title: 'เงินเดือน' },
+  ];
+  const leaks = buildLeakInsights({ txns: thisMonth, prevTxns: lastMonth, trend12: [], debts: [] });
+
+  check('creep · ผลรวมของรายการที่กดดู = ยอด "เดือนนี้" ที่โชว์บนแถว ทุกแถว',
+    leaks.creep.length === 3
+    && leaks.creep.every(c => sumExpense(c.txns) === c.amount && c.txns.length === c.count),
+    leaks.creep.map(c => `${c.category}:${c.amount}/${sumExpense(c.txns)}`).join(' '));
+
+  check('creep · เดลต้าคิดจากหมวดเดียวกันของเดือนก่อน และเรียงตัวโตสุดก่อน',
+    leaks.creep[0].category === 'ช้อปปิ้ง' && leaks.creep[0].delta === 4000
+    && leaks.creep[1].category === 'กาแฟ'   && leaks.creep[1].delta === 700
+    && leaks.creep[2].category === 'อาหาร'  && leaks.creep[2].delta === CREEP_MIN_DELTA,
+    leaks.creep.map(c => `${c.category}+${c.delta}`).join(' '));
+
+  check('frequent · เข้าเกณฑ์เมื่อ ≥ 6 ครั้ง และผลรวมรายการ = ยอดบนแถว',
+    leaks.frequent.length === 2
+    && leaks.frequent.every(f => f.count >= FREQUENT_MIN_COUNT
+      && sumExpense(f.txns) === f.amount
+      && Math.abs(f.avg - f.amount / f.count) < 1e-9),
+    leaks.frequent.map(f => `${f.category}:${f.count}`).join(' '));
+
+  check('หมวดที่ถูกกันออกเพราะยังไม่ถึงเกณฑ์ ก็ไม่โผล่มาเป็นแถว',
+    !leaks.frequent.some(f => f.category === 'ช้อปปิ้ง'));
+
+  check('topCats (ตอนไม่มีอะไรเข้าเกณฑ์) ก็พกรายการมาด้วยเหมือนกัน',
+    leaks.topCats.length === 3
+    && leaks.topCats[0].category === 'ช้อปปิ้ง'
+    && leaks.topCats.every(c => sumExpense(c.txns) === c.amount));
+
+  section('v4.34 · บิล/subscription — กดดูได้ทีละรายการ');
+
+  const months = ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02',
+    '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'];
+  const trend = [
+    ...months.map((ym, i) => ({ id: 'nf' + i, occurred_at: ts(ym + '-05'), amount: -419, category: 'บันเทิง', type: 'other', title: 'Netflix' })),
+    ...months.slice(6).map((ym, i) => ({ id: 'sp' + i, occurred_at: ts(ym + '-09'), amount: -199, category: 'บันเทิง', type: 'other', title: 'Spotify' })),
+    { id: 'once', occurred_at: ts('2026-08-11'), amount: -1500, category: 'ช้อปปิ้ง', type: 'shop', title: 'เก้าอี้' },
+  ];
+  const subs = buildLeakInsights({ txns: thisMonth, prevTxns: lastMonth, trend12: trend, debts: [] });
+
+  check('เจอบิลซ้ำสองรายการ และรายการที่เกิดครั้งเดียวไม่ถูกนับเป็นบิล',
+    subs.recurring.length === 2
+    && subs.recurring.map(r => r.title).join(',') === 'Netflix,Spotify',
+    subs.recurring.map(r => `${r.title}:${r.avgAmount}`).join(' '));
+
+  check('subscription · ค่าเฉลี่ยของรายการที่กดดู = ตัวเลขบนแถวนั้นเป๊ะ ๆ',
+    subs.recurring.every(r => r.txns.length > 0
+      && Math.round(sumExpense(r.txns) / r.txns.length) === r.avgAmount),
+    subs.recurring.map(r => `${r.title} ${sumExpense(r.txns)}/${r.txns.length}→${r.avgAmount}`).join(' · '));
+
+  check('subscription · แต่ละรายการพกเฉพาะใบเรียกเก็บของตัวเอง เรียงใหม่สุดก่อน',
+    (() => {
+      const nf = subs.recurring.find(r => r.title === 'Netflix');
+      const sp = subs.recurring.find(r => r.title === 'Spotify');
+      const desc = (a) => a.every((t, i) => i === 0 || a[i - 1].occurred_at >= t.occurred_at);
+      return nf.txns.length === 12 && nf.txns.every(t => t.title === 'Netflix') && desc(nf.txns)
+        && sp.txns.length === 6 && sp.txns.every(t => t.title === 'Spotify') && desc(sp.txns)
+        && nf.monthsCount === 12 && sp.monthsCount === 6;
+    })());
+
+  check('ยอดรวมบนแถวสรุป = ผลบวกค่าเฉลี่ยรายเดือนของทุกบิลที่แสดง',
+    subs.recurringTotal === subs.recurring.reduce((s, r) => s + r.avgAmount, 0)
+    && subs.recurringTotal === 419 + 199,
+    String(subs.recurringTotal));
+
+  check('แสดงบิลได้มากสุด 4 รายการ',
+    (() => {
+      const many = [];
+      for (let n = 0; n < 7; n++) {
+        for (const ym of months.slice(0, 3)) {
+          many.push({ id: `m${n}-${ym}`, occurred_at: ts(ym + '-03'), amount: -(1000 - n * 100), category: 'บิล', type: 'bills', title: 'บิล ' + n });
+        }
+      }
+      const r = buildLeakInsights({ txns: thisMonth, prevTxns: [], trend12: many, debts: [] }).recurring;
+      return r.length === 4 && r.every(x => x.txns.length === 3);
+    })());
+
+  section('v4.34 · แถวดอกเบี้ยหนี้ + วันที่ในรายการ');
+
+  const debtIns = buildLeakInsights({
+    txns: thisMonth, prevTxns: lastMonth, trend12: [],
+    debts: [
+      { id: 'd1', name: 'บ้าน',  monthly_payment: 10000, total_months: 24, months_paid: 0, interest_rate: 4.1, original_principal: 200000 },
+      { id: 'd2', name: 'บัตร',  monthly_payment: 5000,  total_months: 12, months_paid: 0, interest_rate: 20,  original_principal: 55000 },
+      { id: 'd3', name: 'ปิดแล้ว', monthly_payment: 9999, total_months: 12, months_paid: 0, interest_rate: 30, original_principal: 1, is_active: false },
+    ],
+  });
+
+  check('ดอกเบี้ยรวมนับเฉพาะก้อนที่ยัง active และแถวย่อยเรียงก้อนดอกมากสุดก่อน',
+    debtIns.remainingInterest === 45000
+    && debtIns.debtRows.length === 2
+    && debtIns.debtRows[0].debt.id === 'd1' && debtIns.debtRows[1].debt.id === 'd2'
+    && debtIns.debtRows.reduce((s, r) => s + r.remainingInterest, 0) === debtIns.remainingInterest,
+    String(debtIns.remainingInterest));
+
+  check('"ถล่มก้อนดอกสูงสุดก่อน" ชี้ที่ดอกเบี้ยแพงสุด ไม่ใช่ยอดหนี้ใหญ่สุด',
+    debtIns.worst?.id === 'd2', debtIns.worst?.name);
+
+  check('วันที่ในรายการอ่านเป็นวันแบบเวลาไทยเสมอ ไม่ขึ้นกับ TZ ของเครื่อง',
+    leakDateLabel('2026-07-31T17:30:00Z') === '1 ส.ค. 69'
+    && leakDateLabel('2026-07-31T16:59:00Z') === '31 ก.ค. 69'
+    && leakDateLabel(null) === '—',
+    leakDateLabel('2026-07-31T17:30:00Z') + ' / ' + leakDateLabel('2026-07-31T16:59:00Z'));
+
+  check('การ์ดว่างไม่ระเบิด — ทุกลิสต์เป็นอาร์เรย์ว่าง ตัวเลขเป็นศูนย์',
+    (() => {
+      const empty = buildLeakInsights({});
+      return empty.creep.length === 0 && empty.frequent.length === 0
+        && empty.recurring.length === 0 && empty.topCats.length === 0
+        && empty.debtRows.length === 0 && empty.remainingInterest === 0
+        && empty.thisSum.expense === 0 && empty.recurringTotal === 0;
+    })());
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
