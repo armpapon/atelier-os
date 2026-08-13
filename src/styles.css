@@ -64,6 +64,16 @@
   --profit:    var(--success);   --profit-bg: var(--success-soft);
   --loss:      var(--danger);    --loss-bg:   var(--danger-soft);
   --profit-soft: var(--success-soft);
+
+  /* ── Chart-only income/expense pair ────────────────────────────────────────
+     --profit/--loss (#3e7d3a vs #b3382a) collapse to a deutan ΔE of 2.6 — a
+     red-green colour-blind reader cannot tell two adjacent bars apart. This
+     pair is validated PASS on lightness band, chroma floor, CVD separation,
+     normal-vision floor and contrast against --surface.
+     Used ONLY for chart marks. Do NOT repoint --profit/--loss to these: those
+     carry money semantics in text all over the app. */
+  --chart-income:  #2f6b2c;
+  --chart-expense: #d07040;
   --blue:      #59799f;
   --violet:    #7e6b9c;
   --rose:      #a86d78;
@@ -134,6 +144,10 @@
   --success:      #66bb6a;   --success-soft: rgba(102, 187, 106, 0.16);
   --danger:       #e57368;   --danger-soft:  rgba(229, 115, 104, 0.16);
   --warning:      #e0b25f;   --warning-soft: rgba(224, 178, 95, 0.16);
+
+  /* Chart-only pair, re-validated against the espresso surface (#211b15). */
+  --chart-income:  #417d3c;
+  --chart-expense: #c8813f;
 
   --blue:   #7ba7d4;
   --violet: #a996c8;
