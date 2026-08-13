@@ -2426,6 +2426,11 @@ export function detectRecurringFromTransactions(transactions) {
       variance,
       scope:      lastTxn.scope || 'personal',
       sampleTxn:  lastTxn,
+      // The charges that produced avgAmount. Callers that only want the
+      // suggestion ignore it; the เงินรั่ว drill-down needs the receipts,
+      // and re-deriving them from the title+amount key would risk drifting
+      // out of step with whatever this function decided.
+      txns:       [...g.txns].sort((a, b) => String(b.occurred_at || '').localeCompare(String(a.occurred_at || ''))),
     });
   }
   return recurring.sort((a, b) => b.avgAmount - a.avgAmount);
