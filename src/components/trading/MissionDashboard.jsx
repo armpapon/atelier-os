@@ -85,7 +85,7 @@ export function MissionDashboard({ trades = [] }) {
       {/* Progress */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             ความคืบหน้า
           </span>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 500 }}>
@@ -93,12 +93,12 @@ export function MissionDashboard({ trades = [] }) {
           </span>
         </div>
         <div style={{
-          height: 4, borderRadius: 999,
-          background: 'var(--fill)',
+          height: 6, borderRadius: 3,
+          background: 'var(--surface-muted)',
           overflow: 'hidden',
         }}>
           <div style={{
-            width: `${pct}%`, height: '100%', borderRadius: 999,
+            width: `${pct}%`, height: '100%', borderRadius: 3,
             background: pct >= 100 ? 'var(--success)' : 'var(--accent)',
             transition: 'width 240ms',
           }} />
@@ -119,11 +119,11 @@ export function MissionDashboard({ trades = [] }) {
       </div>
 
       {/* Pass criteria */}
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
         เกณฑ์ผ่านภารกิจ
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {criteria.map(c => <CriterionRow key={c.label} {...c} />)}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {criteria.map((c, i) => <CriterionRow key={c.label} {...c} isLast={i === criteria.length - 1} />)}
       </div>
 
       <div style={{
@@ -143,10 +143,10 @@ function Stat({ label, value, sub, color = 'var(--text-primary)' }) {
       padding: '12px 14px', background: 'var(--background-soft)',
       border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color, marginTop: 4, fontWeight: 500, lineHeight: 1.1 }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color, marginTop: 4, fontWeight: 600, lineHeight: 1.1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
       {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
@@ -160,19 +160,18 @@ const STATE_STYLE = {
   fail:    { icon: '❌', tone: 'danger',  label: 'ไม่ผ่าน', color: 'var(--danger)' },
 };
 
-function CriterionRow({ label, detail, state }) {
+function CriterionRow({ label, detail, state, isLast }) {
   const st = STATE_STYLE[state] || STATE_STYLE.pending;
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-      padding: '10px 12px', borderRadius: 'var(--radius-control)',
-      background: state === 'pass' ? 'var(--success-soft)' : state === 'fail' ? 'var(--danger-soft)' : 'var(--background-soft)',
-      border: '1px solid ' + (state === 'pass' ? 'var(--success)' : state === 'fail' ? 'var(--danger)' : 'var(--border)'),
+      minHeight: 40, padding: '6px 2px',
+      borderBottom: isLast ? 'none' : '1px solid var(--border)',
     }}>
       <span style={{ fontSize: 14, flexShrink: 0 }}>{st.icon}</span>
       <span style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1, minWidth: 120 }}>{label}</span>
       <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>{detail}</span>
-      <Badge tone={st.tone} size="sm">{st.label}</Badge>
+      <Badge tone={st.tone} size="sm" style={{ marginLeft: 'auto' }}>{st.label}</Badge>
     </div>
   );
 }

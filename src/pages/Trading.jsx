@@ -116,7 +116,7 @@ export function Trading() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em' }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>
             📈 TRADING JOURNAL · HA-50 SYSTEM
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
@@ -147,35 +147,32 @@ export function Trading() {
       <TradingPlaybook tradesToday={tradesToday} lossesInRow={lossesInRow} />
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: isMobile ? 10 : 12 }}>
-        <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} />
+        <KPI label="Total Trades"    value={stats.count}    sub={`${stats.wins}W / ${stats.losses}L`} isMobile={isMobile} />
         <KPI label="Win Rate"        value={`${stats.winRate}%`}
-          color={stats.winRate >= 50 ? 'var(--success)' : 'var(--accent-strong)'} />
+          color={stats.winRate >= 50 ? 'var(--success)' : 'var(--accent-strong)'} isMobile={isMobile} />
         <KPI label="Total P&L"       value={`${stats.totalPnl >= 0 ? '+' : ''}$${stats.totalPnl.toFixed(2)}`}
-          color={stats.totalPnl >= 0 ? 'var(--success)' : 'var(--danger)'} />
+          color={stats.totalPnl >= 0 ? 'var(--success)' : 'var(--danger)'} isMobile={isMobile} />
         <KPI label="Account Balance" value={`$${latestBalance.toFixed(2)}`}
-          color="var(--accent-strong)" />
+          color="var(--accent-strong)" isMobile={isMobile} />
       </div>
 
       {/* Monthly P&L calendar */}
       <PnLCalendar trades={filtered} />
 
       <Card padding={14}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em', marginRight: 4 }}>FILTERS</span>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>FILTERS</span>
           <FilterPills label="Session" value={filtSession} onChange={setFiltSession} options={sessions} />
-          <span style={{ color: 'var(--border-strong)' }}>·</span>
           <FilterPills label="Setup"   value={filtSetup}   onChange={setFiltSetup}   options={setups} />
-          <span style={{ color: 'var(--border-strong)' }}>·</span>
           <FilterPills label="Result"  value={filtResult}  onChange={setFiltResult}  options={results} />
-          <span style={{ color: 'var(--border-strong)' }}>·</span>
           <button onClick={() => setShowLegacy(v => !v)} className="focus-ring"
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', borderRadius: 'var(--radius-pill)',
+              padding: '5px 12px', borderRadius: 'var(--radius-pill)',
               background: showLegacy ? 'var(--accent-soft)' : 'var(--surface)',
               color: showLegacy ? 'var(--accent-strong)' : 'var(--text-secondary)',
               border: '1px solid ' + (showLegacy ? 'var(--accent)' : 'var(--border)'),
-              fontSize: 11, fontFamily: 'var(--f-mono)', cursor: 'pointer',
+              fontSize: 12, cursor: 'pointer',
             }}>
             <span style={{
               width: 10, height: 10, borderRadius: 3,
@@ -247,16 +244,16 @@ function fmtUsd(v) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-function KPI({ label, value, sub, color = 'var(--text-primary)' }) {
+function KPI({ label, value, sub, color = 'var(--text-primary)', isMobile }) {
   return (
-    <Card padding={16}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+    <Card padding={18}>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color, marginTop: 6, fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.01em', fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 26 : 32, color, marginTop: 6, fontWeight: 600, lineHeight: 1.1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
     </Card>
   );
 }
@@ -273,21 +270,27 @@ function MetricRow({ label, value, color = 'var(--text-primary)' }) {
 function FilterPills({ label, value, onChange, options }) {
   if (options.length <= 1) return null;
   return (
-    <>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 2 }}>{label}:</span>
-      {options.map(opt => (
-        <button key={opt} onClick={() => onChange(opt)} className="focus-ring"
-          style={{
-            padding: '4px 10px', borderRadius: 'var(--radius-pill)',
-            background: value === opt ? 'var(--accent-soft)' : 'var(--surface)',
-            color: value === opt ? 'var(--accent-strong)' : 'var(--text-secondary)',
-            border: '1px solid ' + (value === opt ? 'var(--accent)' : 'var(--border)'),
-            fontSize: 11, fontFamily: 'var(--f-mono)', cursor: 'pointer',
-          }}>
-          {opt === 'all' ? 'All' : opt}
-        </button>
-      ))}
-    </>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+      <div style={{
+        display: 'inline-flex', background: 'var(--surface-muted)',
+        borderRadius: 9, padding: 2,
+      }}>
+        {options.map(opt => (
+          <button key={opt} onClick={() => onChange(opt)} className="focus-ring"
+            style={{
+              padding: '5px 12px', borderRadius: 7, border: 'none',
+              background: value === opt ? 'var(--surface)' : 'transparent',
+              color: value === opt ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontWeight: value === opt ? 600 : 400,
+              boxShadow: value === opt ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+              fontSize: 12, cursor: 'pointer', transition: 'background 150ms ease',
+            }}>
+            {opt === 'all' ? 'All' : opt}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -333,8 +336,8 @@ function TradeTable({ trades, onView, onDelete }) {
       <div style={{
         display: 'grid', gridTemplateColumns: '70px 60px 50px 1fr 60px 100px 90px 40px',
         gap: 10, padding: '8px 12px', background: 'var(--surface-muted)',
-        fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)',
-        letterSpacing: '0.14em', textTransform: 'uppercase',
+        fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)',
+        letterSpacing: '0.06em', textTransform: 'uppercase',
         borderBottom: '1px solid var(--border)',
       }}>
         <div>วันที่</div><div>Symbol</div><div>Dir</div><div>Setup / Session</div>
@@ -407,7 +410,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
         }}>
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>
               {trade.trade_date} · {trade.session || 'Session'}
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4 }}>
@@ -426,11 +429,11 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
           <Card variant={trade.status === 'WIN' ? 'paper' : 'default'} padding={16}>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>RESULT</div>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>RESULT</div>
                 <Badge tone={trade.status === 'WIN' ? 'success' : trade.status === 'LOSS' ? 'danger' : 'warning'} size="lg" style={{ marginTop: 4 }}>{trade.status}</Badge>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>P&L</div>
+                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>P&L</div>
                 <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: trade.pnl >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
                   {trade.pnl >= 0 ? '+' : ''}${Number(trade.pnl || 0).toFixed(2)}
                 </div>
@@ -490,7 +493,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
 function Field({ label, value, mono }) {
   return (
     <div style={{ padding: '8px 12px', background: 'var(--background-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-control)' }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em' }}>{label}</div>
+      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{label}</div>
       <div style={{
         fontFamily: mono ? 'var(--f-mono)' : 'var(--f-body)',
         fontSize: 14, color: 'var(--text-primary)', fontWeight: 500, marginTop: 2,
