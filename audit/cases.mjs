@@ -46,6 +46,10 @@ import {
   copyYear, isTableMissing, SQL_NOT_RUN_MESSAGE,
 } from '../src/lib/api/tax.js';
 import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
+import {
+  cashflowWindow, cashflowSeries, savingsRate, pctDelta, monthReadout,
+  resolveSelection, filterToMonths, compactBaht, chartGeometry, barPath,
+} from '../src/lib/cashflow.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
 let pass = 0, fail = 0;
@@ -2818,6 +2822,162 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
   check('แผงผลลัพธ์อ่านบรรทัดเดียวกันนี้ — ไม่มีคำไทยลอยอยู่ใน JSX ให้เทสต์เอื้อมไม่ถึง',
     dv.children === '2 คน = 30,000 + 60,000 = ฿90,000'
     && dv.parents === '3 คน × 30,000 = ฿90,000', `${dv.children} · ${dv.parents}`);
+}
+
+// ════════════════════ CASH-FLOW CHART (v4.33) ════════════════════
+// The chart's window must be anchored to the CURRENT month. The old page built
+// it with lastNMonths(12, yearMonth) and passed onMonthClick={setYearMonth},
+// so every click rebuilt the window around the clicked month and the later
+// months vanished — "พอกดแล้วเดือนก็หายไป".
+{
+  section('v4.33 · กราฟกระแสเงินสด · หน้าต่าง 12 เดือนตรึงกับเดือนปัจจุบัน');
+
+  const TODAY = '2026-08';
+  const win = cashflowWindow(TODAY);
+
+  check('หน้าต่างกราฟมี 12 เดือน จบที่เดือนปัจจุบัน',
+    win.length === 12 && win[11] === TODAY && win[0] === '2025-09',
+    `${win[0]} → ${win[11]}`);
+
+  check('ข้ามปีถูกต้อง — นับถอยหลังจากมกราคมไปปีก่อน',
+    cashflowWindow('2026-01')[0] === '2025-02'
+    && cashflowWindow('2026-01')[11] === '2026-01');
+
+  // ── THE HEADLINE BUG ────────────────────────────────────────────────────
+  // The window function does not take the selection at all; selecting is a
+  // separate, pure lookup. Proven by holding one series and moving only the
+  // selection across it.
+  const agg = win.map((ym, i) => ({ ym, income: 100000 + i * 1000, expense: 80000 + i * 500, count: 3 }));
+  const series = cashflowSeries(agg, TODAY);
+  const monthsOf = (s) => s.map(d => d.ym).join(',');
+  const before = monthsOf(series);
+  const selA = resolveSelection(series, '2026-03');
+  const selB = resolveSelection(series, '2025-11');
+  check('เลือกเดือนอื่นแล้วชุดเดือนในกราฟไม่ขยับเลย (บั๊กหลัก)',
+    monthsOf(cashflowSeries(agg, TODAY)) === before
+    && selA === 6 && selB === 2
+    && series[series.length - 1].ym === TODAY,
+    `sel ${selA}/${selB} · ยังจบที่ ${series[11].ym}`);
+
+  check('เลือกเดือนที่อยู่นอกหน้าต่าง (กดจาก MonthNav ไปไกล) → ตกกลับมาที่เดือนปัจจุบัน',
+    resolveSelection(series, '2024-01') === 11
+    && resolveSelection(series, '2030-06') === 11);
+
+  check('cashflowSeries เติมเดือนที่ไม่มีข้อมูลเป็นศูนย์ และตัดเดือนนอกหน้าต่างทิ้ง',
+    cashflowSeries([{ ym: '2020-01', income: 9e9, expense: 9e9 }, { ym: '2026-08', income: 5, expense: 2 }], TODAY)
+      .every(d => d.ym !== '2020-01')
+    && cashflowSeries([], TODAY).length === 12
+    && cashflowSeries([], TODAY).every(d => d.income === 0 && d.expense === 0 && d.savingsRate === 0));
+
+  section('v4.33 · แถบสรุปเดือนที่เลือก · เลข ▲▼ และ % ออม');
+
+  check('อัตราการออม: รายรับเป็นศูนย์ได้ 0 ไม่ใช่ NaN/Infinity',
+    savingsRate(0, 5000) === 0 && Number.isFinite(savingsRate(0, 5000))
+    && savingsRate(0, 0) === 0);
+
+  check('อัตราการออมติดลบได้เมื่อจ่ายเกินรับ',
+    near(savingsRate(100000, 150000), -50) && near(savingsRate(100000, 25000), 75));
+
+  check('เดลต้า % ขึ้น/ลง คำนวณจากเดือนก่อนหน้า',
+    near(pctDelta(150, 100), 50) && near(pctDelta(80, 100), -20) && pctDelta(100, 100) === 0);
+
+  check('เดือนก่อนหน้าเป็นศูนย์ → ไม่โชว์ % (null) ไม่ใช่ Infinity หรือ 100% มั่ว',
+    pctDelta(500, 0) === null && pctDelta(0, 0) === null,
+    String(pctDelta(500, 0)));
+
+  check('ไม่มีเดือนก่อนหน้า (ช่องซ้ายสุด) → ไม่โชว์ %',
+    pctDelta(500, null) === null
+    && monthReadout(series, series[0].ym).expenseDelta === null
+    && monthReadout(series, series[0].ym).hasPrev === false);
+
+  const zeroIncome = cashflowSeries(
+    [{ ym: '2026-07', income: 0, expense: 0 }, { ym: '2026-08', income: 0, expense: 12000 }], TODAY);
+  const zr = monthReadout(zeroIncome, '2026-08');
+  check('เดือนที่ไม่มีรายรับเลย: คงเหลือติดลบ, ออม 0%, เดลต้าไม่หารด้วยศูนย์',
+    zr.net === -12000 && zr.savingsRate === 0 && zr.expenseDelta === null
+    && Number.isFinite(zr.net) && Number.isFinite(zr.savingsRate),
+    `net ${zr.net} · ออม ${zr.savingsRate}% · Δ ${zr.expenseDelta}`);
+
+  const rd = monthReadout(series, '2026-03');
+  check('แถบสรุปอ่านตัวเลขของเดือนที่เลือก พร้อมเดลต้าเทียบเดือนก่อน',
+    rd.ym === '2026-03' && rd.income === 106000 && rd.expense === 83000
+    && rd.net === 23000 && near(rd.expenseDelta, 100 * 500 / 82500),
+    `${rd.income}/${rd.expense}`);
+
+  // "↩ เดือนนี้" is rendered on !isCurrent — one flag, asserted at both ends.
+  check('ชิป "↩ เดือนนี้" โผล่เฉพาะตอนที่เลือกไม่ใช่เดือนปัจจุบัน',
+    monthReadout(series, TODAY).isCurrent === true
+    && monthReadout(series, '2026-03').isCurrent === false
+    && monthReadout(series, '2025-09').isCurrent === false
+    // out-of-window falls back to today → chip stays hidden, no contradiction
+    && monthReadout(series, '2019-01').isCurrent === true);
+
+  check('ปุ่ม ‹ › ปิดตัวเองที่ปลายทั้งสองข้าง',
+    monthReadout(series, series[0].ym).hasPrev === false
+    && monthReadout(series, series[0].ym).hasNext === true
+    && monthReadout(series, TODAY).hasNext === false
+    && monthReadout(series, TODAY).hasPrev === true);
+
+  section('v4.33 · เรขาคณิตของแท่งกราฟ');
+
+  const geo = chartGeometry(series);
+  check('มี 12 กลุ่มแท่ง และสเกลอิงค่าสูงสุดของทั้งรายรับและรายจ่าย',
+    geo.bars.length === 12 && geo.max === 111000, String(geo.max));
+
+  check('ทุกแท่งยืนบนเส้นฐานเดียวกัน (y + h = baseY)',
+    geo.bars.every(b => near(b.income.y + b.income.h, geo.baseY, 0.02)
+                     && near(b.expense.y + b.expense.h, geo.baseY, 0.02)));
+
+  check('ช่องไฟในคู่เดือนเดียวกัน = 2px พอดี',
+    geo.bars.every(b => near(b.expense.x - (b.income.x + b.income.w), 2, 0.02)),
+    String(geo.bars[0].expense.x - (geo.bars[0].income.x + geo.bars[0].income.w)));
+
+  check('แท่งสูงกว่าเมื่อเงินมากกว่า และแท่งที่สูงสุดเต็มพื้นที่กราฟ',
+    geo.bars[11].income.h > geo.bars[0].income.h
+    && near(geo.bars[11].income.h, geo.innerH, 0.02));
+
+  const zeroGeo = chartGeometry(cashflowSeries([], TODAY));
+  check('เดือนที่เป็นศูนย์ไม่วาดตอแท่งหลอกตา และไม่มี NaN แม้ข้อมูลว่างทั้งหน้าต่าง',
+    zeroGeo.bars.every(b => b.income.h === 0 && b.expense.h === 0)
+    && zeroGeo.bars.every(b => Number.isFinite(b.cx) && Number.isFinite(b.income.y))
+    && zeroGeo.grid.every(t => Number.isFinite(t.y)));
+
+  check('เส้นตาราง 3 เส้น + ป้ายแกนแบบย่อ',
+    geo.grid.length === 3 && geo.grid[2].label === '111K',
+    geo.grid.map(t => t.label).join(' / '));
+
+  check('ป้ายแกนย่อแบบ 87K / 1.2M ไม่ใช่ 87.0K',
+    compactBaht(87000) === '87K' && compactBaht(1200000) === '1.2M'
+    && compactBaht(1000000) === '1M' && compactBaht(940) === '940' && compactBaht(0) === '0',
+    [87000, 1200000, 940].map(compactBaht).join(' / '));
+
+  const p = barPath(10, 100, 16, 50);
+  check('แท่งมนหัวบน แบนที่ฐาน — เส้นเริ่มและจบที่เส้นฐาน',
+    p.startsWith('M 10 150 ') && p.trim().endsWith('L 26 150 Z') && p.includes('Q'),
+    p);
+
+  check('แท่งเตี้ยมาก ๆ รัศมีถูกหนีบไม่ให้ล้นแท่ง และแท่งศูนย์ไม่วาดอะไรเลย',
+    barPath(0, 198, 16, 2).includes('Q 0 198 2 198') && barPath(0, 200, 16, 0) === ''
+    && barPath(0, 200, 0, 40) === '');
+
+  section('v4.33 · การ์ดอื่นยังอ่านหน้าต่างเดือนที่กำลังดูเหมือนเดิม');
+
+  // trend12 now spans the UNION of both windows, so the consumers that mean
+  // "the browsed 12 months" (MoneyLeaks / RecurringTracker / forecast /
+  // emergency fund) are re-clipped with filterToMonths — their input has to
+  // stay byte-identical to what it was before the chart window was pinned.
+  const rows = [
+    { id: 'a', occurred_at: '2026-08-10T03:00:00Z', amount: -100 },   // in
+    { id: 'b', occurred_at: '2026-05-10T03:00:00Z', amount: -100 },   // in
+    { id: 'c', occurred_at: '2025-01-10T03:00:00Z', amount: -100 },   // out
+    { id: 'd', occurred_at: '2026-07-31T17:30:00Z', amount: -100 },   // 1 ส.ค. เวลาไทย
+  ];
+  const kept = filterToMonths(rows, cashflowWindow('2026-08')).map(r => r.id).join(',');
+  check('filterToMonths ตัดตามเดือนแบบเวลาไทย ไม่ใช่ UTC',
+    kept === 'a,b,d', kept);
+
+  check('… และตัดเดือนที่อยู่นอกหน้าต่างที่กำลังดูออกจริง',
+    filterToMonths(rows, ['2025-01']).map(r => r.id).join(',') === 'c');
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
