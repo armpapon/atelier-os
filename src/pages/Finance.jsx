@@ -19,6 +19,7 @@ import {
 import { cashflowWindow, cashflowSeries, filterToMonths } from '../lib/cashflow.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
+import { FINANCE_TABS, DEFAULT_FINANCE_TAB } from '../lib/financeTabs.js';
 import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx';
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
@@ -714,19 +715,18 @@ function FlowLine({ tone, label, amount, sub }) {
   );
 }
 
-// ── Sub-tabs (v4.35) ─────────────────────────────────────────────────────────
+// ── Sub-tabs (v4.35 · lifted in v4.38) ───────────────────────────────────────
 // One page, six rooms. Every panel reads the SAME state (yearMonth, txns,
 // accounts…) held by FinanceView — switching tabs never reloads data.
-const FINANCE_TABS = [
-  { id: 'overview', label: 'ภาพรวม' },
-  { id: 'txns',     label: 'รายการ' },
-  { id: 'cards',    label: 'บัตรเครดิต' },
-  { id: 'debt',     label: 'หนี้' },
-  { id: 'budget',   label: 'งบ & เป้าหมาย' },
-  { id: 'accounts', label: 'บัญชี' },
-];
+// The list itself now lives in src/lib/financeTabs.js because the desktop
+// sidebar renders the very same six entries.
 
-/** iOS-style segmented pill bar. Scrolls sideways on a narrow screen. */
+/**
+ * iOS-style segmented pill bar. Scrolls sideways on a narrow screen.
+ * v4.38: rendered on MOBILE ONLY — on desktop the same six rooms are reachable
+ * from the sidebar accordion, and the owner asked for one control, not two
+ * ("ถ้ามีด้านข้าง ไม่ต้องด้านบนก็ได้ครับ ไม่ต้องซ้ำซ้อน").
+ */
 function FinanceTabs({ value, onChange }) {
   const move = (e) => {
     const i = FINANCE_TABS.findIndex(t => t.id === value);
@@ -794,9 +794,15 @@ function FinanceTabs({ value, onChange }) {
  * out of the accessibility tree. Data is not affected: every panel reads the
  * same state FinanceView already loaded, so nothing refetches on a tab change.
  */
-function TabPanel({ id, active, children }) {
+function TabPanel({ id, active, tabbed, children }) {
+  // The label comes from the tab button when there IS one (mobile). On desktop
+  // the tablist is not rendered, so `aria-labelledby` would point at nothing —
+  // name the room directly instead of leaving a dangling reference.
+  const label = FINANCE_TABS.find(t => t.id === id)?.label || id;
   return (
-    <div role="tabpanel" id={`fin-panel-${id}`} aria-labelledby={`fin-tab-${id}`}
+    <div role="tabpanel" id={`fin-panel-${id}`}
+      aria-labelledby={tabbed ? `fin-tab-${id}` : undefined}
+      aria-label={tabbed ? undefined : label}
       hidden={!active} aria-hidden={active ? undefined : true}
       style={{ display: active ? 'flex' : 'none', flexDirection: 'column', gap: 18 }}>
       {children}
@@ -807,7 +813,17 @@ function TabPanel({ id, active, children }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared FinanceView — Financial Planner Edition
 // ════════════════════════════════════════════════════════════════════════════
-export function FinanceView({ scope }) {
+/**
+ * @param scope        'personal' | 'family'
+ * @param tab          optional CONTROLLED sub-tab id. App.jsx passes it so the
+ *                     sidebar accordion and this page read one truth.
+ * @param onTabChange  optional notifier fired on every room change — including
+ *                     the internal jumps (เงินรั่ว → หนี้, บัญชี → รายการ), so
+ *                     the sidebar highlight follows them too.
+ * Both are optional: with neither prop the page keeps its own state exactly as
+ * it did in v4.37, which is what every mounted test and any other caller uses.
+ */
+export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   const meta = SCOPE_META[scope] || SCOPE_META.personal;
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
@@ -815,9 +831,16 @@ export function FinanceView({ scope }) {
   // (User can still navigate to other months via MonthNav during the session
   // — but we no longer persist that across sessions / page reloads.)
   const [yearMonth, setYearMonth] = useState(() => currentYearMonth());
-  // Sub-tab (v4.35). Plain state — like the month, it goes back to the
-  // default room every time the page opens. Nothing is persisted.
-  const [tab, setTab] = useState('overview');
+  // Sub-tab (v4.35). Like the month, it goes back to the default room every
+  // time the app opens. Nothing is persisted to storage.
+  // v4.38: when App.jsx passes `tab`, that value wins and this local copy is
+  // only the fallback for callers that render FinanceView on its own.
+  const [localTab, setLocalTab] = useState(DEFAULT_FINANCE_TAB);
+  const tab = tabProp ?? localTab;
+  const setTab = useCallback((id) => {
+    setLocalTab(id);
+    onTabChange?.(id);
+  }, [onTabChange]);
   // Today's month, pinned for the session. The cash-flow chart's 12-month
   // window hangs off THIS, never off `yearMonth` — clicking a bar used to
   // re-anchor the window and slide every later month off the chart.
@@ -885,7 +908,7 @@ export function FinanceView({ scope }) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 0);
-  }, []);
+  }, [setTab]);
 
   const removeCategory = useCallback((id) => {
     setCustomCats(prev => {
@@ -1157,10 +1180,13 @@ export function FinanceView({ scope }) {
           </div>
         )}
 
-        {/* Sub-tabs — six rooms instead of one long scroll (v4.35) */}
-        <FinanceTabs value={tab} onChange={setTab} />
+        {/* Sub-tabs — six rooms instead of one long scroll (v4.35).
+            v4.38: mobile only. The breakpoint is the app-wide MOBILE_QUERY, the
+            same one that swaps Sidebar for MobileNav in App.jsx, so exactly one
+            of the two controls is on screen at any width. */}
+        {isMobile && <FinanceTabs value={tab} onChange={setTab} />}
 
-        <TabPanel id="overview" active={tab === 'overview'}>
+        <TabPanel id="overview" active={tab === 'overview'} tabbed={isMobile}>
             {/* Hero balance — คงเหลือสุทธิ + flows */}
             <div style={{ marginBottom: isMobile ? 6 : 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -1220,7 +1246,7 @@ export function FinanceView({ scope }) {
             </div>
         </TabPanel>
 
-        <TabPanel id="txns" active={tab === 'txns'}>
+        <TabPanel id="txns" active={tab === 'txns'} tabbed={isMobile}>
             {/* Month picker — the whole tab reads this one month */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>เดือน</span>
@@ -1504,14 +1530,14 @@ export function FinanceView({ scope }) {
             <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
         </TabPanel>
 
-        <TabPanel id="cards" active={tab === 'cards'}>
+        <TabPanel id="cards" active={tab === 'cards'} tabbed={isMobile}>
             {/* `debts` is the list this page already loaded — a card linked to a
                 debt row reads its balance from there, never from a second
                 fetch, so the two can never disagree on screen. */}
             <CreditCards scope={scope} debts={debts} isMobile={isMobile} />
         </TabPanel>
 
-        <TabPanel id="debt" active={tab === 'debt'}>
+        <TabPanel id="debt" active={tab === 'debt'} tabbed={isMobile}>
             {/* Debt Tracker — the เงินรั่ว debt row jumps to this anchor (v4.34).
                 tabIndex -1 makes the anchor a legal focus target so the jump can
                 hand the keyboard over (A1); it stays out of the tab order. */}
@@ -1526,7 +1552,7 @@ export function FinanceView({ scope }) {
             </div>
         </TabPanel>
 
-        <TabPanel id="budget" active={tab === 'budget'}>
+        <TabPanel id="budget" active={tab === 'budget'} tabbed={isMobile}>
             {/* Budget vs Actual */}
             <BudgetProgress budgets={budgets} categoryActuals={categories} />
 
@@ -1599,7 +1625,7 @@ export function FinanceView({ scope }) {
             </div>
         </TabPanel>
 
-        <TabPanel id="accounts" active={tab === 'accounts'}>
+        <TabPanel id="accounts" active={tab === 'accounts'} tabbed={isMobile}>
             {/* Accounts */}
             <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: '20px 22px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
