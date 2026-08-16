@@ -38,6 +38,10 @@ beforeEach(() => {
   vi.stubGlobal('confirm', confirmSpy);
 });
 
+/** Since v4.35 the page is six sub-tabs — open the room under test. */
+const openTab = async (name) =>
+  fireEvent.click(await screen.findByRole('tab', { name }));
+
 // ════════════════════════════════════════════════════════════════════════════
 describe('B3 · reassign + archive goes through one transactional call', () => {
 
@@ -68,6 +72,7 @@ describe('B3 · reassign + archive goes through one transactional call', () => {
     };
 
     render(<FinanceView scope="personal" />);
+    await openTab('บัญชี');
     fireEvent.click(await screen.findByRole('button', { name: 'แก้ไขบัญชี ซองเก่า' }));
 
     // Pick the move target, then archive.
@@ -88,6 +93,7 @@ describe('B3 · reassign + archive goes through one transactional call', () => {
       () => ({ data: null, error: { code: 'P0001', message: 'บัญชีปลายทางไม่ใช่ของผู้ใช้นี้' } });
 
     render(<FinanceView scope="personal" />);
+    await openTab('บัญชี');
     fireEvent.click(await screen.findByRole('button', { name: 'แก้ไขบัญชี ซองเก่า' }));
     const target = await screen.findByRole('option', { name: /ย้ายรายการทั้งหมดไป → ซองใหม่/ });
     fireEvent.change(target.closest('select'), { target: { value: 'acc-dst' } });
@@ -118,6 +124,7 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
   it('the confirm names BOTH sides and both legs disappear', async () => {
     seedPair('grp-1');
     render(<FinanceView scope="personal" />);
+    await openTab('รายการ');
 
     await screen.findByText('โอนไปครอบครัว');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));
@@ -135,6 +142,7 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
     seedPair('grp-2');
     confirmSpy.mockReturnValue(false);
     render(<FinanceView scope="personal" />);
+    await openTab('รายการ');
 
     await screen.findByText('โอนไปครอบครัว');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));
@@ -153,6 +161,7 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
         occurred_at: `${THIS}-03T12:00:00+07:00` },
     );
     render(<FinanceView scope="personal" />);
+    await openTab('รายการ');
 
     await screen.findByText('โอนไปครอบครัว');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));
@@ -171,6 +180,7 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
         occurred_at: `${THIS}-03T12:00:00+07:00` },
     );
     render(<FinanceView scope="personal" />);
+    await openTab('รายการ');
 
     await screen.findAllByText('ค่ากาแฟ');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));

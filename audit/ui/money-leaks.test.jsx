@@ -266,7 +266,14 @@ describe('เงินรั่ว · แถวดอกเบี้ยหนี
     expect(panel(container, 'debt')).toBeNull();
   });
 
-  it('the Finance page renders the anchor that row jumps to', async () => {
+  it('on the real page the row opens the หนี้ tab and lands on the anchor', async () => {
+    // v4.35: the Debt Tracker moved into its own sub-tab, so the jump has to
+    // switch rooms first — the anchor does not exist until it does.
+    __tables.debts.push({
+      id: 'd1', user_id: 'user-1', name: 'บ้าน', type: 'loan', monthly_payment: 10000,
+      due_day: 5, total_months: 24, months_paid: 0, interest_rate: 4.1,
+      original_principal: 200000, remaining_balance: 200000, scope: 'personal', is_active: true,
+    });
     const yms = cashflowWindow(currentYearMonth(), 13);
     yms.forEach((ym, i) => {
       const { start } = getMonthBounds(ym);
@@ -280,6 +287,18 @@ describe('เงินรั่ว · แถวดอกเบี้ยหนี
     });
 
     const { container } = render(<FinanceView scope="personal" />);
+
+    // The row is on the default ภาพรวม tab; the anchor is not rendered yet.
+    const debtRow = await waitFor(() => {
+      const el = container.querySelector('[data-leak-row="debt"]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    expect(container.querySelector(`#${DEBT_TRACKER_ANCHOR}`)).toBeNull();
+
+    fireEvent.click(debtRow);
+
     await waitFor(() => expect(container.querySelector(`#${DEBT_TRACKER_ANCHOR}`)).toBeTruthy());
+    expect(screen.getByRole('tab', { name: 'หนี้' }).getAttribute('aria-selected')).toBe('true');
   });
 });

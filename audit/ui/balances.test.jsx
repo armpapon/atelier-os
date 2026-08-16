@@ -52,17 +52,26 @@ beforeEach(() => {
 
 afterEach(() => { __config.opFailurePredicate = null; });
 
+/** Since v4.35 the page is six sub-tabs — open the room a claim lives in. */
+const openTab = async (name) =>
+  fireEvent.click(await screen.findByRole('tab', { name }));
+
 describe('Finance balances honesty (batch A · B4)', () => {
 
   it('the overlay succeeding shows the CONFIRMED balance and no warning', async () => {
     seed();
     render(<FinanceView scope="personal" />);
 
-    // 10,000 − 2,500 — the account row and the emergency-fund total.
+    // 10,000 − 2,500 — the emergency-fund total on ภาพรวม…
     expect((await screen.findAllByText(/฿7,500/)).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/คำนวณยอดคงเหลือปัจจุบันไม่สำเร็จ/)).toBeNull();
     expect(screen.queryAllByText(/ยังไม่ยืนยัน/)).toHaveLength(0);
+
+    // …and the account row itself, which now lives in the บัญชี tab.
+    await openTab('บัญชี');
+    expect((await screen.findAllByText(/฿7,500/)).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/\+ รายการหลังจากนั้น/)).toBeTruthy();
+    expect(screen.queryAllByText(/ยังไม่ยืนยัน/)).toHaveLength(0);
   });
 
   it('the overlay failing raises the amber warning and labels every balance unconfirmed', async () => {
@@ -78,14 +87,23 @@ describe('Finance balances honesty (batch A · B4)', () => {
     // 2 · the raw anchor is NOT presented as the effective balance.
     expect(screen.queryAllByText(/฿7,500/)).toHaveLength(0);
     expect(screen.queryAllByText(/\+ รายการหลังจากนั้น/)).toHaveLength(0);
-    expect(document.body.textContent).toContain('฿10,000');   // the raw anchor, labelled
 
-    // 3 · the anchored balance, Net Worth and the emergency fund are all
-    //     labelled — three surfaces, plus the account-list row and total.
+    // 3 · every surface that shows a balance is labelled. Net Worth and the
+    //     emergency fund sit on ภาพรวม, the account row and its total in the
+    //     บัญชี tab — the banner rides above the tabs, so it is on both.
     await waitFor(() => {
-      expect(screen.getAllByText(/ยังไม่ยืนยัน/).length).toBeGreaterThanOrEqual(4);
+      expect(screen.getAllByText(/ยังไม่ยืนยัน/).length).toBeGreaterThanOrEqual(3);
     });
     expect(screen.getAllByText(/ยังไม่รวมรายการหลังวันตั้งต้น/)).toHaveLength(2); // NetWorth + EmergencyFund
+
+    await openTab('บัญชี');
+    expect(document.body.textContent).toContain('฿10,000');   // the raw anchor, labelled
+    expect(screen.queryAllByText(/฿7,500/)).toHaveLength(0);
+    expect(screen.queryAllByText(/\+ รายการหลังจากนั้น/)).toHaveLength(0);
+    await waitFor(() => {
+      // banner + the account row + the accounts total
+      expect(screen.getAllByText(/ยังไม่ยืนยัน/).length).toBeGreaterThanOrEqual(3);
+    });
     // The account row itself says its anchor is not topped up (the banner
     // uses the same wording, hence two).
     expect(screen.getAllByText(/ยังไม่รวมรายการหลังจากนั้น/)).toHaveLength(2);
@@ -106,6 +124,7 @@ describe('Finance balances honesty (batch A · B4)', () => {
     __config.opFailurePredicate = EFFECTIVE_BALANCE_READ;
     render(<FinanceView scope="personal" />);
 
+    await openTab('บัญชี');
     await screen.findAllByText(/กระปุก/);
     expect(screen.queryByText(/คำนวณยอดคงเหลือปัจจุบันไม่สำเร็จ/)).toBeNull();
     expect(screen.queryAllByText(/ยังไม่ยืนยัน/)).toHaveLength(0);
