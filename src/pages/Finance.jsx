@@ -777,11 +777,28 @@ function FinanceTabs({ value, onChange }) {
   );
 }
 
-/** Shared wrapper so every panel gets the same stacking + a11y wiring. */
-function TabPanel({ id, children }) {
+/**
+ * Shared wrapper so every panel gets the same stacking + a11y wiring.
+ *
+ * Every panel stays MOUNTED — inactive ones are hidden, never unmounted
+ * (audited: DLG-FIN-001 · B2 + A2). Two things depend on this and both broke
+ * when the panels were conditionally rendered:
+ *   B2 · a half-typed DebtForm / RecurringForm survives a tab change. Unmounting
+ *        threw the draft away with no warning.
+ *   A2 · every tab's `aria-controls` points at an element that really exists;
+ *        five of six were dangling references while only the active panel was
+ *        in the DOM.
+ * `hidden` + `display:none` (the inline `display` has to be switched too — it
+ * would otherwise override the UA stylesheet's `[hidden] { display:none }`) plus
+ * `aria-hidden` keep the inactive rooms out of sight, out of the tab order and
+ * out of the accessibility tree. Data is not affected: every panel reads the
+ * same state FinanceView already loaded, so nothing refetches on a tab change.
+ */
+function TabPanel({ id, active, children }) {
   return (
     <div role="tabpanel" id={`fin-panel-${id}`} aria-labelledby={`fin-tab-${id}`}
-      style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      hidden={!active} aria-hidden={active ? undefined : true}
+      style={{ display: active ? 'flex' : 'none', flexDirection: 'column', gap: 18 }}>
       {children}
     </div>
   );
@@ -853,11 +870,18 @@ export function FinanceView({ scope }) {
   // rule (which is about forms moving the page unbidden) is untouched.
   // Since v4.35 the Debt Tracker lives in its own tab, so the jump switches
   // rooms first and scrolls to the anchor once that panel has mounted.
+  // Audited (DLG-FIN-001 · A1): the button that fired this jump is in the now
+  // hidden ภาพรวม panel, so keyboard focus would fall back to <body> and the
+  // user would have to tab from the top of the page again. Move focus onto the
+  // debt anchor (tabIndex=-1) BEFORE scrolling, with preventScroll so the focus
+  // call itself never fights the smooth scroll.
   const scrollToDebts = useCallback(() => {
     setTab('debt');
     setTimeout(() => {
       const el = typeof document !== 'undefined' && document.getElementById(DEBT_TRACKER_ANCHOR);
-      if (el && typeof el.scrollIntoView === 'function') {
+      if (!el) return;
+      if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+      if (typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 0);
@@ -1136,8 +1160,7 @@ export function FinanceView({ scope }) {
         {/* Sub-tabs — six rooms instead of one long scroll (v4.35) */}
         <FinanceTabs value={tab} onChange={setTab} />
 
-        {tab === 'overview' && (
-          <TabPanel id="overview">
+        <TabPanel id="overview" active={tab === 'overview'}>
             {/* Hero balance — คงเหลือสุทธิ + flows */}
             <div style={{ marginBottom: isMobile ? 6 : 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -1195,11 +1218,9 @@ export function FinanceView({ scope }) {
               <EmergencyFundCard coverage={emergencyFund} accounts={accounts}
                 unconfirmed={balancesUnconfirmed} onAccountToggle={refresh} />
             </div>
-          </TabPanel>
-        )}
+        </TabPanel>
 
-        {tab === 'txns' && (
-          <TabPanel id="txns">
+        <TabPanel id="txns" active={tab === 'txns'}>
             {/* Month picker — the whole tab reads this one month */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>เดือน</span>
@@ -1212,9 +1233,26 @@ export function FinanceView({ scope }) {
                 <div>
                   <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
                     รายการธุรกรรม
+                    {/* Audited (DLG-FIN-001 · B1): clicking an account in บัญชี
+                        lands here, so the filter has to say so where the rows
+                        are — and be clearable without walking back a room. */}
                     {accountFilter && (
-                      <span style={{ marginLeft: 10, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent)' }}>
-                        · กรอง: {accounts.find(a => a.id === accountFilter)?.name}
+                      <span data-account-filter-chip style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 10,
+                        padding: '3px 5px 3px 10px', borderRadius: 999, verticalAlign: 'middle',
+                        background: 'var(--accent-tint)', color: 'var(--accent-strong)',
+                        fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 500,
+                      }}>
+                        บัญชี: {accounts.find(a => a.id === accountFilter)?.name || 'ไม่พบบัญชี'}
+                        <button type="button" className="focus-ring"
+                          onClick={() => setAccountFilter(null)}
+                          aria-label="ล้างตัวกรองบัญชี" title="ล้างตัวกรองบัญชี"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 16, height: 16, borderRadius: 999, border: 0, padding: 0,
+                            background: 'transparent', color: 'inherit', cursor: 'pointer',
+                            fontFamily: 'inherit', fontSize: 11, lineHeight: 1,
+                          }}>✕</button>
                       </span>
                     )}
                   </div>
@@ -1464,22 +1502,20 @@ export function FinanceView({ scope }) {
 
             {/* Daily heatmap */}
             <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
-          </TabPanel>
-        )}
+        </TabPanel>
 
-        {tab === 'cards' && (
-          <TabPanel id="cards">
+        <TabPanel id="cards" active={tab === 'cards'}>
             {/* `debts` is the list this page already loaded — a card linked to a
                 debt row reads its balance from there, never from a second
                 fetch, so the two can never disagree on screen. */}
             <CreditCards scope={scope} debts={debts} isMobile={isMobile} />
-          </TabPanel>
-        )}
+        </TabPanel>
 
-        {tab === 'debt' && (
-          <TabPanel id="debt">
-            {/* Debt Tracker — the เงินรั่ว debt row jumps to this anchor (v4.34) */}
-            <div id={DEBT_TRACKER_ANCHOR}>
+        <TabPanel id="debt" active={tab === 'debt'}>
+            {/* Debt Tracker — the เงินรั่ว debt row jumps to this anchor (v4.34).
+                tabIndex -1 makes the anchor a legal focus target so the jump can
+                hand the keyboard over (A1); it stays out of the tab order. */}
+            <div id={DEBT_TRACKER_ANCHOR} tabIndex={-1} style={{ outline: 'none' }}>
               <DebtTracker
                 debts={debts}
                 payments={debtPayments}
@@ -1488,11 +1524,9 @@ export function FinanceView({ scope }) {
                 onChange={refresh}
               />
             </div>
-          </TabPanel>
-        )}
+        </TabPanel>
 
-        {tab === 'budget' && (
-          <TabPanel id="budget">
+        <TabPanel id="budget" active={tab === 'budget'}>
             {/* Budget vs Actual */}
             <BudgetProgress budgets={budgets} categoryActuals={categories} />
 
@@ -1563,11 +1597,9 @@ export function FinanceView({ scope }) {
                 </div>
               )}
             </div>
-          </TabPanel>
-        )}
+        </TabPanel>
 
-        {tab === 'accounts' && (
-          <TabPanel id="accounts">
+        <TabPanel id="accounts" active={tab === 'accounts'}>
             {/* Accounts */}
             <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: '20px 22px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
@@ -1619,7 +1651,16 @@ export function FinanceView({ scope }) {
                     const txCount = txns.filter(t => t.account_id === a.id).length;
                     return (
                       <div key={a.id}
-                        onClick={() => setAccountFilter(isSelected ? null : a.id)}
+                        // Audited (DLG-FIN-001 · B1): the filtered rows live in
+                        // the รายการ room, so selecting an account goes there
+                        // instead of leaving the result somewhere the user has
+                        // to find. Clicking the already-selected row still
+                        // clears the filter and stays put.
+                        onClick={() => {
+                          if (isSelected) { setAccountFilter(null); return; }
+                          setAccountFilter(a.id);
+                          setTab('txns');
+                        }}
                         style={{
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           padding: '9px 12px', borderRadius: 10,
@@ -1664,8 +1705,7 @@ export function FinanceView({ scope }) {
                 </div>
               )}
             </div>
-          </TabPanel>
-        )}
+        </TabPanel>
 
         {/* Footer */}
         <div style={{
