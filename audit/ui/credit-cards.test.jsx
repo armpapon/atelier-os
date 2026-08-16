@@ -11,12 +11,36 @@
 // audit/mock-supabase.mjs by audit/ui/vitest.config.mjs, so the REAL
 // src/lib/api/creditCards.js runs against a mock PostgREST. Deleting the
 // `credit_cards` key from __tables is exactly production before the SQL.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import React from 'react';
 
 import { CreditCards } from '../../src/components/dashboard/CreditCards.jsx';
 import { __tables } from '../mock-supabase.mjs';
+
+// v4.40 · A2 — three of the claims below are about the WINDOW between clicking
+// บันทึก and the write settling, which the mock PostgREST answers too fast to
+// observe. `gate.pending`, when set, holds createCreditCard open until the test
+// resolves or rejects it by hand; when it is null (every other test in this
+// file) the real API runs untouched.
+const gate = vi.hoisted(() => ({ pending: null }));
+vi.mock('../../src/lib/api/creditCards.js', async (importOriginal) => {
+  const real = await importOriginal();
+  return {
+    ...real,
+    createCreditCard: async (payload) => {
+      if (gate.pending) await gate.pending;
+      return real.createCreditCard(payload);
+    },
+  };
+});
+
+/** A promise the test decides the fate of, plus its settle handles. */
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
 
 const card = (over = {}) => ({
   id: 'card-' + Math.random().toString(36).slice(2, 8),
@@ -41,7 +65,10 @@ beforeEach(() => {
   }));
   vi.stubGlobal('alert', vi.fn());
   vi.stubGlobal('confirm', vi.fn(() => true));
+  gate.pending = null;
 });
+
+afterEach(() => { gate.pending = null; });
 
 describe('บัตรเครดิต · the SQL has not been run yet', () => {
   it('shows the calm setup notice instead of crashing', async () => {
@@ -151,6 +178,183 @@ describe('บัตรเครดิต · a cancelled card', () => {
       .filter(t => t === 'ใบที่ยังใช้อยู่' || t === 'ใบที่ยกเลิกแล้ว');
     expect(names[0]).toBe('ใบที่ยังใช้อยู่');
     expect(names[names.length - 1]).toBe('ใบที่ยกเลิกแล้ว');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.40 · A2 follow-ups. The pure rule is pinned in audit/cases.mjs
+//  (safeHttpUrl); what only the mounted card can prove is that the rule is
+//  actually applied on the way IN (the form) and on the way OUT (the anchor).
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · ลิงก์ ธปท. ที่เป็นพิษ', () => {
+  it('renders no anchor at all for a javascript: url already in the row', async () => {
+    __tables.credit_cards = [card({
+      name: 'ใบที่ลิงก์เป็นพิษ',
+      fee_profile: { interest: '16% ต่อปี', bot_url: 'javascript:alert(1)' },
+    })];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใบที่ลิงก์เป็นพิษ')).toBeTruthy();
+
+    // The fee table still renders — only the poisoned link is refused.
+    expect(container.textContent).toContain('16% ต่อปี');
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.innerHTML).not.toContain('javascript:alert(1)');
+    expect(screen.queryByRole('link', { name: /ธปท/ })).toBeNull();
+  });
+
+  it('still links a real https ธปท. url', async () => {
+    __tables.credit_cards = [card({
+      name: 'ใบที่ลิงก์ปกติ',
+      fee_profile: { bot_url: 'https://app.bot.or.th/fee', bot_checked: '16 ส.ค. 69' },
+    })];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใบที่ลิงก์ปกติ')).toBeTruthy();
+    const link = container.querySelector('a');
+    expect(link).toBeTruthy();
+    expect(link.getAttribute('href')).toBe('https://app.bot.or.th/fee');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('drops a javascript: url on save instead of writing it to the row', async () => {
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ เพิ่มบัตร' }));
+
+    fireEvent.change(screen.getByLabelText('ชื่อบัตร'), { target: { value: 'บัตรลิงก์พิษ' } });
+    fireEvent.change(screen.getByLabelText('ลิงก์ตาราง ธปท.'), { target: { value: 'javascript:alert(1)' } });
+    fireEvent.change(screen.getByLabelText('ตรวจกับ ธปท. เมื่อ'), { target: { value: '16 ส.ค. 69' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มบัตร' }));
+
+    await waitFor(() => expect(__tables.credit_cards).toHaveLength(1));
+    const saved = __tables.credit_cards[0];
+    expect(saved.fee_profile.bot_url).toBeUndefined();      // never stored
+    expect(saved.fee_profile.bot_checked).toBe('16 ส.ค. 69'); // the rest is kept
+    expect(JSON.stringify(saved)).not.toContain('javascript:');
+  });
+
+  it('keeps an https url typed into the same field', async () => {
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ เพิ่มบัตร' }));
+
+    fireEvent.change(screen.getByLabelText('ชื่อบัตร'), { target: { value: 'บัตรลิงก์ดี' } });
+    fireEvent.change(screen.getByLabelText('ลิงก์ตาราง ธปท.'), { target: { value: 'https://app.bot.or.th/fee' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มบัตร' }));
+
+    await waitFor(() => expect(__tables.credit_cards).toHaveLength(1));
+    expect(__tables.credit_cards[0].fee_profile.bot_url).toBe('https://app.bot.or.th/fee');
+  });
+});
+
+describe('บัตรเครดิต · ระหว่างกำลังบันทึก ป๊อปอัปต้องไม่ปิดตัวเอง', () => {
+  /** Open the add form and start a save that will not settle on its own. */
+  async function startHangingSave() {
+    const d = deferred();
+    gate.pending = d.promise;
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ เพิ่มบัตร' }));
+    fireEvent.change(screen.getByLabelText('ชื่อบัตร'), { target: { value: 'บัตรที่เซฟช้า' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มบัตร' }));
+    // The button says so out loud, which is how we know the write is in flight.
+    await screen.findByRole('button', { name: 'กำลังบันทึก…' });
+    return d;
+  }
+
+  it('ignores Esc, the backdrop, ปิด and ยกเลิก until the write settles', async () => {
+    const d = await startHangingSave();
+    const dialog = screen.getByRole('dialog', { name: 'เพิ่มบัตร' });
+
+    // Both exits are visibly dead, not merely inert.
+    expect(screen.getByRole('button', { name: 'ปิด' }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'ยกเลิก' }).disabled).toBe(true);
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.getByRole('dialog')).toBe(dialog);
+
+    fireEvent.click(dialog.parentElement.firstChild);            // the backdrop
+    expect(screen.getByRole('dialog')).toBe(dialog);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ยกเลิก' }));
+    expect(screen.getByRole('dialog')).toBe(dialog);
+
+    // Settling lets it behave normally again — and the card really was written.
+    await act(async () => { d.resolve(); await d.promise; });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(__tables.credit_cards).toHaveLength(1);
+    expect(__tables.credit_cards[0].name).toBe('บัตรที่เซฟช้า');
+  });
+
+  it('a rejected write reports itself in the still-mounted form', async () => {
+    const d = await startHangingSave();
+
+    await act(async () => {
+      d.reject(new Error('เขียนไม่ผ่าน RLS'));
+      await d.promise.catch(() => {});
+    });
+
+    // The form is still there — which is the only place the error can be read.
+    expect(screen.getByRole('dialog', { name: 'เพิ่มบัตร' })).toBeTruthy();
+    expect(await screen.findByText('เขียนไม่ผ่าน RLS')).toBeTruthy();
+    expect(screen.getByLabelText('ชื่อบัตร').value).toBe('บัตรที่เซฟช้า');   // nothing retyped
+    expect(__tables.credit_cards).toHaveLength(0);
+
+    // …and the exits work again, so the owner is not trapped.
+    expect(screen.getByRole('button', { name: 'ยกเลิก' }).disabled).toBe(false);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+});
+
+describe('บัตรเครดิต · ป๊อปอัปกับคีย์บอร์ด', () => {
+  const focusablesIn = (dialog) => Array.from(dialog.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  ));
+
+  it('is a modal dialog whose Tab order cycles inside itself', async () => {
+    __tables.credit_cards = [card({ name: 'บัตรทดสอบ' })];
+    render(<CreditCards scope="personal" debts={[]} />);
+
+    const opener = await screen.findByRole('button', { name: 'แก้ไข บัตรทดสอบ' });
+    opener.focus();
+    fireEvent.click(opener);
+
+    const dialog = await screen.findByRole('dialog', { name: 'แก้ไขบัตร' });
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+
+    const nodes = focusablesIn(dialog);
+    expect(nodes.length).toBeGreaterThan(2);
+    const first = nodes[0], last = nodes[nodes.length - 1];
+
+    // Tab off the end comes back to the top…
+    last.focus();
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+
+    // …and Shift+Tab off the top goes to the bottom.
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    // Focus that has escaped the popup entirely is pulled back in.
+    document.body.focus();
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it('hands focus back to the button that opened it', async () => {
+    __tables.credit_cards = [card({ name: 'บัตรทดสอบ' })];
+    render(<CreditCards scope="personal" debts={[]} />);
+
+    const opener = await screen.findByRole('button', { name: 'แก้ไข บัตรทดสอบ' });
+    opener.focus();
+    fireEvent.click(opener);
+    await screen.findByRole('dialog', { name: 'แก้ไขบัตร' });
+    expect(document.activeElement).not.toBe(opener);          // focus moved into the form
+
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(opener);
+    expect(document.activeElement).not.toBe(document.body);
   });
 });
 

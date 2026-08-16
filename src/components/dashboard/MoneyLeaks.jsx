@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import {
-  buildLeakInsights, sumExpense, leakDateLabel, normalizeCategory,
+  buildLeakInsights, sumExpense, leakDateLabel, normalizeCategory, resolveYearMonth,
 } from '../../lib/moneyLeaks.js';
 import { formatBaht } from './KPICard.jsx';
+import { formatThaiMonth } from './MonthNav.jsx';
+import { currentYearMonth } from '../../lib/api/finance.js';
 import { Card, CardHeader } from '../ui/index.js';
 
 // ── Drill-down: the transactions behind one insight ───────────────────────────
@@ -156,13 +158,17 @@ export function MoneyLeaks({
     return (t) => (t?.account_id ? byId[t.account_id] : null) || null;
   }, [accounts]);
 
-  // `yearMonth` is the month the page is showing. The card is labelled
-  // "เดือนนี้", so the subscriptions it lists have to be the ones still being
-  // charged around that month — not every bill the 12-month window ever saw.
+  // `yearMonth` is the month the page is showing — not necessarily the calendar
+  // month. The subscriptions listed are the ones charged around THAT month, so
+  // the corner label has to name it too: "เดือนนี้" only while the page really
+  // is on the current Bangkok month, otherwise the month being viewed
+  // (audited: DLG-FIN-001 · A4).
   const insights = useMemo(
     () => buildLeakInsights({ txns, prevTxns, trend12, debts, yearMonth }),
     [txns, prevTxns, trend12, debts, yearMonth],
   );
+  const viewedMonth = resolveYearMonth(yearMonth);
+  const monthLabel = viewedMonth === currentYearMonth() ? 'เดือนนี้' : formatThaiMonth(viewedMonth);
 
   const [openRow, setOpenRow] = useState(null);
   const [openSub, setOpenSub] = useState(null);
@@ -197,7 +203,7 @@ export function MoneyLeaks({
           <span style={{
             fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.14em',
             textTransform: 'uppercase', color: 'var(--text-muted)',
-          }}>เดือนนี้</span>
+          }}>{monthLabel}</span>
         }
       />
 
@@ -239,7 +245,7 @@ export function MoneyLeaks({
           return (
             <LeakRow key={id} id={id} icon="🔁"
               title={`บิล/subscription ซ้ำ ${recurring.length} รายการ`}
-              detail={`ที่ยังเรียกเก็บอยู่ · ${recurring.map(r => r.title).slice(0, 3).join(' · ')}`}
+              detail={`เรียกเก็บล่าสุด · ${recurring.map(r => r.title).slice(0, 3).join(' · ')}`}
               value={`${formatBaht(recurringTotal)}/ด`} tone="var(--accent-strong)"
               expanded={openRow === id} onActivate={() => toggle(id)}>
               <div className="leak-detail">
@@ -247,7 +253,7 @@ export function MoneyLeaks({
                   fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
                   color: 'var(--text-muted)', padding: '6px 0 4px',
                 }}>
-                  {recurring.length} รายการ · ที่ยังเรียกเก็บอยู่ · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
+                  {recurring.length} รายการ · เรียกเก็บล่าสุด · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
                 </div>
                 {recurring.map((r, i) => {
                   const subId = `${id}-${i}`;

@@ -49,7 +49,7 @@ import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
 import {
   utilizationPct, waiverStatus, nextCycleDates, nextDayOfMonth,
   monthlyInterestEstimate, cardBalance, summarizeCards, sortCards,
-  feeProfileRows, installmentRows, cycleDateLabel, daysInMonth,
+  feeProfileRows, installmentRows, cycleDateLabel, daysInMonth, safeHttpUrl,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../src/lib/creditCards.js';
 import {
@@ -62,7 +62,7 @@ import {
 } from '../src/lib/cashflow.js';
 import {
   normalizeCategory, categoryKey, sortNewestFirst, sumExpense, leakDateLabel,
-  groupExpensesByCategory, buildLeakInsights, isRecurringAlive,
+  groupExpensesByCategory, buildLeakInsights, isRecurringAlive, resolveYearMonth,
   CREEP_MIN_DELTA, FREQUENT_MIN_COUNT, OTHER_CATEGORY, MAX_RECURRING_ROWS,
 } from '../src/lib/moneyLeaks.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
@@ -3320,6 +3320,36 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
         && r.recurringTotal === 900 + 800 + 700 + 600;
     })());
 
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.40 · A4 — '2026-13' ผ่านการเช็ครูปแบบ แต่ไม่ใช่เดือน
+  //
+  //  The shape check said 'YYYY-MM' and stopped there, so '2026-13' walked
+  //  into previousMonth() and came back '2026-12': December charges could be
+  //  read as "เรียกเก็บล่าสุด". A month has to be 01–12 or it is not a month.
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.40 · เดือนที่ส่งเข้ามาต้องเป็นเดือนจริง 01–12');
+
+  check('เดือนนอกช่วง 01–12 ตกไปใช้เดือนปัจจุบัน เหมือนค่าที่อ่านไม่ออก',
+    resolveYearMonth('2026-13') === currentYearMonth()
+    && resolveYearMonth('2026-00') === currentYearMonth()
+    && resolveYearMonth('2026-99') === currentYearMonth()
+    && resolveYearMonth('ส.ค. 69') === currentYearMonth()
+    && resolveYearMonth('') === currentYearMonth()
+    && resolveYearMonth(undefined) === currentYearMonth(),
+    `2026-13 → ${resolveYearMonth('2026-13')}`);
+
+  check('ขอบทั้งสองข้างยังใช้ได้จริง — 01 และ 12 ผ่าน และเดือนก่อนหน้าถูกต้อง',
+    resolveYearMonth('2026-01') === '2026-01' && resolveYearMonth('2026-12') === '2026-12'
+    && resolveYearMonth(' 2026-07 ') === '2026-07'
+    && previousMonth('2026-01') === '2025-12' && previousMonth('2026-12') === '2026-11',
+    `${previousMonth('2026-01')} / ${previousMonth('2026-12')}`);
+
+  check('… และ 2026-13 ไม่ลากบิลของ ธ.ค. เข้ามา — ผลเท่ากับทางที่ตกไปใช้เดือนปัจจุบัน',
+    isRecurringAlive({ lastDate: ts('2026-12-08') }, '2026-13')
+      === isRecurringAlive({ lastDate: ts('2026-12-08') }, currentYearMonth())
+    && isRecurringAlive({ lastDate: ts('2026-12-08') }, '2026-12') === true,
+    String(isRecurringAlive({ lastDate: ts('2026-12-08') }, '2026-13')));
+
   check('ส่วนอื่นของการ์ดไม่ถูกแตะ — creep / frequent / หนี้ ยังให้ผลเดิมทุกประการ',
     (() => {
       const before = buildLeakInsights({ txns: thisMonth, prevTxns: lastMonth, trend12: [], debts: [], yearMonth: '2026-08' });
@@ -3540,6 +3570,34 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
 
   check('ไม่มีผ่อน / ข้อมูลเพี้ยน → อาร์เรย์ว่าง ไม่ throw',
     installmentRows({}).length === 0 && installmentRows({ installments: 'x' }).length === 0);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.40 · A2 — ลิงก์ตาราง ธปท. เป็นข้อความที่เจ้าของพิมพ์เอง
+  //
+  //  fee_profile.bot_url ถูกส่งเข้า <a href> ตรง ๆ ค่าที่เป็น javascript:
+  //  จึงกลายเป็นโค้ดที่รันตอนคลิกแทนที่จะเป็นลิงก์ไป ธปท. — ต้องผ่านตัวกรอง
+  //  ทั้งตอนบันทึกและตอนวาด
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.40 · ลิงก์ ธปท. รับเฉพาะ http/https');
+
+  check('ลิงก์เว็บจริงผ่าน และช่องว่างหัวท้ายถูกตัดทิ้ง',
+    safeHttpUrl('https://app.bot.or.th/fee') === 'https://app.bot.or.th/fee'
+    && safeHttpUrl('http://bot.or.th') === 'http://bot.or.th'
+    && safeHttpUrl('  https://app.bot.or.th/fee  ') === 'https://app.bot.or.th/fee');
+
+  check('javascript: / data: / vbscript: ไม่ใช่ลิงก์ → null (การ์ดจะได้ไม่วาด <a> เลย)',
+    safeHttpUrl('javascript:alert(1)') === null
+    && safeHttpUrl('JavaScript:alert(1)') === null
+    && safeHttpUrl('  javascript:alert(1)') === null
+    && safeHttpUrl('data:text/html,<script>alert(1)</script>') === null
+    && safeHttpUrl('vbscript:msgbox(1)') === null,
+    String(safeHttpUrl('javascript:alert(1)')));
+
+  check('ข้อความมั่ว / ว่าง / ไม่ใช่สตริง → null ไม่ throw',
+    safeHttpUrl('ตาราง ธปท.') === null && safeHttpUrl('bot.or.th') === null
+    && safeHttpUrl('') === null && safeHttpUrl('   ') === null
+    && safeHttpUrl(null) === null && safeHttpUrl(undefined) === null
+    && safeHttpUrl(12345) === null && safeHttpUrl({}) === null);
 
   section('v4.36 · credit_cards API — ยังไม่ได้รัน SQL ต้องไม่พัง');
 

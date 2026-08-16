@@ -11,7 +11,7 @@
  *   · A card linked to a debt row shows the DEBT's remaining balance, read
  *     from the list FinanceView already loaded. Nothing is refetched here.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardHeader, Badge, Button, EmptyState } from '../ui/index.js';
 import {
   listCreditCards, createCreditCard, updateCreditCard, deleteCreditCard,
@@ -19,7 +19,7 @@ import {
 import {
   utilizationPct, waiverStatus, nextCycleDates, monthlyInterestEstimate,
   cardBalance, summarizeCards, sortCards, feeProfileRows, installmentRows,
-  cycleDateLabel, cycleDayLabel, baht, isCancelled,
+  cycleDateLabel, cycleDayLabel, baht, isCancelled, safeHttpUrl,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
 
@@ -185,6 +185,10 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
   const fees      = feeProfileRows(card);
   const insts     = installmentRows(card);
   const linkedDebt = card.debt_id ? (debts || []).find(d => d.id === card.debt_id) : null;
+  // Only an http(s) address becomes a link. A row saved before v4.40 (or edited
+  // straight in the database) can still hold `javascript:` — it renders as no
+  // anchor at all rather than as a clickable trap.
+  const botUrl    = safeHttpUrl(card.fee_profile?.bot_url);
 
   const meta = [
     card.scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว',
@@ -321,7 +325,7 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
       </div>
 
       {/* ── fee profile ──────────────────────────────────────────────────── */}
-      {(fees.length > 0 || card.fee_profile?.bot_url || card.fee_profile?.bot_checked) && (
+      {(fees.length > 0 || botUrl || card.fee_profile?.bot_checked) && (
         <details style={{ borderTop: '1px solid var(--hairline)', paddingTop: 10 }}>
           <summary style={{ ...MONO_LABEL, cursor: 'pointer' }}>
             โปรไฟล์ค่าธรรมเนียม (ธปท.)
@@ -347,8 +351,8 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginTop: 10, fontSize: 11, color: 'var(--text-muted)', gap: 10, flexWrap: 'wrap',
           }}>
-            {card.fee_profile?.bot_url
-              ? <a href={card.fee_profile.bot_url} target="_blank" rel="noopener noreferrer"
+            {botUrl
+              ? <a href={botUrl} target="_blank" rel="noopener noreferrer"
                 style={{ color: 'var(--accent-strong)', fontWeight: 600, textDecoration: 'none', borderBottom: '1px solid var(--accent-soft)' }}>
                 ตารางเปรียบเทียบ ธปท. ↗
               </a>
@@ -464,18 +468,56 @@ function toForm(card) {
   };
 }
 
+/** Everything inside the dialog the keyboard is allowed to land on. */
+const FOCUSABLE = [
+  'a[href]', 'button:not([disabled])', 'input:not([disabled])',
+  'select:not([disabled])', 'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
 function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
   const [form, setForm] = useState(() => toForm(initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const formRef = useRef(null);
 
-  // Esc closes — same affordance as every other Loop popup.
+  // Every exit is inert while the write is in flight (audited: DLG-FIN-001 ·
+  // A2). Closing mid-save unmounts the only place a rejected write can report
+  // itself, leaving the owner unable to tell whether the card was saved.
+  const requestClose = useCallback(() => { if (!saving) onClose(); }, [saving, onClose]);
+
+  // Esc closes — same affordance as every other Loop popup — and Tab cycles
+  // INSIDE the dialog. The listener sits on window rather than on the form so
+  // it still fires if focus has wandered out of the popup.
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { requestClose(); return; }
+      if (e.key !== 'Tab') return;
+      const box = formRef.current;
+      if (!box) return;
+      const nodes = Array.from(box.querySelectorAll(FOCUSABLE));
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last  = nodes[nodes.length - 1];
+      const here  = document.activeElement;
+      const inside = box.contains(here);
+      if (e.shiftKey ? (here === first || !inside) : (here === last || !inside)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [requestClose]);
+
+  // …and the keyboard goes back where it came from — the + เพิ่มบัตร tile or
+  // the แก้ไข button that opened the popup — once the popup is gone. Captured
+  // during the FIRST RENDER, before the form's own autoFocus moves it.
+  const [opener] = useState(() => (typeof document !== 'undefined' ? document.activeElement : null));
+  useEffect(() => () => {
+    if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+  }, [opener]);
 
   const numOrNull = (v) => (String(v).trim() === '' ? null : Number(v));
 
@@ -491,7 +533,9 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
       put('cash_advance', form.fp_cash_advance);
       put('fx', form.fp_fx);
       put('benefits', form.fp_benefits);
-      put('bot_url', form.fp_bot_url);
+      // Only a real http(s) address is stored. A `javascript:` value typed here
+      // is dropped rather than kept for the grid to render (A2).
+      put('bot_url', safeHttpUrl(form.fp_bot_url) || '');
       put('bot_checked', form.fp_bot_checked);
 
       const payload = {
@@ -544,8 +588,9 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
-      <form onSubmit={submit} role="dialog" aria-label={initial ? 'แก้ไขบัตร' : 'เพิ่มบัตร'} style={{
+      <div onClick={requestClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
+      <form ref={formRef} onSubmit={submit} role="dialog" aria-modal="true"
+        aria-label={initial ? 'แก้ไขบัตร' : 'เพิ่มบัตร'} style={{
         position: 'relative', width: '92vw', maxWidth: 620,
         maxHeight: '88vh', overflowY: 'auto',
         background: 'var(--surface)', borderRadius: 'var(--radius-card)',
@@ -559,7 +604,7 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
               {initial ? 'แก้ไขบัตร' : 'เพิ่มบัตรใหม่'}
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>ปิด</Button>
+          <Button variant="ghost" size="sm" onClick={requestClose} disabled={saving}>ปิด</Button>
         </div>
 
         {field('ชื่อบัตร', <input type="text" value={form.name} required autoFocus
@@ -684,7 +729,7 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <Button variant="ghost" onClick={onClose}>ยกเลิก</Button>
+          <Button variant="ghost" onClick={requestClose} disabled={saving}>ยกเลิก</Button>
           <Button variant="primary" type="submit" disabled={saving}>
             {saving ? 'กำลังบันทึก…' : initial ? 'บันทึก' : 'เพิ่มบัตร'}
           </Button>

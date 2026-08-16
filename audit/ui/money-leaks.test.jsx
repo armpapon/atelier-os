@@ -20,6 +20,7 @@ import React from 'react';
 import { MoneyLeaks } from '../../src/components/dashboard/MoneyLeaks.jsx';
 import { FinanceView, DEBT_TRACKER_ANCHOR } from '../../src/pages/Finance.jsx';
 import { formatBaht } from '../../src/components/dashboard/KPICard.jsx';
+import { formatThaiMonth } from '../../src/components/dashboard/MonthNav.jsx';
 import { sumExpense } from '../../src/lib/moneyLeaks.js';
 import { currentYearMonth, getMonthBounds } from '../../src/lib/api/finance.js';
 import { cashflowWindow } from '../../src/lib/cashflow.js';
@@ -273,7 +274,10 @@ describe('เงินรั่ว · บิลที่จ่ายจบแล
 
     const subs = row(container, 'subs');
     expect(subs.textContent).toContain('บิล/subscription ซ้ำ 1 รายการ');
-    expect(subs.textContent).toContain('ที่ยังเรียกเก็บอยู่');
+    // v4.40 · A4 — the criterion is recency, so the copy says "เรียกเก็บล่าสุด"
+    // rather than claiming the subscription is still running.
+    expect(subs.textContent).toContain('เรียกเก็บล่าสุด');
+    expect(subs.textContent).not.toContain('ที่ยังเรียกเก็บอยู่');
     expect(subs.textContent).toContain('Netflix');
     // The bug, stated as the user saw it: neither the name nor the number.
     expect(container.textContent).not.toContain('กรมสรรพากร');
@@ -288,8 +292,40 @@ describe('เงินรั่ว · บิลที่จ่ายจบแล
     const p = panel(container, 'subs');
     expect(p.querySelectorAll('[data-leak-row]')).toHaveLength(1);
     expect(p.textContent).not.toContain('กรมสรรพากร');
-    expect(p.textContent).toContain('ที่ยังเรียกเก็บอยู่');
+    expect(p.textContent).toContain('เรียกเก็บล่าสุด');
+    expect(p.textContent).not.toContain('ที่ยังเรียกเก็บอยู่');
     expect(p.textContent).toContain(`รวม ${formatBaht(419)}`);
+  });
+
+  // v4.40 · A4 — the card's corner label was the constant "เดือนนี้", so a
+  // walk back through MonthNav showed มิ.ย.'s figures under copy that said
+  // "this month". The label now names whichever month is being read.
+  it('ป้ายมุมการ์ดบอกเดือนที่กำลังดู ไม่ใช่ "เดือนนี้" ตลอดเวลา', () => {
+    // The corner label is the one element whose whole text is the month.
+    const cornerLabel = (c) => Array.from(c.querySelectorAll('span'))
+      .filter(s => s.textContent === 'เดือนนี้' || s.textContent === formatThaiMonth('2026-06')
+        || s.textContent === formatThaiMonth(currentYearMonth()))
+      .map(s => s.textContent);
+
+    const { container, unmount } = mount('2026-06');
+    expect(cornerLabel(container)).toEqual(['มิ.ย. 2569']);
+    unmount();
+
+    // …and the current Bangkok month keeps the short, familiar word.
+    const now = render(
+      <MoneyLeaks txns={[...FOOD]} prevTxns={[]} trend12={TREND} debts={[]}
+        allCategories={CATEGORIES} accounts={ACCOUNTS} yearMonth={currentYearMonth()} />,
+    );
+    expect(cornerLabel(now.container)).toEqual(['เดือนนี้']);
+    expect(now.container.textContent).not.toContain(formatThaiMonth(currentYearMonth()));
+    now.unmount();
+
+    // A month that is not a month falls back to the current one, label included.
+    const broken = render(
+      <MoneyLeaks txns={[...FOOD]} prevTxns={[]} trend12={TREND} debts={[]}
+        allCategories={CATEGORIES} accounts={ACCOUNTS} yearMonth="2026-13" />,
+    );
+    expect(cornerLabel(broken.container)).toEqual(['เดือนนี้']);
   });
 
   it('มิ.ย. · ย้อนดูเดือนที่บิลนั้นยังเรียกเก็บอยู่ แล้วมันต้องกลับมา', () => {

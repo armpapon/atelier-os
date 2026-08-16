@@ -144,7 +144,7 @@ describe('Finance sub-tabs · หกห้อง หนึ่งหน้า', (
     expect(tabs().filter(t => t.getAttribute('aria-selected') === 'true')).toHaveLength(1);
   });
 
-  it('keeps every aria-controls pointing at a real panel, in every tab state (A2)', async () => {
+  it('mobile · keeps every aria-controls pointing at a real panel, in every tab state (A2)', async () => {
     render(<FinanceView scope="personal" />);
     await waitFor(() => expect(tabs()).toHaveLength(6));
 
@@ -155,6 +155,7 @@ describe('Finance sub-tabs · หกห้อง หนึ่งหน้า', (
         expect(target).toBeTruthy();                              // never a dangling id
         expect(target.getAttribute('role')).toBe('tabpanel');
         expect(target.getAttribute('aria-labelledby')).toBe(t.id);
+        expect(target.getAttribute('aria-label')).toBeNull();     // the tab IS the name
       }
       // The selected tab is the one whose panel is on screen — and only it.
       const open = PANEL_IDS.filter(id => isShown(panelOf(id)));
@@ -162,6 +163,41 @@ describe('Finance sub-tabs · หกห้อง หนึ่งหน้า', (
       expect(open[0]).toBe(tabNamed(label).getAttribute('aria-controls'));
       expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
     }
+  });
+
+  // v4.40 · A3 — the desktop half of the same claim. With the tablist gone
+  // (the sidebar navigates instead) a room that still called itself a tabpanel
+  // was a widget half: a named panel owned by no tab anywhere on the page.
+  it('desktop · the rooms are named regions, and no tabpanel is left orphaned (A3)', async () => {
+    vi.stubGlobal('matchMedia', (query) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    }));
+    render(<FinanceView scope="personal" />);
+    await waitFor(() => expect(panelOf('fin-panel-overview')).toBeTruthy());
+
+    // No tablist, no tabs — so nothing may claim to be a tabpanel either.
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(0);
+
+    // All six rooms are still mounted (B2: drafts survive), each one a region
+    // that names itself, with no dangling aria-labelledby.
+    expect(PANEL_IDS.every(id => panelOf(id))).toBe(true);
+    for (const [i, id] of PANEL_IDS.entries()) {
+      const p = panelOf(id);
+      expect(p.getAttribute('role')).toBe('region');
+      expect(p.getAttribute('aria-label')).toBe(TAB_LABELS[i]);
+      expect(p.getAttribute('aria-labelledby')).toBeNull();
+    }
+
+    // Exactly one room on screen, and the hidden five stay out of the
+    // accessibility tree — the same one-open rule as on mobile.
+    expect(PANEL_IDS.filter(id => isShown(panelOf(id)))).toEqual(['fin-panel-overview']);
+    const named = screen.getAllByRole('region').filter(el => el.id.startsWith('fin-panel-'));
+    expect(named).toHaveLength(1);
+    expect(named[0].id).toBe('fin-panel-overview');
   });
 });
 
