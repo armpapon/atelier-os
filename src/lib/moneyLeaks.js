@@ -22,7 +22,7 @@
  */
 import {
   summarize, detectRecurringFromTransactions, calculateDebtMath, isTransfer,
-  bangkokDate,
+  bangkokDate, bangkokMonth, previousMonth, currentYearMonth,
 } from './api/finance.js';
 
 export const OTHER_CATEGORY = 'อื่น ๆ';
@@ -108,6 +108,37 @@ export function groupExpensesByCategory(txns = []) {
     .sort((a, b) => (b.amount - a.amount) || a.key.localeCompare(b.key));
 }
 
+/** 'YYYY-MM' or nothing → the month the card is looking at. */
+function resolveYearMonth(yearMonth) {
+  const s = String(yearMonth ?? '').trim();
+  return /^\d{4}-\d{2}$/.test(s) ? s : currentYearMonth();
+}
+
+/**
+ * Is a detected subscription STILL being charged, seen from `yearMonth`?
+ *
+ * The detector reads a 12-month window because two months of charges is the
+ * minimum evidence that something is a bill at all. That window is history,
+ * not the present: a finished 2-installment tax payment (กรมสรรพากร, 8 พ.ค.
+ * + 8 มิ.ย. 69) kept renderering under a card labelled "เดือนนี้" all the way
+ * into ส.ค., and its ฿9,608 kept inflating the monthly total.
+ *
+ * Alive = last charged in the viewed month, or in the one right before it.
+ * The month of grace is not slack — a monthly bill that has not been charged
+ * yet this month is still a bill, and dropping it would be the opposite lie.
+ *
+ * Recency is measured against the VIEWED month, never against today, so
+ * browsing back to มิ.ย. shows what was alive in มิ.ย. The history window the
+ * page hands in ends at the viewed month (Finance.jsx `history12`), so
+ * `lastDate` never runs ahead of it.
+ */
+export function isRecurringAlive(item, yearMonth) {
+  const ym = resolveYearMonth(yearMonth);
+  const last = bangkokMonth(item?.lastDate);
+  if (!last) return false;
+  return last === ym || last === previousMonth(ym);
+}
+
 /**
  * Everything the Money Leaks card renders, with drill-down rows attached.
  *
@@ -115,8 +146,14 @@ export function groupExpensesByCategory(txns = []) {
  *   frequent[]  — { key, category, amount, count, txns, avg }
  *   recurring[] — { title, avgAmount, monthsCount, txns, … }
  *   debtRows[]  — { debt, remainingInterest, rate } sorted worst-first
+ *
+ * `yearMonth` ('YYYY-MM') is the month the card is showing — the Finance
+ * page's selected month, which is NOT necessarily the calendar month. It
+ * decides which subscriptions still count as live; empty/unreadable falls
+ * back to the current Bangkok month.
  */
-export function buildLeakInsights({ txns = [], prevTxns = [], trend12 = [], debts = [] } = {}) {
+export function buildLeakInsights({ txns = [], prevTxns = [], trend12 = [], debts = [], yearMonth } = {}) {
+  const ym = resolveYearMonth(yearMonth);
   const thisSum = summarize(txns);
   const prevSum = summarize(prevTxns);
   const srDelta = thisSum.savingsRate - prevSum.savingsRate;
@@ -139,9 +176,14 @@ export function buildLeakInsights({ txns = [], prevTxns = [], trend12 = [], debt
     .sort((a, b) => b.count - a.count)
     .slice(0, MAX_FREQUENT_ROWS);
 
-  // 3) Subscriptions / recurring charges detected across the 12-month window.
-  //    The detector already knows which charges formed each group; keep them.
+  // 3) Subscriptions / recurring charges detected across the 12-month window,
+  //    then narrowed to the ones still being charged as of `ym` — see
+  //    isRecurringAlive. Filtering BEFORE the slice matters: a dead bill must
+  //    not eat one of the four visible slots. The receipts underneath a
+  //    surviving row keep every charge, past months included — those dates
+  //    are the evidence for the number, not a claim about this month.
   const recurring = detectRecurringFromTransactions(trend12)
+    .filter(r => isRecurringAlive(r, ym))
     .slice(0, MAX_RECURRING_ROWS)
     .map(r => ({ ...r, txns: sortNewestFirst(r.txns || []) }));
   const recurringTotal = recurring.reduce((s, r) => s + r.avgAmount, 0);
