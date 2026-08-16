@@ -288,17 +288,32 @@ describe('เงินรั่ว · แถวดอกเบี้ยหนี
 
     const { container } = render(<FinanceView scope="personal" />);
 
-    // The row is on the default ภาพรวม tab; the anchor is not rendered yet.
+    // The row is on the default ภาพรวม tab. Since v4.37 every panel stays
+    // mounted (so a half-typed form survives a tab change), so the assertion is
+    // no longer "the anchor is absent" but the stronger, user-visible claim:
+    // the หนี้ room is hidden — off screen, out of the accessibility tree and
+    // out of the tab order — until the row opens it.
     const debtRow = await waitFor(() => {
       const el = container.querySelector('[data-leak-row="debt"]');
       expect(el).toBeTruthy();
       return el;
     });
-    expect(container.querySelector(`#${DEBT_TRACKER_ANCHOR}`)).toBeNull();
+    const anchor = container.querySelector(`#${DEBT_TRACKER_ANCHOR}`);
+    expect(anchor).toBeTruthy();
+    const debtPanel = anchor.closest('[role="tabpanel"]');
+    expect(debtPanel.hasAttribute('hidden')).toBe(true);
+    expect(debtPanel.getAttribute('aria-hidden')).toBe('true');
+    expect(debtPanel.style.display).toBe('none');
+    expect(screen.getByRole('tab', { name: 'หนี้' }).getAttribute('aria-selected')).toBe('false');
+    // Role queries skip hidden subtrees — nothing in the debt room is reachable.
+    expect(screen.queryByRole('button', { name: /บันทึกว่าจ่ายแล้ว/ })).toBeNull();
 
     fireEvent.click(debtRow);
 
-    await waitFor(() => expect(container.querySelector(`#${DEBT_TRACKER_ANCHOR}`)).toBeTruthy());
+    await waitFor(() => expect(debtPanel.hasAttribute('hidden')).toBe(false));
+    expect(debtPanel.getAttribute('aria-hidden')).toBeNull();
+    expect(debtPanel.style.display).toBe('flex');
+    expect(screen.getByRole('button', { name: /บันทึกว่าจ่ายแล้ว/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'หนี้' }).getAttribute('aria-selected')).toBe('true');
   });
 });
