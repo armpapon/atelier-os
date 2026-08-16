@@ -127,12 +127,14 @@ Types: `feat`, `fix`, `docs`, `refactor`. Scopes are loose: `finance`, `learning
 ### Open SQL migrations user must run in Supabase
 Each is idempotent — safe to re-run.
 
-**ALL MIGRATIONS ARE RUN** (owner confirmed 2026-08-12 with a
-`to_regclass`/`to_regprocedure` check returning true for every one). Nothing is
-pending. Each file is idempotent, so re-running is harmless.
+**ONE MIGRATION IS PENDING** — `migration_add_credit_cards.sql` (v4.36).
+Everything else was confirmed run by the owner on 2026-08-12 with a
+`to_regclass`/`to_regprocedure` check returning true for every one. Each file is
+idempotent, so re-running is harmless.
 
 | Status | Migration | What it added |
 |---|---|---|
+| ⏳ **pending** | `migration_add_credit_cards.sql` | `credit_cards` + owner-only RLS + `updated_at` trigger — powers the **บัตรเครดิต** tab (v4.36). Until it runs, the tab shows a calm "ยังไม่ได้ติดตั้งตาราง" notice instead of crashing |
 | ✅ run | `migration_add_tax_planner.sql` | `tax_profiles` + unique index + owner-only RLS — powers the **วางแผนภาษี** page (v4.28) |
 | ✅ run | `migration_add_account_source_key.sql` | `accounts.source_key` + partial unique index + `accounts_upsert_by_source_key()` |
 | ✅ run | `migration_add_account_reassign_rpc.sql` | `reassign_and_archive_account()` — move a ledger and archive in one transaction |
