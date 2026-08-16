@@ -49,7 +49,7 @@ import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
 import {
   utilizationPct, waiverStatus, nextCycleDates, nextDayOfMonth,
   monthlyInterestEstimate, cardBalance, summarizeCards, sortCards,
-  feeProfileRows, installmentRows, cycleDateLabel, daysInMonth, safeHttpUrl,
+  feeProfileRows, installmentRows, cycleDateLabel, daysInMonth, safeHttpUrl, safeFaceUrl,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../src/lib/creditCards.js';
 import {
@@ -3598,6 +3598,39 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     && safeHttpUrl('') === null && safeHttpUrl('   ') === null
     && safeHttpUrl(null) === null && safeHttpUrl(undefined) === null
     && safeHttpUrl(12345) === null && safeHttpUrl({}) === null);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.41 · รูปหน้าบัตรจริง — face_url
+  //
+  //  ต่างจาก bot_url ตรงที่ค่าปกติของช่องนี้คือ path ในแอปเอง
+  //  ('/cards/kbank-plustinum.png') ซึ่ง new URL() อ่านไม่ได้ ตัวกรองจึงต้อง
+  //  ยอมรับ path แต่ต้องไม่หลงว่า '//evil.com/x.png' เป็น path เพราะนั่นคือ
+  //  โฮสต์ของคนอื่นที่สวมสแลชมา
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.41 · รูปหน้าบัตร รับเฉพาะ path ของแอปเอง หรือ http/https');
+
+  check('path ในแอปผ่าน และลิงก์เว็บจริงก็ยังผ่าน (ช่องว่างหัวท้ายถูกตัด)',
+    safeFaceUrl('/cards/x.png') === '/cards/x.png'
+    && safeFaceUrl('  /cards/kbank-plustinum.png  ') === '/cards/kbank-plustinum.png'
+    && safeFaceUrl('https://cdn.example.com/x.png') === 'https://cdn.example.com/x.png'
+    && safeFaceUrl('http://cdn.example.com/x.png') === 'http://cdn.example.com/x.png',
+    String(safeFaceUrl('/cards/x.png')));
+
+  check('//evil.com/x.png คือโฮสต์อื่น ไม่ใช่ path → null (รวมถึงกลลวง backslash/ช่องว่าง)',
+    safeFaceUrl('//evil.com/x.png') === null
+    && safeFaceUrl('/\\evil.com/x.png') === null
+    && safeFaceUrl('/cards/ a.png') === null
+    && safeFaceUrl('/cards/\nx.png') === null,
+    String(safeFaceUrl('//evil.com/x.png')));
+
+  check('javascript: / data: / ข้อความมั่ว / ว่าง / ไม่ใช่สตริง → null (การ์ดกลับไปใช้ตัวย่อ)',
+    safeFaceUrl('javascript:alert(1)') === null
+    && safeFaceUrl('  JavaScript:alert(1)') === null
+    && safeFaceUrl('data:image/png;base64,AAAA') === null
+    && safeFaceUrl('cards/x.png') === null && safeFaceUrl('รูปบัตร') === null
+    && safeFaceUrl('') === null && safeFaceUrl('   ') === null
+    && safeFaceUrl(null) === null && safeFaceUrl(undefined) === null
+    && safeFaceUrl(12345) === null && safeFaceUrl({}) === null);
 
   section('v4.36 · credit_cards API — ยังไม่ได้รัน SQL ต้องไม่พัง');
 

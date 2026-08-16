@@ -19,7 +19,7 @@ import {
 import {
   utilizationPct, waiverStatus, nextCycleDates, monthlyInterestEstimate,
   cardBalance, summarizeCards, sortCards, feeProfileRows, installmentRows,
-  cycleDateLabel, cycleDayLabel, baht, isCancelled, safeHttpUrl,
+  cycleDateLabel, cycleDayLabel, baht, isCancelled, safeHttpUrl, safeFaceUrl,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
 
@@ -56,6 +56,17 @@ function chipLabel(card) {
   const src = (card?.issuer || card?.name || '?').trim();
   return src.split(/\s+/)[0].slice(0, 6).toUpperCase();
 }
+
+/**
+ * The real plastic, at the size the approved mockup drew it. Height is left to
+ * the image so an issuer's odd aspect ratio is never squashed, and the two-layer
+ * shadow is the same warm ink the rest of the page casts.
+ */
+const CARD_FACE = {
+  width: 104, height: 'auto', flex: 'none', borderRadius: 8,
+  border: '1px solid var(--hairline)',
+  boxShadow: '0 1px 2px rgba(74, 61, 43, 0.10), 0 5px 14px rgba(74, 61, 43, 0.18)',
+};
 
 const utilTone = (pct) =>
   pct == null ? 'var(--text-muted)'
@@ -189,6 +200,10 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
   // straight in the database) can still hold `javascript:` — it renders as no
   // anchor at all rather than as a clickable trap.
   const botUrl    = safeHttpUrl(card.fee_profile?.bot_url);
+  // The real card face, when the row has a usable one. Same gate as the ธปท.
+  // link plus same-origin paths, so `/cards/ktc-chula.png` renders and
+  // `//evil.com/x.png` does not — that one is a foreign host wearing a slash.
+  const faceUrl   = safeFaceUrl(card.face_url);
 
   const meta = [
     card.scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว',
@@ -204,12 +219,18 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
     }}>
       {/* ── head ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{
-          width: 44, height: 32, borderRadius: 7, flex: 'none',
-          display: 'grid', placeItems: 'center', color: '#fff',
-          background: cancelled ? 'var(--text-muted)' : chipTone(card),
-          fontFamily: 'var(--f-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
-        }}>{chipLabel(card)}</div>
+        {/* The plastic itself when we have a picture of it; the coloured
+            monogram — unchanged since v4.36 — for every card that has none.
+            A cancelled card needs no special case: the whole block is dimmed
+            by the `opacity` on the <Card> above, image included. */}
+        {faceUrl
+          ? <img src={faceUrl} alt={card.name} style={CARD_FACE} />
+          : <div style={{
+            width: 44, height: 32, borderRadius: 7, flex: 'none',
+            display: 'grid', placeItems: 'center', color: '#fff',
+            background: cancelled ? 'var(--text-muted)' : chipTone(card),
+            fontFamily: 'var(--f-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+          }}>{chipLabel(card)}</div>}
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
@@ -436,7 +457,7 @@ function WaiverBox({ card, waiver }) {
 //  Add / edit — CENTERED modal (Loop style: never a side drawer)
 // ════════════════════════════════════════════════════════════════════════════
 const BLANK = {
-  name: '', issuer: '', network: '', status: 'active', pays_full: 'true',
+  name: '', issuer: '', network: '', face_url: '', status: 'active', pays_full: 'true',
   credit_limit: '', manual_balance: '', debt_id: '',
   statement_day: '', due_day: '', opened_note: '',
   waiver_mode: 'none', waiver_target: '', waiver_progress: '', waiver_period_note: '',
@@ -451,6 +472,7 @@ function toForm(card) {
   const s = (v) => (v === null || v === undefined ? '' : String(v));
   return {
     name: s(card.name), issuer: s(card.issuer), network: s(card.network),
+    face_url: s(card.face_url),
     status: card.status || 'active',
     pays_full: card.pays_full === false ? 'false' : 'true',
     credit_limit: s(card.credit_limit), manual_balance: s(card.manual_balance),
@@ -543,6 +565,10 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
         name: form.name.trim(),
         issuer: form.issuer.trim() || null,
         network: form.network.trim() || null,
+        // Same gate the grid draws through, applied on the way IN: anything
+        // that is not an app path or an http(s) address is stored as null
+        // rather than kept for the card to try to render.
+        face_url: safeFaceUrl(form.face_url),
         status: form.status,
         pays_full: form.pays_full === 'true',
         credit_limit: numOrNull(form.credit_limit),
@@ -617,6 +643,11 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
           {field('เครือข่าย', <input type="text" value={form.network}
             onChange={e => set('network', e.target.value)} placeholder="Visa / Mastercard" style={INPUT} />)}
         </>)}
+
+        {field('รูปหน้าบัตร (path หรือ https URL)', <input type="text" value={form.face_url}
+          onChange={e => set('face_url', e.target.value)}
+          placeholder="/cards/kbank-plustinum.png" style={INPUT} />,
+        'ใส่ไฟล์ที่แอปมีอยู่แล้ว เช่น /cards/kbank-plustinum.png หรือที่อยู่เว็บ https://… — ค่าอื่นจะไม่ถูกบันทึก และการ์ดจะกลับไปใช้ตัวย่อสีเดิม')}
 
         {row(<>
           {field('สถานะ', <select value={form.status} onChange={e => set('status', e.target.value)} style={INPUT}>
