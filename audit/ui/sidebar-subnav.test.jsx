@@ -12,7 +12,7 @@
 // sidebar reads it, and a jump made INSIDE the page comes back out to the
 // sidebar highlight.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within, act } from '@testing-library/react';
 import React from 'react';
 
 import App from '../../src/App.jsx';
@@ -50,6 +50,16 @@ const panel     = (id) => document.getElementById(`fin-panel-${id}`);
 const isShown   = (el) => !!el && !el.hasAttribute('hidden') && el.style.display !== 'none';
 const currentSub = (page) => subsOf(page).filter(b => b.getAttribute('aria-current') === 'page')
   .map(b => b.getAttribute('data-sub-tab'));
+/** The six finance rooms as the DESKTOP renders them: named regions (A3). */
+const financeRooms = () => Array.from(document.querySelectorAll('[id^="fin-panel-"]'));
+const shownRooms = () => screen.getAllByRole('region').filter(el => el.id.startsWith('fin-panel-'));
+
+/**
+ * A click that mounts a page which loads its own data. Without the async act
+ * the fetches land after the test body has moved on and React says so —
+ * two `act(...)` warnings on the way to the แดชบอร์ด page (audited: A3).
+ */
+const clickAndSettle = async (el) => { await act(async () => { fireEvent.click(el); }); };
 
 function seedAccounts(scope = 'personal') {
   __tables.accounts.push(
@@ -123,7 +133,9 @@ describe('Sidebar · กดการเงินส่วนตัวแล้�
     const shown = FINANCE_TABS.map(t => t.id).filter(id => isShown(panel(id)));
     expect(shown).toEqual(['cards']);
     expect(currentSub('personal-finance')).toEqual(['cards']);
-    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    // On desktop a room is a named region, not a tabpanel — there is no tab to
+    // own one (A3). Exactly one is in the accessibility tree.
+    expect(shownRooms().map(el => el.id)).toEqual(['fin-panel-cards']);
 
     // Jumping straight to another room from the sidebar moves the page with it.
     fireEvent.click(subOf('personal-finance', 'accounts'));
@@ -153,8 +165,9 @@ describe('Sidebar · กดการเงินส่วนตัวแล้�
     expect(isFolded('family-finance')).toBe(true);
     await waitFor(() => expect(isShown(panel('overview'))).toBe(true));
 
-    // Leaving finance altogether folds both groups away again.
-    fireEvent.click(header('แดชบอร์ด'));
+    // Leaving finance altogether folds both groups away again. แดชบอร์ด loads
+    // its own data on mount, so the click is settled inside act.
+    await clickAndSettle(header('แดชบอร์ด'));
     expect(isFolded('personal-finance')).toBe(true);
     expect(isFolded('family-finance')).toBe(true);
   });
@@ -212,9 +225,13 @@ describe('หนึ่งจอ หนึ่งเมนู — ไม่ซ้�
     expect(screen.queryAllByRole('tab')).toHaveLength(0);
     expect(document.querySelector('[role="tablist"]')).toBeNull();
     // The rooms themselves are all still there, with the same ids and the same
-    // one-open rule — only the control changed.
-    expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(6);
-    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    // one-open rule — only the control changed. With no tablist on screen they
+    // are named regions rather than orphaned tabpanels (A3).
+    expect(financeRooms()).toHaveLength(6);
+    expect(document.querySelectorAll('[role="tabpanel"]')).toHaveLength(0);
+    expect(financeRooms().every(el => el.getAttribute('role') === 'region')).toBe(true);
+    expect(financeRooms().map(el => el.getAttribute('aria-label'))).toEqual(TAB_LABELS);
+    expect(shownRooms().map(el => el.id)).toEqual(['fin-panel-overview']);
     // …and the sidebar is the navigation that IS on screen.
     expect(document.querySelector('.sidebar')).toBeTruthy();
     expect(subLabels('personal-finance')).toEqual(TAB_LABELS);

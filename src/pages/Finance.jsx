@@ -798,9 +798,14 @@ function TabPanel({ id, active, tabbed, children }) {
   // The label comes from the tab button when there IS one (mobile). On desktop
   // the tablist is not rendered, so `aria-labelledby` would point at nothing —
   // name the room directly instead of leaving a dangling reference.
+  //
+  // The ROLE follows the same rule (audited: DLG-FIN-001 · A3). A tabpanel is
+  // half of a tab widget; with the tablist gone on desktop the room is simply a
+  // named region, and calling it a tabpanel would promise a tab that is not
+  // there. Mobile keeps the full tab/tabpanel pair.
   const label = FINANCE_TABS.find(t => t.id === id)?.label || id;
   return (
-    <div role="tabpanel" id={`fin-panel-${id}`}
+    <div role={tabbed ? 'tabpanel' : 'region'} id={`fin-panel-${id}`}
       aria-labelledby={tabbed ? `fin-tab-${id}` : undefined}
       aria-label={tabbed ? undefined : label}
       hidden={!active} aria-hidden={active ? undefined : true}

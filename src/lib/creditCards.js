@@ -165,6 +165,26 @@ export function cycleDayLabel(ymd) {
   return `${d} ${THAI_MONTHS_SHORT[m - 1] || ''}`;
 }
 
+/**
+ * A ธปท. link is only usable as an `href` when it really is a web address.
+ *
+ * `fee_profile.bot_url` is free text the owner types, and the card grid used to
+ * hand it straight to `<a href>`. A stored `javascript:` / `data:` value would
+ * then execute (or render markup) on click instead of opening ธปท.
+ * (audited: DLG-FIN-001 · A2). Anything that does not PARSE as an http/https
+ * URL is not a link — the caller renders no anchor and stores nothing.
+ *
+ * @param {*} value raw text
+ * @returns {string|null} the trimmed URL, or null when it is not http(s)
+ */
+export function safeHttpUrl(value) {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s) return null;
+  let parsed;
+  try { parsed = new URL(s); } catch { return null; }
+  return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? s : null;
+}
+
 /** ฿12,345 — whole baht, always with separators. */
 export function baht(n) {
   const v = Math.round(num(n));

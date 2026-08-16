@@ -108,14 +108,30 @@ export function groupExpensesByCategory(txns = []) {
     .sort((a, b) => (b.amount - a.amount) || a.key.localeCompare(b.key));
 }
 
-/** 'YYYY-MM' or nothing → the month the card is looking at. */
-function resolveYearMonth(yearMonth) {
-  const s = String(yearMonth ?? '').trim();
-  return /^\d{4}-\d{2}$/.test(s) ? s : currentYearMonth();
+/**
+ * 'YYYY-MM' or nothing → the month the card is looking at.
+ *
+ * The shape check alone was not enough (audited: DLG-FIN-001 · A4): '2026-13'
+ * matched the regex, and `previousMonth('2026-13')` then answered '2026-12',
+ * so December charges could be read as "still being charged". A month outside
+ * 01–12 is not a month — it takes the same fallback as garbage input, the
+ * current Bangkok month.
+ */
+export function resolveYearMonth(yearMonth) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(yearMonth ?? '').trim());
+  if (!m) return currentYearMonth();
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return currentYearMonth();
+  return m[0];
 }
 
 /**
- * Is a detected subscription STILL being charged, seen from `yearMonth`?
+ * Was a detected subscription charged RECENTLY, seen from `yearMonth`?
+ *
+ * Recency is evidence of observation, not proof of an active contract — a
+ * cancelled bill lingers for one month and a two-monthly bill drops out
+ * between charges (audited: DLG-FIN-001 · A4). The card says what this
+ * function measures: "เรียกเก็บล่าสุด", not "ยังเรียกเก็บอยู่".
  *
  * The detector reads a 12-month window because two months of charges is the
  * minimum evidence that something is a bill at all. That window is history,
@@ -123,7 +139,7 @@ function resolveYearMonth(yearMonth) {
  * + 8 มิ.ย. 69) kept renderering under a card labelled "เดือนนี้" all the way
  * into ส.ค., and its ฿9,608 kept inflating the monthly total.
  *
- * Alive = last charged in the viewed month, or in the one right before it.
+ * Recent = last charged in the viewed month, or in the one right before it.
  * The month of grace is not slack — a monthly bill that has not been charged
  * yet this month is still a bill, and dropping it would be the opposite lie.
  *
