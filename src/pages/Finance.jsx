@@ -23,6 +23,7 @@ import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx'
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
+import { CreditCards } from '../components/dashboard/CreditCards.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
 import { MoneyLeaks } from '../components/dashboard/MoneyLeaks.jsx';
@@ -1468,15 +1469,10 @@ export function FinanceView({ scope }) {
 
         {tab === 'cards' && (
           <TabPanel id="cards">
-            <Card>
-              <CardHeader title="บัตรเครดิต" meta="โมดูลใหม่ — กำลังสร้าง" />
-              <EmptyState
-                icon="💳"
-                title="บัตรเครดิต — กำลังสร้าง เร็ว ๆ นี้"
-                description="ที่นี่จะรวมยอดที่ต้องจ่าย รอบบิล และดอกเบี้ยของบัตรแต่ละใบไว้ที่เดียว ระหว่างนี้บันทึกรายการบัตรเป็นรายการปกติในแท็บ “รายการ” ได้ตามเดิม"
-                compact
-              />
-            </Card>
+            {/* `debts` is the list this page already loaded — a card linked to a
+                debt row reads its balance from there, never from a second
+                fetch, so the two can never disagree on screen. */}
+            <CreditCards scope={scope} debts={debts} isMobile={isMobile} />
           </TabPanel>
         )}
 

@@ -24,6 +24,10 @@ export const __tables = {
   // database is actually in until he runs migration_add_tax_planner.sql —
   // PostgREST answers 42P01 and the page must degrade, not crash.
   tax_profiles:       [],
+  // v4.36 · บัตรเครดิต. Same trick as tax_profiles: deleting this key is
+  // production before migration_add_credit_cards.sql has been run, and the
+  // tab must degrade to its setup notice rather than crash.
+  credit_cards:       [],
 };
 
 export const __config = {

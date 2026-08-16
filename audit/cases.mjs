@@ -47,6 +47,16 @@ import {
 } from '../src/lib/api/tax.js';
 import { toLocalYMD, todayStr, addDaysStr } from '../src/lib/dates.js';
 import {
+  utilizationPct, waiverStatus, nextCycleDates, nextDayOfMonth,
+  monthlyInterestEstimate, cardBalance, summarizeCards, sortCards,
+  feeProfileRows, installmentRows, cycleDateLabel, daysInMonth,
+  HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
+} from '../src/lib/creditCards.js';
+import {
+  listCreditCards, createCreditCard, updateCreditCard, deleteCreditCard,
+  isTableMissing as isCardTableMissing, SQL_NOT_RUN_MESSAGE as CARD_SQL_NOT_RUN,
+} from '../src/lib/api/creditCards.js';
+import {
   cashflowWindow, cashflowSeries, savingsRate, pctDelta, monthReadout,
   resolveSelection, filterToMonths, compactBaht, chartGeometry, barPath,
 } from '../src/lib/cashflow.js';
@@ -3200,6 +3210,282 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
         && empty.debtRows.length === 0 && empty.remainingInterest === 0
         && empty.thisSum.expense === 0 && empty.recurringTotal === 0;
     })());
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  G · บัตรเครดิต (v4.36) — src/lib/creditCards.js + src/lib/api/creditCards.js
+//
+//  The card grid shows four things that can quietly be WRONG: utilisation,
+//  the annual-fee waiver counter, the next statement/due date, and the monthly
+//  interest on a revolving balance. All four are pure functions here, so all
+//  four are pinned here — including the two date cases that only bite on some
+//  days of some months (a 31st statement day in a 30-day month, and a day that
+//  has already passed this month).
+// ════════════════════════════════════════════════════════════════════════════
+{
+  section('v4.36 · ใช้วงเงิน (utilization) — ไม่มีวงเงิน ≠ ใช้ 0%');
+
+  check('เปอร์เซ็นต์ใช้วงเงินคิดจากยอด ÷ วงเงิน',
+    Math.round(utilizationPct(6540, 300000) * 10) / 10 === 2.2,
+    String(utilizationPct(6540, 300000)));
+
+  check('ไม่มีวงเงิน / วงเงิน 0 → null ไม่ใช่ 0% (การ์ดจะได้ไม่โชว์แถบว่างแบบสบายใจ)',
+    utilizationPct(50674, null) === null && utilizationPct(50674, 0) === null
+    && utilizationPct(50674, undefined) === null && utilizationPct(1, 'abc') === null);
+
+  check('ยอดติดลบถูกปัดเป็น 0 และยอดเกินวงเงินยังรายงานเกิน 100% ตามจริง',
+    utilizationPct(-500, 10000) === 0 && utilizationPct(12000, 10000) === 120);
+
+  check('เส้นสุขภาพเครดิตบูโรคือ 30% และเพดานดอกเบี้ย ธปท. คือ 16%',
+    HEALTHY_UTILIZATION === 30 && DEFAULT_INTEREST_RATE === 0.16);
+
+  section('v4.36 · ยอดของบัตร — ผูกหนี้แล้วตารางหนี้เป็นเจ้าของตัวเลข');
+
+  const ktcDebt = { id: 'debt-ktc', name: 'KTC MC', remaining_balance: 50674 };
+
+  check('บัตรที่ผูก debt_id อ่านยอดจากตารางหนี้ ไม่ใช่ช่องที่พิมพ์เอง',
+    cardBalance({ debt_id: 'debt-ktc', manual_balance: 999 }, [ktcDebt]) === 50674);
+
+  check('บัตรที่ไม่ผูก ใช้ยอดที่พิมพ์เอง',
+    cardBalance({ debt_id: null, manual_balance: 6540 }, [ktcDebt]) === 6540);
+
+  check('ผูกไว้แต่หาก้อนหนี้ไม่เจอ (ถูกลบไปแล้ว) → ตกกลับมาที่ยอดที่พิมพ์เอง ไม่ระเบิด',
+    cardBalance({ debt_id: 'ghost', manual_balance: 1200 }, [ktcDebt]) === 1200
+    && cardBalance(null, []) === 0 && cardBalance({}, []) === 0);
+
+  section('v4.36 · ตัวนับฟรีค่าธรรมเนียม — นับครั้ง / นับบาท / ไม่มีเงื่อนไข');
+
+  check('โหมด none = ฟรีไม่มีเงื่อนไข ถือว่าผ่านแล้วเสมอ',
+    (() => {
+      const w = waiverStatus({ waiver_mode: 'none' });
+      return w.met === true && w.remaining === 0 && w.mode === 'none';
+    })());
+
+  check('บัตรที่ไม่ได้ตั้งโหมดไว้เลย ก็ถือเป็น none',
+    waiverStatus({}).mode === 'none' && waiverStatus(null).met === true);
+
+  check('นับครั้ง 2/12 → เหลืออีก 10 ครั้ง ยังไม่ผ่าน (KBank)',
+    (() => {
+      const w = waiverStatus({ waiver_mode: 'count', waiver_target: 12, waiver_progress: 2 });
+      return w.remaining === 10 && w.met === false && Math.round(w.pct) === 17;
+    })());
+
+  check('นับครั้งครบ 12/12 และรูดเกิน 14/12 → ผ่าน เหลือ 0 ไม่ติดลบ',
+    (() => {
+      const met  = waiverStatus({ waiver_mode: 'count', waiver_target: 12, waiver_progress: 12 });
+      const over = waiverStatus({ waiver_mode: 'count', waiver_target: 12, waiver_progress: 14 });
+      return met.met && met.remaining === 0 && over.met && over.remaining === 0 && over.pct === 100;
+    })());
+
+  check('นับบาท 23,500/100,000 → เหลืออีก 76,500฿ (CardX)',
+    (() => {
+      const w = waiverStatus({ waiver_mode: 'amount', waiver_target: 100000, waiver_progress: 23500 });
+      return w.mode === 'amount' && w.remaining === 76500 && w.met === false && w.pct === 23.5;
+    })());
+
+  check('มีเงื่อนไขแต่ยังไม่ได้ใส่เป้า → ยังไม่ผ่าน (ไม่แอบบอกว่าปลอดภัย)',
+    (() => {
+      const w = waiverStatus({ waiver_mode: 'amount', waiver_progress: 5000 });
+      return w.met === false && w.target === 0 && w.pct === null;
+    })());
+
+  section('v4.36 · รอบบิลถัดไป — วันที่ 31 ในเดือน 30 วัน และวันที่เลยไปแล้ว');
+
+  check('จำนวนวันในเดือนถูกต้อง รวมปีอธิกสุรทิน',
+    daysInMonth(2026, 4) === 30 && daysInMonth(2026, 2) === 28
+    && daysInMonth(2028, 2) === 29 && daysInMonth(2026, 12) === 31);
+
+  check('วันสรุปยอด 31 ในเดือนเมษายน (30 วัน) → บีบเป็น 30 เม.ย. ไม่ใช่ข้ามเดือน',
+    nextDayOfMonth(31, '2026-04-10') === '2026-04-30');
+
+  check('วันสรุปยอด 31 ในเดือนกุมภาพันธ์ → 28 ก.พ. (และ 29 ก.พ. ในปีอธิกสุรทิน)',
+    nextDayOfMonth(31, '2026-02-01') === '2026-02-28'
+    && nextDayOfMonth(31, '2028-02-01') === '2028-02-29');
+
+  check('วันนั้นผ่านไปแล้วในเดือนนี้ → เด้งไปเดือนหน้า',
+    nextDayOfMonth(5, '2026-08-16') === '2026-09-05');
+
+  check('วันนี้ตรงกับวันสรุปยอดพอดี → คือวันนี้ ไม่ใช่เดือนหน้า',
+    nextDayOfMonth(20, '2026-08-20') === '2026-08-20');
+
+  check('ข้ามปี — วันที่ 5 เมื่อวันนี้คือ 20 ธ.ค. → 5 ม.ค. ปีถัดไป',
+    nextDayOfMonth(5, '2026-12-20') === '2027-01-05');
+
+  check('เด้งไปเดือนหน้าแล้วยังบีบวันให้พอดีเดือนนั้น (31 → 30 มิ.ย.)',
+    nextDayOfMonth(31, '2026-06-30') === '2026-06-30'
+    && nextDayOfMonth(31, '2026-05-31') === '2026-05-31'
+    && nextDayOfMonth(31, '2026-06-01') === '2026-06-30');
+
+  check('วันที่ใช้ไม่ได้ (ว่าง / 0 / 32 / ไม่ใช่ตัวเลข) → null ไม่ใช่วันมั่ว',
+    nextDayOfMonth(null, '2026-08-16') === null && nextDayOfMonth(0, '2026-08-16') === null
+    && nextDayOfMonth(32, '2026-08-16') === null && nextDayOfMonth('x', '2026-08-16') === null);
+
+  check('สรุปยอดกับครบกำหนดคิดแยกกัน — 16 ส.ค. บัตรสรุป 20 ครบกำหนด 5 → 20 ส.ค. / 5 ก.ย.',
+    (() => {
+      const c = nextCycleDates(20, 5, '2026-08-16');
+      return c.statement === '2026-08-20' && c.due === '2026-09-05';
+    })());
+
+  check('… และวันที่ 3 ส.ค. บัตรใบเดียวกันยังเห็นงวด 5 ส.ค. ที่ยังพลาดได้อยู่',
+    (() => {
+      const c = nextCycleDates(20, 5, '2026-08-03');
+      return c.statement === '2026-08-20' && c.due === '2026-08-05';
+    })());
+
+  check('ไม่ส่ง today มา ก็ยังได้วันที่ไม่ย้อนหลังจากวันนี้แบบเวลาไทย (ไม่ขึ้นกับ TZ เครื่อง)',
+    (() => {
+      const c = nextCycleDates(15, 28);
+      return c.statement >= todayStr() && c.due >= todayStr();
+    })(), todayStr());
+
+  check('ป้ายวันที่เป็น พ.ศ. สองหลักแบบเดียวกับที่อื่นในแอป',
+    cycleDateLabel('2026-08-25') === '25 ส.ค. 69' && cycleDateLabel(null) === '—');
+
+  section('v4.36 · ดอกเบี้ยประมาณการเดือนนี้');
+
+  check('50,674฿ @16%/ปี → ~676฿/เดือน (ตรงกับตัวเลขในแบบร่าง)',
+    Math.round(monthlyInterestEstimate(50674)) === 676, String(monthlyInterestEstimate(50674)));
+
+  check('ยอด 0 / ติดลบ / ดอกเบี้ย 0 → 0 ไม่ใช่ NaN',
+    monthlyInterestEstimate(0) === 0 && monthlyInterestEstimate(-100) === 0
+    && monthlyInterestEstimate(10000, 0) === 0 && monthlyInterestEstimate(null) === 0);
+
+  check('ใส่อัตราเองได้ — 100,000฿ @18% = 1,500฿/เดือน',
+    monthlyInterestEstimate(100000, 0.18) === 1500);
+
+  section('v4.36 · สรุปหัวแท็บ — ใบที่ยกเลิกแล้วไม่ถูกนับในทุกช่อง');
+
+  const gridCards = [
+    { id: 'c1', name: 'KBank PLUSTINUM', status: 'active', pays_full: true, credit_limit: 300000,
+      manual_balance: 6540, statement_day: 25, due_day: 10,
+      waiver_mode: 'count', waiver_target: 12, waiver_progress: 2, annual_fee: 1250, sort_order: 1 },
+    { id: 'c2', name: 'CardX ULTRA', status: 'active', pays_full: true, credit_limit: 45000,
+      manual_balance: 4180, statement_day: 16, due_day: 1,
+      waiver_mode: 'amount', waiver_target: 100000, waiver_progress: 23500, annual_fee: 5350, sort_order: 2 },
+    { id: 'c3', name: 'KTC MC', status: 'active', pays_full: false, credit_limit: 65000,
+      debt_id: 'debt-ktc', statement_day: 20, due_day: 5, waiver_mode: 'none', sort_order: 3 },
+    { id: 'c4', name: 'ใบที่ยกเลิกแล้ว', status: 'cancelled', pays_full: false, credit_limit: 500000,
+      manual_balance: 400000, statement_day: 1, due_day: 2,
+      waiver_mode: 'amount', waiver_target: 999999, waiver_progress: 0, annual_fee: 9999, sort_order: 0 },
+  ];
+  const sum = summarizeCards({ cards: gridCards, debts: [ktcDebt], today: '2026-08-16' });
+
+  check('วงเงินรวม/ยอดรวมนับเฉพาะใบที่ยังใช้อยู่ และใบที่ยกเลิกไม่ถูกนับ',
+    sum.limit === 410000 && sum.balance === 61394,
+    `${sum.balance} / ${sum.limit}`);
+
+  check('เปอร์เซ็นต์รวมคิดจากสองยอดนั้น',
+    Math.round(sum.utilization * 10) / 10 === 15, String(sum.utilization));
+
+  check('"ยอดที่ยังกินดอก" นับเฉพาะใบ pays_full=false และดึงยอดจากตารางหนี้',
+    sum.revolvingBalance === 50674 && sum.revolvingCount === 1
+    && Math.round(sum.monthlyInterest) === 676);
+
+  check('"เฝ้าระวังค่าธรรมเนียม" = ใบที่มีเงื่อนไขและยังไม่ผ่าน + รวมค่าธรรมเนียมที่เสี่ยงเสีย',
+    sum.watchCards.map(c => c.id).join(',') === 'c1,c2' && sum.annualFeeAtRisk === 6600);
+
+  // 16 ส.ค. — CardX สรุปยอดวันที่ 16 พอดี จึงเป็น "วันนี้" ไม่ใช่ KTC วันที่ 20.
+  check('"บิลถัดไป" คือวันสรุปยอดที่ใกล้สุดของใบที่ยังใช้อยู่ พร้อมบอกว่าใบไหน',
+    sum.nextStatement.date === '2026-08-16' && sum.nextStatement.card.id === 'c2'
+    && sum.nextDue.date === '2026-09-01' && sum.nextDue.card.id === 'c2',
+    sum.nextStatement.date + ' / ' + sum.nextDue.date);
+
+  check('การ์ดว่างไม่ระเบิด — ทุกช่องเป็น 0/null/อาร์เรย์ว่าง',
+    (() => {
+      const s = summarizeCards({});
+      return s.limit === 0 && s.balance === 0 && s.utilization === null
+        && s.revolvingBalance === 0 && s.watchCards.length === 0
+        && s.nextStatement === null && s.activeCount === 0;
+    })());
+
+  check('ใบที่ยกเลิกแล้วถูกดันไปท้ายกริดเสมอ ที่เหลือเรียงตาม sort_order',
+    sortCards(gridCards).map(c => c.id).join(',') === 'c1,c2,c3,c4');
+
+  section('v4.36 · โปรไฟล์ค่าธรรมเนียม + รายการผ่อน 0%');
+
+  check('ช่องที่เว้นว่างไว้ไม่กลายเป็นแถวเปล่าในตาราง ธปท.',
+    (() => {
+      const rows = feeProfileRows({ fee_profile: { interest: '16% ต่อปี', fx: '   ', benefits: 'ประกันเดินทาง' } });
+      return rows.length === 2 && rows[0].key === 'interest' && rows[1].key === 'benefits';
+    })());
+
+  check('ไม่มี fee_profile เลย → ไม่มีแถว ไม่ระเบิด',
+    feeProfileRows({}).length === 0 && feeProfileRows(null).length === 0);
+
+  check('รายการผ่อน 0% อ่านจาก jsonb และตัวเลขถูกแปลงเป็นตัวเลขจริง',
+    (() => {
+      const rows = installmentRows({ installments: [{ label: 'iPhone 17', principal: '18900', per_month: '2700', paid: 3, total: 10 }] });
+      return rows.length === 1 && rows[0].principal === 18900 && rows[0].perMonth === 2700
+        && rows[0].total - rows[0].paid === 7;
+    })());
+
+  check('ไม่มีผ่อน / ข้อมูลเพี้ยน → อาร์เรย์ว่าง ไม่ throw',
+    installmentRows({}).length === 0 && installmentRows({ installments: 'x' }).length === 0);
+
+  section('v4.36 · credit_cards API — ยังไม่ได้รัน SQL ต้องไม่พัง');
+
+  check('42P01 / PGRST205 ถูกอ่านว่า "ยังไม่มีตาราง"',
+    isCardTableMissing({ code: '42P01' }) && isCardTableMissing({ code: 'PGRST205' })
+    && isCardTableMissing({ message: 'Could not find the table' })
+    && !isCardTableMissing({ code: '23505' }) && !isCardTableMissing(null));
+
+  {
+    const saved = __tables.credit_cards;
+    delete __tables.credit_cards;
+    const res = await listCreditCards('personal');
+    check('ตารางยังไม่มี → คืน { missing: true, cards: [] } แทนที่จะโยน error',
+      res.missing === true && Array.isArray(res.cards) && res.cards.length === 0);
+
+    let writeErr = null;
+    try { await createCreditCard({ name: 'x' }); } catch (e) { writeErr = e; }
+    check('ส่วนการเขียนยังโยน error ภาษาไทยที่บอกว่าให้ไปรันไฟล์ไหน',
+      writeErr && writeErr.message === CARD_SQL_NOT_RUN, writeErr && writeErr.message);
+
+    __tables.credit_cards = saved || [];
+  }
+
+  section('v4.36 · credit_cards API — CRUD');
+
+  {
+    __tables.credit_cards = [];
+    const made = await createCreditCard({
+      scope: 'personal', name: 'KBank PLUSTINUM', issuer: 'KBank',
+      credit_limit: 300000, statement_day: 25, due_day: 10,
+      waiver_mode: 'count', waiver_target: 12, waiver_progress: 2,
+    });
+    await createCreditCard({ scope: 'family', name: 'บัตรบ้าน' });
+
+    check('สร้างบัตรแล้วผูก user_id ให้เอง',
+      made.id && made.user_id === 'user-1' && made.name === 'KBank PLUSTINUM');
+
+    const personal = await listCreditCards('personal');
+    const family   = await listCreditCards('family');
+    check('อ่านแยกตาม scope — ส่วนตัวไม่เห็นของครอบครัว',
+      personal.cards.length === 1 && personal.cards[0].name === 'KBank PLUSTINUM'
+      && family.cards.length === 1 && family.missing === false);
+
+    const patched = await updateCreditCard(made.id, { waiver_progress: 12 });
+    check('แก้ไขแล้วค่าถูกเขียนจริง และ updated_at ถูกแตะ',
+      patched.waiver_progress === 12 && !!patched.updated_at
+      && waiverStatus(patched).met === true);
+
+    let noRow = null;
+    try { await updateCreditCard('ghost-id', { name: 'x' }); } catch (e) { noRow = e; }
+    check('แก้ไขแถวที่ไม่ใช่ของเรา/ไม่มีอยู่ → error ไม่ใช่ "บันทึกแล้ว" เงียบ ๆ',
+      noRow && /ไม่พบบัตรใบนี้/.test(noRow.message));
+
+    await deleteCreditCard(made.id);
+    const after = await listCreditCards('personal');
+    check('ลบแล้วหายจริง และลบซ้ำได้ error ที่บอกว่าไม่พบ',
+      after.cards.length === 0);
+
+    let gone = null;
+    try { await deleteCreditCard(made.id); } catch (e) { gone = e; }
+    check('… ลบซ้ำไม่เงียบ',
+      gone && /ลบไม่สำเร็จ/.test(gone.message));
+
+    __tables.credit_cards = [];
+  }
 }
 
 console.log(`\n──── RESULT: ${pass} passed, ${fail} failed ────`);
