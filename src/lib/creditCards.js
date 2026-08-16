@@ -185,6 +185,35 @@ export function safeHttpUrl(value) {
   return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? s : null;
 }
 
+/**
+ * The card-face image address, or null when it is not one.
+ *
+ * `face_url` holds one of exactly two shapes:
+ *   · a file the app itself ships — `/cards/kbank-plustinum.png`, same origin
+ *   · a real http(s) address, judged by `safeHttpUrl` above
+ *
+ * A leading-slash path is accepted ONLY as a plain path. `//evil.com/x` is
+ * protocol-relative — the browser reads it as a foreign HOST, not a folder —
+ * so it is refused even though it starts with a slash. Backslashes are
+ * refused for the same reason (`/\evil.com` normalises to `//evil.com`), and
+ * so is any whitespace, which is how a `java\nscript:` payload gets smuggled
+ * past a naive prefix check. Anything else renders no <img> at all: the card
+ * falls back to its monogram, which is never wrong, only plainer.
+ *
+ * @param {*} value raw text
+ * @returns {string|null} the trimmed address, or null when it is not usable
+ */
+export function safeFaceUrl(value) {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s) return null;
+  if (s.startsWith('/')) {
+    if (s.startsWith('//')) return null;          // protocol-relative = another host
+    if (/[\\\s]/.test(s)) return null;            // backslash normalises to '/', space hides tricks
+    return s;
+  }
+  return safeHttpUrl(s);
+}
+
 /** ฿12,345 — whole baht, always with separators. */
 export function baht(n) {
   const v = Math.round(num(n));

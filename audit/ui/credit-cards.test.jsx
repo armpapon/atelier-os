@@ -45,7 +45,7 @@ function deferred() {
 const card = (over = {}) => ({
   id: 'card-' + Math.random().toString(36).slice(2, 8),
   user_id: 'user-1', scope: 'personal',
-  name: 'บัตรทดสอบ', issuer: null, network: null,
+  name: 'บัตรทดสอบ', issuer: null, network: null, face_url: null,
   status: 'active', pays_full: true,
   credit_limit: null, manual_balance: null, debt_id: null,
   statement_day: null, due_day: null, opened_note: null,
@@ -355,6 +355,100 @@ describe('บัตรเครดิต · ป๊อปอัปกับคี
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.activeElement).toBe(opener);
     expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.41 · หน้าบัตรจริง. The rule itself is pinned in audit/cases.mjs
+//  (safeFaceUrl); what only the mounted card can prove is that the picture
+//  REPLACES the monogram, that a poisoned value falls back to it rather than
+//  reaching <img src>, and that the form stores what the grid will accept.
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · รูปหน้าบัตร', () => {
+  it('draws the real face instead of the monogram when the row has one', async () => {
+    __tables.credit_cards = [card({
+      name: 'KBank PLUSTINUM', issuer: 'KBank',
+      face_url: '/cards/kbank-plustinum.png',
+    })];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('KBank PLUSTINUM')).toBeTruthy();
+
+    const img = screen.getByRole('img', { name: 'KBank PLUSTINUM' });
+    expect(img.getAttribute('src')).toBe('/cards/kbank-plustinum.png');
+    expect(img.getAttribute('alt')).toBe('KBank PLUSTINUM');
+    // …and the coloured monogram is gone, not merely hidden behind it.
+    expect(container.textContent).not.toContain('KBANK');
+  });
+
+  it('keeps the monogram for a card with no face image', async () => {
+    __tables.credit_cards = [card({ name: 'บัตรไม่มีรูป', issuer: 'KTC' })];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('บัตรไม่มีรูป')).toBeTruthy();
+    expect(screen.getByText('KTC')).toBeTruthy();          // the monogram box
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('dims a cancelled card WITH its face — the whole block carries the opacity', async () => {
+    __tables.credit_cards = [card({
+      name: 'ใบที่ยกเลิกแต่มีรูป', status: 'cancelled',
+      face_url: '/cards/ktc-visa-platinum.png',
+    })];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    const img = await screen.findByRole('img', { name: 'ใบที่ยกเลิกแต่มีรูป' });
+    expect(img.getAttribute('src')).toBe('/cards/ktc-visa-platinum.png');
+    // The image itself is NOT special-cased; the muted block it sits in is.
+    expect(img.style.opacity).toBe('');
+    const block = img.closest('[style*="opacity"]');
+    expect(block).toBeTruthy();
+    expect(block.style.opacity).toBe('0.62');
+    expect(block.contains(img)).toBe(true);
+  });
+
+  it('falls back to the monogram for a poisoned face_url, drawing no img at all', async () => {
+    __tables.credit_cards = [
+      card({ name: 'ใบรูปเป็นพิษ', issuer: 'KTC', face_url: 'javascript:alert(1)' }),
+      card({ name: 'ใบรูปข้ามโฮสต์', issuer: 'KTC', face_url: '//evil.com/x.png', sort_order: 1 }),
+    ];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใบรูปเป็นพิษ')).toBeTruthy();
+    expect(screen.getByText('ใบรูปข้ามโฮสต์')).toBeTruthy();
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.innerHTML).not.toContain('javascript:alert(1)');
+    expect(container.innerHTML).not.toContain('//evil.com/x.png');
+    expect(container.querySelectorAll('img').length).toBe(0);
+    // Both cards still identify themselves the old way.
+    expect(container.textContent).toContain('KTC');
+  });
+
+  it('saves a typed app path and nulls an unsafe one', async () => {
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ เพิ่มบัตร' }));
+    fireEvent.change(screen.getByLabelText('ชื่อบัตร'), { target: { value: 'บัตรรูปดี' } });
+    fireEvent.change(screen.getByLabelText('รูปหน้าบัตร (path หรือ https URL)'),
+      { target: { value: '/cards/ktc-chula.png' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มบัตร' }));
+
+    await waitFor(() => expect(__tables.credit_cards).toHaveLength(1));
+    expect(__tables.credit_cards[0].face_url).toBe('/cards/ktc-chula.png');
+
+    // …and the same field refuses a protocol-relative host on the way in.
+    cleanup();
+    __tables.credit_cards = [];
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ เพิ่มบัตร' }));
+    fireEvent.change(screen.getByLabelText('ชื่อบัตร'), { target: { value: 'บัตรรูปพิษ' } });
+    fireEvent.change(screen.getByLabelText('รูปหน้าบัตร (path หรือ https URL)'),
+      { target: { value: '//evil.com/x.png' } });
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มบัตร' }));
+
+    await waitFor(() => expect(__tables.credit_cards).toHaveLength(1));
+    expect(__tables.credit_cards[0].face_url).toBeNull();
+    expect(JSON.stringify(__tables.credit_cards[0])).not.toContain('evil.com');
   });
 });
 
