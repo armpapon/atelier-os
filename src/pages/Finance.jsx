@@ -1233,7 +1233,8 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
 
             {/* Money Leaks / Insights */}
             <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
-              allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts} />
+              allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts}
+              yearMonth={yearMonth} />
 
             {/* Cash Flow Forecast 3 เดือนข้างหน้า */}
             <CashFlowForecastCard forecast={forecast} />

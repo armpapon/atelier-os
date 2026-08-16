@@ -62,8 +62,8 @@ import {
 } from '../src/lib/cashflow.js';
 import {
   normalizeCategory, categoryKey, sortNewestFirst, sumExpense, leakDateLabel,
-  groupExpensesByCategory, buildLeakInsights,
-  CREEP_MIN_DELTA, FREQUENT_MIN_COUNT, OTHER_CATEGORY,
+  groupExpensesByCategory, buildLeakInsights, isRecurringAlive,
+  CREEP_MIN_DELTA, FREQUENT_MIN_COUNT, OTHER_CATEGORY, MAX_RECURRING_ROWS,
 } from '../src/lib/moneyLeaks.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
@@ -3136,7 +3136,11 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     ...months.slice(6).map((ym, i) => ({ id: 'sp' + i, occurred_at: ts(ym + '-09'), amount: -199, category: 'บันเทิง', type: 'other', title: 'Spotify' })),
     { id: 'once', occurred_at: ts('2026-08-11'), amount: -1500, category: 'ช้อปปิ้ง', type: 'shop', title: 'เก้าอี้' },
   ];
-  const subs = buildLeakInsights({ txns: thisMonth, prevTxns: lastMonth, trend12: trend, debts: [] });
+  // `yearMonth` is stated out loud so these claims don't quietly decay: the
+  // fixtures are August 2026, and since v4.39 the viewed month decides which
+  // bills are still alive. Leaving it to the fallback would make the case
+  // start failing the moment the real calendar moved past ก.ย. 69.
+  const subs = buildLeakInsights({ txns: thisMonth, prevTxns: lastMonth, trend12: trend, debts: [], yearMonth: '2026-08' });
 
   check('เจอบิลซ้ำสองรายการ และรายการที่เกิดครั้งเดียวไม่ถูกนับเป็นบิล',
     subs.recurring.length === 2
@@ -3171,7 +3175,9 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
           many.push({ id: `m${n}-${ym}`, occurred_at: ts(ym + '-03'), amount: -(1000 - n * 100), category: 'บิล', type: 'bills', title: 'บิล ' + n });
         }
       }
-      const r = buildLeakInsights({ txns: thisMonth, prevTxns: [], trend12: many, debts: [] }).recurring;
+      // Viewed from 2025-11 — the last month these seven bills were charged,
+      // so every one of them is alive and the cap is the only thing cutting.
+      const r = buildLeakInsights({ txns: thisMonth, prevTxns: [], trend12: many, debts: [], yearMonth: '2025-11' }).recurring;
       return r.length === 4 && r.every(x => x.txns.length === 3);
     })());
 
@@ -3209,6 +3215,119 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
         && empty.recurring.length === 0 && empty.topCats.length === 0
         && empty.debtRows.length === 0 && empty.remainingInterest === 0
         && empty.thisSum.expense === 0 && empty.recurringTotal === 0;
+    })());
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.39 · การ์ดเขียน "เดือนนี้" แต่โชว์บิลที่จ่ายจบไปแล้ว
+  //
+  //  Owner: "ตรงฟังชั่น เงินรั่ว ด้านขวาเขียนเดือนนี้ แต่รายละเอียดคือเดือนอื่น
+  //  เช็คด่วน". กรมสรรพากร ฿9,608/ด sat in the subscriptions row in ส.ค. 69
+  //  with exactly two charges behind it — 8 พ.ค. and 8 มิ.ย. — a finished
+  //  2-installment tax payment. The detector reads 12 months on purpose (two
+  //  months is the minimum evidence of a bill), but nothing ever asked
+  //  whether the bill was still being charged, so it also fed ฿9,608 into the
+  //  ฿17,683/เดือน the row claimed was leaking THIS month.
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.39 · บิลซ้ำต้อง "ยังเรียกเก็บอยู่" ถึงจะขึ้นการ์ดเดือนนี้');
+
+  // The owner's own two-installment tax payment, plus a bill that is genuinely
+  // still running, in one window — the card has to tell them apart.
+  const bill = (title, amount, ymds) => ymds.map((ymd, i) =>
+    ({ id: `${title}-${i}`, occurred_at: ts(ymd), amount: -amount, category: 'บิล', type: 'bills', title }));
+  const revenue = bill('กรมสรรพากร', 9608, ['2026-05-08', '2026-06-08']);
+  const netflix = bill('Netflix', 419, ['2026-05-05', '2026-06-05', '2026-07-05', '2026-08-05']);
+  const lapsed  = bill('ฟิตเนส', 1200, ['2026-06-20', '2026-07-20']);   // viewed-1 = ยังนับ
+  const window12 = [...revenue, ...netflix, ...lapsed];
+
+  const aug = buildLeakInsights({ txns: thisMonth, prevTxns: [], trend12: window12, debts: [], yearMonth: '2026-08' });
+
+  check('มองจาก ส.ค. · กรมสรรพากร (จ่ายจบตั้งแต่ มิ.ย.) หายไปจากการ์ด',
+    !aug.recurring.some(r => r.title === 'กรมสรรพากร'),
+    aug.recurring.map(r => r.title).join(', ') || '(ว่าง)');
+
+  check('มองจาก ส.ค. · บิลที่เรียกเก็บเดือนนี้ (Netflix) และเดือนก่อนหน้า (ฟิตเนส) ยังอยู่ครบ',
+    aug.recurring.length === 2
+    && aug.recurring.some(r => r.title === 'Netflix')
+    && aug.recurring.some(r => r.title === 'ฟิตเนส'),
+    aug.recurring.map(r => `${r.title}@${bangkokMonth(r.lastDate)}`).join(' '));
+
+  check('ยอดรวม/เดือน คิดจากลิสต์ที่กรองแล้วเท่านั้น — ไม่รวม ฿9,608 ที่จ่ายจบแล้ว',
+    aug.recurringTotal === 419 + 1200
+    && aug.recurringTotal === aug.recurring.reduce((s, r) => s + r.avgAmount, 0),
+    `${aug.recurringTotal} (เดิมจะเป็น ${419 + 1200 + 9608})`);
+
+  check('บิลที่ถูกกรองออกไม่เหลือร่องรอยในโครงสร้างที่การ์ดวาด',
+    JSON.stringify(aug.recurring).indexOf('กรมสรรพากร') === -1);
+
+  check('ขอบเขตชัด · เรียกเก็บล่าสุดเดือนที่ดู = อยู่, ก่อนหน้า 1 เดือน = อยู่, 2 เดือน = ตัดทิ้ง',
+    isRecurringAlive({ lastDate: ts('2026-08-05') }, '2026-08') === true
+    && isRecurringAlive({ lastDate: ts('2026-07-31') }, '2026-08') === true
+    && isRecurringAlive({ lastDate: ts('2026-06-30') }, '2026-08') === false
+    && isRecurringAlive({ lastDate: null }, '2026-08') === false);
+
+  check('ข้ามปีก็ยังนับถูก — ธ.ค. คือเดือนก่อนหน้าของ ม.ค.',
+    isRecurringAlive({ lastDate: ts('2025-12-28') }, '2026-01') === true
+    && isRecurringAlive({ lastDate: ts('2025-11-28') }, '2026-01') === false);
+
+  check('เส้นแบ่งเดือนคิดแบบเวลาไทย — 31 ก.ค. 23:30 UTC คือ 1 ส.ค. ของกรุงเทพ',
+    isRecurringAlive({ lastDate: '2026-07-31T17:30:00Z' }, '2026-09') === true
+    && isRecurringAlive({ lastDate: '2026-07-31T16:59:00Z' }, '2026-09') === false,
+    bangkokMonth('2026-07-31T17:30:00Z') + ' / ' + bangkokMonth('2026-07-31T16:59:00Z'));
+
+  // Time travel: MonthNav can walk the card back into the past, and the card
+  // has to describe THAT month, not today. Viewed from มิ.ย. the tax payment
+  // was a live bill and belongs on the card.
+  const jun = buildLeakInsights({ txns: thisMonth, prevTxns: [], trend12: window12, debts: [], yearMonth: '2026-06' });
+
+  check('ย้อนดู มิ.ย. · กรมสรรพากรกลับมาอยู่บนการ์ด เพราะตอนนั้นยังเรียกเก็บอยู่จริง',
+    jun.recurring.some(r => r.title === 'กรมสรรพากร')
+    && jun.recurringTotal === jun.recurring.reduce((s, r) => s + r.avgAmount, 0),
+    jun.recurring.map(r => r.title).join(', '));
+
+  check('ย้อนดู มี.ค. · ยังไม่มีบิลไหนเกิดขึ้นเลย การ์ดว่างและยอดเป็นศูนย์',
+    (() => {
+      const mar = buildLeakInsights({ txns: thisMonth, prevTxns: [], trend12: window12, debts: [], yearMonth: '2026-03' });
+      return mar.recurring.length === 0 && mar.recurringTotal === 0;
+    })());
+
+  check('ไม่ส่ง yearMonth มา (หรือส่งค่าเพี้ยน) → ใช้เดือนปัจจุบันเวลาไทยแทน',
+    (() => {
+      const live = bill('บิลปัจจุบัน', 350,
+        [`${previousMonth(currentYearMonth())}-05`, `${currentYearMonth()}-05`]);
+      const dead = bill('บิลที่ตายแล้ว', 9608, ['2020-01-08', '2020-02-08']);
+      const trend12x = [...live, ...dead];
+      const expected = buildLeakInsights({ txns: thisMonth, trend12: trend12x, yearMonth: currentYearMonth() });
+      const shapes = [undefined, '', '   ', 'ส.ค. 69', '2026-13-99'].map(ym =>
+        buildLeakInsights({ txns: thisMonth, trend12: trend12x, yearMonth: ym }));
+      return expected.recurring.length === 1
+        && expected.recurring[0].title === 'บิลปัจจุบัน'
+        && shapes.every(s => s.recurring.length === 1
+          && s.recurring[0].title === 'บิลปัจจุบัน'
+          && s.recurringTotal === expected.recurringTotal);
+    })());
+
+  check('ตัวกรองทำงานก่อนตัดที่ 4 แถว — บิลที่ตายแล้วไม่กินที่บิลที่ยังอยู่',
+    (() => {
+      // Five dead bills sorted ABOVE five live ones by amount. Filtering after
+      // the slice would leave the card with nothing to show.
+      const dead = Array.from({ length: 5 }, (_, n) =>
+        bill(`ตาย ${n}`, 20000 - n * 100, ['2026-01-05', '2026-02-05'])).flat();
+      const alive = Array.from({ length: 5 }, (_, n) =>
+        bill(`อยู่ ${n}`, 900 - n * 100, ['2026-07-05', '2026-08-05'])).flat();
+      const r = buildLeakInsights({ txns: thisMonth, trend12: [...dead, ...alive], yearMonth: '2026-08' });
+      return r.recurring.length === MAX_RECURRING_ROWS
+        && r.recurring.every(x => x.title.startsWith('อยู่'))
+        && r.recurringTotal === 900 + 800 + 700 + 600;
+    })());
+
+  check('ส่วนอื่นของการ์ดไม่ถูกแตะ — creep / frequent / หนี้ ยังให้ผลเดิมทุกประการ',
+    (() => {
+      const before = buildLeakInsights({ txns: thisMonth, prevTxns: lastMonth, trend12: [], debts: [], yearMonth: '2026-08' });
+      return JSON.stringify(before.creep) === JSON.stringify(leaks.creep)
+        && JSON.stringify(before.frequent) === JSON.stringify(leaks.frequent)
+        && JSON.stringify(before.topCats) === JSON.stringify(leaks.topCats)
+        && before.thisSum.expense === leaks.thisSum.expense
+        && before.srDelta === leaks.srDelta;
     })());
 }
 

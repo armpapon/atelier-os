@@ -208,7 +208,7 @@ describe('เงินรั่ว · บิล/subscription เปิดดู�
   it('shows all four bills with their own amounts, not just three names', () => {
     const { container } = render(
       <MoneyLeaks txns={[...FOOD]} prevTxns={[]} trend12={trend} debts={[]}
-        allCategories={CATEGORIES} accounts={ACCOUNTS} />,
+        allCategories={CATEGORIES} accounts={ACCOUNTS} yearMonth="2026-08" />,
     );
 
     // Collapsed, the summary still only has room for three names…
@@ -227,7 +227,7 @@ describe('เงินรั่ว · บิล/subscription เปิดดู�
   it('drills from one bill into its own charges across the window', () => {
     const { container } = render(
       <MoneyLeaks txns={[...FOOD]} prevTxns={[]} trend12={trend} debts={[]}
-        allCategories={CATEGORIES} accounts={ACCOUNTS} />,
+        allCategories={CATEGORIES} accounts={ACCOUNTS} yearMonth="2026-08" />,
     );
 
     fireEvent.click(row(container, 'subs'));
@@ -245,6 +245,65 @@ describe('เงินรั่ว · บิล/subscription เปิดดู�
     fireEvent.click(row(container, 'subs'));
     expect(container.querySelectorAll('[data-leak-detail]')).toHaveLength(0);
     expect(row(container, 'subs').textContent).toContain('฿1,516/ด');
+  });
+});
+
+// v4.39 — the owner's report: the card says "เดือนนี้" in ส.ค., and the
+// subscriptions row listed กรมสรรพากร ฿9,608/ด whose only two charges were
+// 8 พ.ค. and 8 มิ.ย. — a finished 2-installment tax payment that also
+// inflated the row's monthly total. Mounted here because "does not render"
+// is the claim, and only the real card can be asked that.
+describe('เงินรั่ว · บิลที่จ่ายจบแล้วต้องไม่ขึ้นการ์ด "เดือนนี้" (v4.39)', () => {
+  const charge = (title, amount, ymd) => ({
+    id: `${title}-${ymd}`, occurred_at: `${ymd}T05:00:00Z`, amount: -amount,
+    category: 'บิล', type: 'bills', title, scope: 'personal', account_id: 'acc-1',
+  });
+  // Dead since มิ.ย.; alive through ส.ค.
+  const TAX     = [charge('กรมสรรพากร', 9608, '2026-05-08'), charge('กรมสรรพากร', 9608, '2026-06-08')];
+  const NETFLIX = ['2026-05-05', '2026-06-05', '2026-07-05', '2026-08-05'].map(d => charge('Netflix', 419, d));
+  const TREND   = [...TAX, ...NETFLIX];
+
+  const mount = (yearMonth) => render(
+    <MoneyLeaks txns={[...FOOD]} prevTxns={[]} trend12={TREND} debts={[]}
+      allCategories={CATEGORIES} accounts={ACCOUNTS} yearMonth={yearMonth} />,
+  );
+
+  it('ส.ค. · drops the finished tax payment, keeps the live subscription', () => {
+    const { container } = mount('2026-08');
+
+    const subs = row(container, 'subs');
+    expect(subs.textContent).toContain('บิล/subscription ซ้ำ 1 รายการ');
+    expect(subs.textContent).toContain('ที่ยังเรียกเก็บอยู่');
+    expect(subs.textContent).toContain('Netflix');
+    // The bug, stated as the user saw it: neither the name nor the number.
+    expect(container.textContent).not.toContain('กรมสรรพากร');
+    expect(container.textContent).not.toContain(formatBaht(9608));
+
+    // The total is the filtered list's, not the window's.
+    expect(subs.textContent).toContain(`${formatBaht(419)}/ด`);
+    expect(subs.textContent).not.toContain(formatBaht(419 + 9608));
+
+    // …and it is gone from the drill-down too, not merely off the summary.
+    fireEvent.click(subs);
+    const p = panel(container, 'subs');
+    expect(p.querySelectorAll('[data-leak-row]')).toHaveLength(1);
+    expect(p.textContent).not.toContain('กรมสรรพากร');
+    expect(p.textContent).toContain('ที่ยังเรียกเก็บอยู่');
+    expect(p.textContent).toContain(`รวม ${formatBaht(419)}`);
+  });
+
+  it('มิ.ย. · ย้อนดูเดือนที่บิลนั้นยังเรียกเก็บอยู่ แล้วมันต้องกลับมา', () => {
+    // Recency is measured against the VIEWED month, never against today.
+    const { container } = mount('2026-06');
+    const subs = row(container, 'subs');
+    expect(subs.textContent).toContain('กรมสรรพากร');
+    fireEvent.click(subs);
+    const p = panel(container, 'subs');
+    expect(p.textContent).toContain(`${formatBaht(9608)}/ด`);
+    // The receipts stay exactly as they were — past-month dates and all.
+    fireEvent.click(p.querySelector('[data-leak-row="subs-0"]'));
+    expect(panel(container, 'subs-0').textContent).toContain('8 พ.ค. 69');
+    expect(panel(container, 'subs-0').textContent).toContain('8 มิ.ย. 69');
   });
 });
 

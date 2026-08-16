@@ -136,7 +136,7 @@ function LeakRow({
 // ── Money Leaks / Insights ─────────────────────────────────────────────────────
 export function MoneyLeaks({
   txns = [], prevTxns = [], trend12 = [], debts = [], allCategories = [],
-  accounts = [], onOpenDebts,
+  accounts = [], onOpenDebts, yearMonth,
 }) {
   // Icons only. The DISPLAY LABEL is the transaction's own category — see the
   // header comment in lib/moneyLeaks.js for why resolving it through this map
@@ -156,9 +156,12 @@ export function MoneyLeaks({
     return (t) => (t?.account_id ? byId[t.account_id] : null) || null;
   }, [accounts]);
 
+  // `yearMonth` is the month the page is showing. The card is labelled
+  // "เดือนนี้", so the subscriptions it lists have to be the ones still being
+  // charged around that month — not every bill the 12-month window ever saw.
   const insights = useMemo(
-    () => buildLeakInsights({ txns, prevTxns, trend12, debts }),
-    [txns, prevTxns, trend12, debts],
+    () => buildLeakInsights({ txns, prevTxns, trend12, debts, yearMonth }),
+    [txns, prevTxns, trend12, debts, yearMonth],
   );
 
   const [openRow, setOpenRow] = useState(null);
@@ -236,7 +239,7 @@ export function MoneyLeaks({
           return (
             <LeakRow key={id} id={id} icon="🔁"
               title={`บิล/subscription ซ้ำ ${recurring.length} รายการ`}
-              detail={recurring.map(r => r.title).slice(0, 3).join(' · ')}
+              detail={`ที่ยังเรียกเก็บอยู่ · ${recurring.map(r => r.title).slice(0, 3).join(' · ')}`}
               value={`${formatBaht(recurringTotal)}/ด`} tone="var(--accent-strong)"
               expanded={openRow === id} onActivate={() => toggle(id)}>
               <div className="leak-detail">
@@ -244,7 +247,7 @@ export function MoneyLeaks({
                   fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
                   color: 'var(--text-muted)', padding: '6px 0 4px',
                 }}>
-                  {recurring.length} รายการ · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
+                  {recurring.length} รายการ · ที่ยังเรียกเก็บอยู่ · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
                 </div>
                 {recurring.map((r, i) => {
                   const subId = `${id}-${i}`;
