@@ -713,6 +713,79 @@ function FlowLine({ tone, label, amount, sub }) {
   );
 }
 
+// ── Sub-tabs (v4.35) ─────────────────────────────────────────────────────────
+// One page, six rooms. Every panel reads the SAME state (yearMonth, txns,
+// accounts…) held by FinanceView — switching tabs never reloads data.
+const FINANCE_TABS = [
+  { id: 'overview', label: 'ภาพรวม' },
+  { id: 'txns',     label: 'รายการ' },
+  { id: 'cards',    label: 'บัตรเครดิต' },
+  { id: 'debt',     label: 'หนี้' },
+  { id: 'budget',   label: 'งบ & เป้าหมาย' },
+  { id: 'accounts', label: 'บัญชี' },
+];
+
+/** iOS-style segmented pill bar. Scrolls sideways on a narrow screen. */
+function FinanceTabs({ value, onChange }) {
+  const move = (e) => {
+    const i = FINANCE_TABS.findIndex(t => t.id === value);
+    const n = FINANCE_TABS.length;
+    let next = null;
+    if (e.key === 'ArrowRight') next = (i + 1) % n;
+    else if (e.key === 'ArrowLeft') next = (i - 1 + n) % n;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = n - 1;
+    if (next === null) return;
+    e.preventDefault();
+    const id = FINANCE_TABS[next].id;
+    onChange(id);
+    const el = typeof document !== 'undefined' && document.getElementById(`fin-tab-${id}`);
+    if (el && typeof el.focus === 'function') el.focus();
+  };
+
+  return (
+    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
+      <div role="tablist" aria-label="หมวดการเงิน" onKeyDown={move}
+        style={{
+          display: 'inline-flex', gap: 2, padding: 3,
+          background: 'var(--fill)', borderRadius: 999,
+        }}>
+        {FINANCE_TABS.map(t => {
+          const active = t.id === value;
+          return (
+            <button key={t.id} id={`fin-tab-${t.id}`} role="tab" type="button"
+              className="focus-ring"
+              aria-selected={active}
+              aria-controls={`fin-panel-${t.id}`}
+              tabIndex={active ? 0 : -1}
+              onClick={() => onChange(t.id)}
+              style={{
+                padding: '7px 14px', borderRadius: 999, border: 0, cursor: 'pointer',
+                fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                fontFamily: 'inherit', transition: 'background 150ms, color 150ms',
+                background: active ? 'var(--surface)' : 'transparent',
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: active ? 'var(--shadow-card)' : 'none',
+              }}>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Shared wrapper so every panel gets the same stacking + a11y wiring. */
+function TabPanel({ id, children }) {
+  return (
+    <div role="tabpanel" id={`fin-panel-${id}`} aria-labelledby={`fin-tab-${id}`}
+      style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {children}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Shared FinanceView — Financial Planner Edition
 // ════════════════════════════════════════════════════════════════════════════
@@ -724,6 +797,9 @@ export function FinanceView({ scope }) {
   // (User can still navigate to other months via MonthNav during the session
   // — but we no longer persist that across sessions / page reloads.)
   const [yearMonth, setYearMonth] = useState(() => currentYearMonth());
+  // Sub-tab (v4.35). Plain state — like the month, it goes back to the
+  // default room every time the page opens. Nothing is persisted.
+  const [tab, setTab] = useState('overview');
   // Today's month, pinned for the session. The cash-flow chart's 12-month
   // window hangs off THIS, never off `yearMonth` — clicking a bar used to
   // re-anchor the window and slide every later month off the chart.
@@ -774,11 +850,16 @@ export function FinanceView({ scope }) {
   }, []);
   // Explicit user click only — never fired on load, so the "no auto-scroll"
   // rule (which is about forms moving the page unbidden) is untouched.
+  // Since v4.35 the Debt Tracker lives in its own tab, so the jump switches
+  // rooms first and scrolls to the anchor once that panel has mounted.
   const scrollToDebts = useCallback(() => {
-    const el = typeof document !== 'undefined' && document.getElementById(DEBT_TRACKER_ANCHOR);
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    setTab('debt');
+    setTimeout(() => {
+      const el = typeof document !== 'undefined' && document.getElementById(DEBT_TRACKER_ANCHOR);
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 0);
   }, []);
 
   const removeCategory = useCallback((id) => {
@@ -1051,381 +1132,226 @@ export function FinanceView({ scope }) {
           </div>
         )}
 
-        {/* Row 1: Hero balance — คงเหลือสุทธิ + flows */}
-        <div style={{ marginBottom: isMobile ? 6 : 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>คงเหลือสุทธิ</span>
-            <MonthNav value={yearMonth} onChange={setYearMonth} />
-          </div>
-          <div style={{
-            fontSize: isMobile ? 42 : 56, fontWeight: 700, letterSpacing: '-0.035em',
-            lineHeight: 1.08, marginTop: 2, fontVariantNumeric: 'tabular-nums',
-            color: thisSum.net >= 0 ? 'var(--text-primary)' : 'var(--danger)',
-          }}>
-            {(thisSum.net >= 0 ? '' : '-') + '฿' + Math.abs(thisSum.net).toLocaleString('th', { maximumFractionDigits: 0 })}
-          </div>
-          <div style={{ display: 'flex', gap: 26, marginTop: 12, flexWrap: 'wrap' }}>
-            <FlowLine
-              tone="in" label="รายรับ"
-              amount={thisSum.income}
-              sub={`${txns.filter(t => t.amount > 0).length} ครั้ง`}
-            />
-            <FlowLine
-              tone="out" label="รายจ่าย"
-              amount={thisSum.expense}
-              sub={`${txns.filter(t => t.amount < 0).length} ครั้ง`}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 500 }}>
-              <span style={{
-                width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, background: 'var(--fill)', color: 'var(--text-secondary)',
-              }}>%</span>
-              <span style={{ color: 'var(--text-secondary)' }}>อัตราการออม</span>
-              <span style={{
-                fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-                color: thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--text-primary)' : 'var(--danger)',
+        {/* Sub-tabs — six rooms instead of one long scroll (v4.35) */}
+        <FinanceTabs value={tab} onChange={setTab} />
+
+        {tab === 'overview' && (
+          <TabPanel id="overview">
+            {/* Hero balance — คงเหลือสุทธิ + flows */}
+            <div style={{ marginBottom: isMobile ? 6 : 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>คงเหลือสุทธิ</span>
+                <MonthNav value={yearMonth} onChange={setYearMonth} />
+              </div>
+              <div style={{
+                fontSize: isMobile ? 42 : 56, fontWeight: 700, letterSpacing: '-0.035em',
+                lineHeight: 1.08, marginTop: 2, fontVariantNumeric: 'tabular-nums',
+                color: thisSum.net >= 0 ? 'var(--text-primary)' : 'var(--danger)',
               }}>
-                {isFinite(thisSum.savingsRate) ? thisSum.savingsRate.toFixed(1) + '%' : '—'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2: Cash Flow chart */}
-        <CashFlowChart data={trendData} selectedYm={yearMonth} currentYm={todayYm} onMonthClick={setYearMonth} />
-
-        {/* Row 2b: Money Leaks / Insights */}
-        <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
-          allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts} />
-
-        {/* Row 2c: Cash Flow Forecast 3 เดือนข้างหน้า */}
-        <CashFlowForecastCard forecast={forecast} />
-
-        {/* Row 3: Categories + Top 10 */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
-          <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
-          <TopExpenses data={top10} />
-        </div>
-
-        {/* Row 4: Budget vs Actual */}
-        <BudgetProgress budgets={budgets} categoryActuals={categories} />
-
-        {/* Row 4a: Recurring Expenses */}
-        {/* historyTxns = 12-month window: the suggestion detector needs 2+
-            months of history — feeding it the single viewed month meant
-            suggestions could NEVER appear. Status checks still use txns. */}
-        <RecurringTracker recurring={recurring} transactions={txns} historyTxns={history12}
-          yearMonth={yearMonth} scope={scope} onChange={refresh} />
-
-        {/* Row 4b: Debt Tracker — the เงินรั่ว debt row links here (v4.34) */}
-        <div id={DEBT_TRACKER_ANCHOR}>
-          <DebtTracker
-            debts={debts}
-            payments={debtPayments}
-            yearMonth={yearMonth}
-            scope={scope}
-            onChange={refresh}
-          />
-        </div>
-
-        {/* Row 5: Net Worth + Emergency Fund + Heatmap */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1.2fr', gap: 14 }}>
-          <NetWorthCard accounts={accounts} unconfirmed={balancesUnconfirmed} />
-          <EmergencyFundCard coverage={emergencyFund} accounts={accounts}
-            unconfirmed={balancesUnconfirmed} onAccountToggle={refresh} />
-          <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
-        </div>
-
-        {/* Row 6: Accounts + Goals (CRUD) */}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
-          {/* Accounts */}
-          <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: '20px 22px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
-                  บัญชี & ทรัพย์สิน
+                {(thisSum.net >= 0 ? '' : '-') + '฿' + Math.abs(thisSum.net).toLocaleString('th', { maximumFractionDigits: 0 })}
+              </div>
+              <div style={{ display: 'flex', gap: 26, marginTop: 12, flexWrap: 'wrap' }}>
+                <FlowLine
+                  tone="in" label="รายรับ"
+                  amount={thisSum.income}
+                  sub={`${txns.filter(t => t.amount > 0).length} ครั้ง`}
+                />
+                <FlowLine
+                  tone="out" label="รายจ่าย"
+                  amount={thisSum.expense}
+                  sub={`${txns.filter(t => t.amount < 0).length} ครั้ง`}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 500 }}>
+                  <span style={{
+                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, background: 'var(--fill)', color: 'var(--text-secondary)',
+                  }}>%</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>อัตราการออม</span>
+                  <span style={{
+                    fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                    color: thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--text-primary)' : 'var(--danger)',
+                  }}>
+                    {isFinite(thisSum.savingsRate) ? thisSum.savingsRate.toFixed(1) + '%' : '—'}
+                  </span>
                 </div>
-                <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
-                  {accounts.length} บัญชี · รวม{' '}
-                  <strong style={{ color: balancesUnconfirmed ? 'var(--warning)' : 'var(--ink-2)' }}>
-                    ฿{accounts.reduce((s, a) => s + Number(a.balance || 0), 0).toLocaleString('th', { maximumFractionDigits: 0 })}
-                  </strong>
-                  {balancesUnconfirmed && (
-                    <span style={{ color: 'var(--warning)', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em', marginLeft: 6 }}>
-                      · ยังไม่ยืนยัน
-                    </span>
+              </div>
+            </div>
+
+            {/* Cash Flow chart */}
+            <CashFlowChart data={trendData} selectedYm={yearMonth} currentYm={todayYm} onMonthClick={setYearMonth} />
+
+            {/* Money Leaks / Insights */}
+            <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
+              allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts} />
+
+            {/* Cash Flow Forecast 3 เดือนข้างหน้า */}
+            <CashFlowForecastCard forecast={forecast} />
+
+            {/* Net Worth + Emergency Fund */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+              <NetWorthCard accounts={accounts} unconfirmed={balancesUnconfirmed} />
+              <EmergencyFundCard coverage={emergencyFund} accounts={accounts}
+                unconfirmed={balancesUnconfirmed} onAccountToggle={refresh} />
+            </div>
+          </TabPanel>
+        )}
+
+        {tab === 'txns' && (
+          <TabPanel id="txns">
+            {/* Month picker — the whole tab reads this one month */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>เดือน</span>
+              <MonthNav value={yearMonth} onChange={setYearMonth} />
+            </div>
+
+            {/* Full transaction list */}
+            <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: isMobile ? '18px 14px' : '20px 22px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
+                    รายการธุรกรรม
+                    {accountFilter && (
+                      <span style={{ marginLeft: 10, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent)' }}>
+                        · กรอง: {accounts.find(a => a.id === accountFilter)?.name}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
+                    {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).length} รายการ · {formatThaiMonth(yearMonth)}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {scope === 'personal' && (
+                    <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+                  )}
+                  <Button variant="secondary" size="sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</Button>
+                  {txns.length > 0 && (
+                    <Button variant="danger" size="sm"
+                      onClick={async () => {
+                        if (!confirm(`ลบรายการทั้ง ${txns.length} รายการในเดือน ${formatThaiMonth(yearMonth)}?\n(บัญชีจะยังอยู่)`)) return;
+                        try { await deleteTransactionsInMonth(yearMonth, scope); refresh(); }
+                        catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
+                      }}>
+                      🗑 ล้างเดือนนี้
+                    </Button>
                   )}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {accountFilter && (
-                  <Button variant="ghost" size="sm" onClick={() => setAccountFilter(null)}>× ล้าง filter</Button>
-                )}
-                <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</Button>
-              </div>
-            </div>
-            {accounts.length === 0 ? (
-              <EmptyState
-                icon="💼"
-                title="ยังไม่มีบัญชี"
-                description={scope === 'personal'
-                  ? 'import CSV จาก Make จะสร้างบัญชี (Cloud Pockets) ให้อัตโนมัติ พร้อมยอดล่าสุด'
-                  : 'บัญชีครอบครัว (เช่น "กองทุนครอบครัว", "เงินเพื่อน้องอคิน") จะถูกสร้างอัตโนมัติเมื่อ Import CSV ที่หน้าการเงินส่วนตัว'}
-                actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ สร้างเอง'}
-                onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowAccForm(true)}
-                secondaryLabel={scope === 'personal' ? '+ สร้างเอง' : null}
-                onSecondary={scope === 'personal' ? () => setShowAccForm(true) : null}
-                compact
-              />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 340, overflow: 'auto', marginTop: 2 }}>
-                {accounts.map(a => {
-                  const isSelected = accountFilter === a.id;
-                  const txCount = txns.filter(t => t.account_id === a.id).length;
-                  return (
-                    <div key={a.id}
-                      onClick={() => setAccountFilter(isSelected ? null : a.id)}
-                      style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '9px 12px', borderRadius: 10,
-                        background: isSelected ? 'var(--accent-tint)' : 'transparent',
-                        border: 'none',
-                        fontSize: 13, cursor: 'pointer', transition: 'background 150ms',
-                      }}
-                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--fill)'; }}
-                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-                        <span style={{ width: 4, height: 26, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
-                        <div style={{ overflow: 'hidden', minWidth: 0 }}>
-                          <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : 400 }}>{a.name}</div>
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
-                            {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
-                            {a.balance_anchor_at && (a._balance_unconfirmed
-                              ? ` · ยอด ณ ${txDate(a.balance_anchor_at)} · ยังไม่รวมรายการหลังจากนั้น`
-                              : ` · ยอด ณ ${txDate(a.balance_anchor_at)} + รายการหลังจากนั้น`)}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: a._balance_unconfirmed ? 'var(--warning)' : (Number(a.balance) >= 0 ? 'var(--text-primary)' : 'var(--danger)') }}
-                          title={a._balance_unconfirmed ? 'ยังไม่ยืนยัน — อ่านรายการหลังวันตั้งต้นไม่สำเร็จ' : undefined}>
-                          ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
-                          {a._balance_unconfirmed && (
-                            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 500, letterSpacing: '0.1em', marginLeft: 5 }}>
-                              ยังไม่ยืนยัน
-                            </span>
-                          )}
-                        </div>
-                        {/* Edit + archive replaced the hard delete — deleting
-                            an account nulled account_id on its whole history
-                            and destroyed the balance with no undo. */}
-                        <button onClick={(e) => { e.stopPropagation(); setEditingAccount(a); }}
-                          aria-label={`แก้ไขบัญชี ${a.name}`} title="แก้ไข / ตั้งยอด / เก็บบัญชี"
-                          style={{ color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>✎</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
-          {/* Goals */}
-          <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: '20px 22px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>เป้าหมายการเงิน</div>
-                <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
-                  {goals.length} เป้าหมาย
-                </div>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => setShowGoalForm(true)}>+ เพิ่ม</Button>
-            </div>
-            {goals.length === 0 ? (
-              <EmptyState
-                icon="◎"
-                title="ยังไม่มีเป้าหมายการเงิน"
-                description="เริ่มจาก 1 เป้าหมาย เช่น 'ออมเงินดาวน์บ้าน' หรือ 'ลดหนี้บัตรเครดิต'"
-                actionLabel="เพิ่มเป้าหมายแรก"
-                onAction={() => setShowGoalForm(true)}
-                compact
-              />
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {goals.map(g => {
-                  // target 0/blank made this NaN% — guard before dividing.
-                  const target = Number(g.target_amount) || 0;
-                  const pct = target > 0
-                    ? Math.min(Math.round((Number(g.current_amount) / target) * 100), 100)
-                    : 0;
-                  return (
-                    <div key={g.id}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, gap: 10 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 14.5, fontWeight: 500, color: 'var(--text-primary)' }}>{g.title}</div>
-                          {g.deadline && (
-                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
-                              ⌛ {new Date(g.deadline).toLocaleDateString('th-TH')}
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
-                            ฿{Number(g.current_amount).toLocaleString('th')} / ฿{Number(g.target_amount).toLocaleString('th')}
-                          </div>
-                          <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: pct >= 100 ? 'var(--success)' : 'var(--accent)', fontWeight: 600 }}>
-                            {pct}%
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: pct >= 100 ? 'var(--success)' : 'var(--accent)', transition: 'width 300ms' }} />
-                      </div>
-                      <button onClick={() => { if (confirm('ลบเป้าหมายนี้?')) deleteGoal(g.id).then(refresh); }}
-                        className="focus-ring"
-                        style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 11, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>ลบ</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+              {txns.length === 0 ? (
+                <EmptyState
+                  icon="📋"
+                  title="ยังไม่มีรายการเดือนนี้"
+                  description={scope === 'personal'
+                    ? 'บันทึกรายการเอง หรือ import จาก Make — ระบบจะ auto-split ทั้ง ส่วนตัว + ครอบครัว ให้พร้อม'
+                    : 'รายการครอบครัวจะมาจาก: (1) Import CSV ที่หน้า "การเงินส่วนตัว" — ระบบ auto-split scope · (2) บันทึกเองที่นี่'}
+                  actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ เพิ่มเอง'}
+                  onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowTxnForm(true)}
+                  secondaryLabel={scope === 'personal' ? '+ เพิ่มเอง' : null}
+                  onSecondary={scope === 'personal' ? () => setShowTxnForm(true) : null}
+                />
+              ) : (
+                <>
+                  {/* Wallet-style rows: icon · (title + meta line) · amount · actions.
+                      Every field is still inline-editable exactly as before — the date,
+                      category and note cells just moved into the meta line under the
+                      title, which also means no horizontal panning on mobile. */}
+                  <div>
+                  <div style={{ maxHeight: 600, overflow: 'auto' }}>
+                    {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).map((t, i, arr) => {
+                      const isIn = t.amount > 0;
+                      return (
+                        <div key={t.id} data-txn-row style={{
+                          display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 12,
+                          padding: isMobile ? '10px 0' : '10px 2px',
+                          borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--hairline)',
+                        }}>
+                          <div style={{
+                            width: isMobile ? 34 : 38, height: isMobile ? 34 : 38, borderRadius: '50%', flexShrink: 0,
+                            background: 'var(--fill)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 15 : 17,
+                          }}>{catIconOf(t.type)}</div>
 
-        {/* Row 7: Full transaction list */}
-        <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: isMobile ? '18px 14px' : '20px 22px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-            <div>
-              <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
-                รายการธุรกรรม
-                {accountFilter && (
-                  <span style={{ marginLeft: 10, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent)' }}>
-                    · กรอง: {accounts.find(a => a.id === accountFilter)?.name}
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
-                {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).length} รายการ · {formatThaiMonth(yearMonth)}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {scope === 'personal' && (
-                <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
-              )}
-              <Button variant="secondary" size="sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</Button>
-              {txns.length > 0 && (
-                <Button variant="danger" size="sm"
-                  onClick={async () => {
-                    if (!confirm(`ลบรายการทั้ง ${txns.length} รายการในเดือน ${formatThaiMonth(yearMonth)}?\n(บัญชีจะยังอยู่)`)) return;
-                    try { await deleteTransactionsInMonth(yearMonth, scope); refresh(); }
-                    catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
-                  }}>
-                  🗑 ล้างเดือนนี้
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {txns.length === 0 ? (
-            <EmptyState
-              icon="📋"
-              title="ยังไม่มีรายการเดือนนี้"
-              description={scope === 'personal'
-                ? 'บันทึกรายการเอง หรือ import จาก Make — ระบบจะ auto-split ทั้ง ส่วนตัว + ครอบครัว ให้พร้อม'
-                : 'รายการครอบครัวจะมาจาก: (1) Import CSV ที่หน้า "การเงินส่วนตัว" — ระบบ auto-split scope · (2) บันทึกเองที่นี่'}
-              actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ เพิ่มเอง'}
-              onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowTxnForm(true)}
-              secondaryLabel={scope === 'personal' ? '+ เพิ่มเอง' : null}
-              onSecondary={scope === 'personal' ? () => setShowTxnForm(true) : null}
-            />
-          ) : (
-            <>
-              {/* Wallet-style rows: icon · (title + meta line) · amount · actions.
-                  Every field is still inline-editable exactly as before — the date,
-                  category and note cells just moved into the meta line under the
-                  title, which also means no horizontal panning on mobile. */}
-              <div>
-              <div style={{ maxHeight: 600, overflow: 'auto' }}>
-                {(accountFilter ? txns.filter(t => t.account_id === accountFilter) : txns).map((t, i, arr) => {
-                  const isIn = t.amount > 0;
-                  return (
-                    <div key={t.id} data-txn-row style={{
-                      display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 12,
-                      padding: isMobile ? '10px 0' : '10px 2px',
-                      borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--hairline)',
-                    }}>
-                      <div style={{
-                        width: isMobile ? 34 : 38, height: isMobile ? 34 : 38, borderRadius: '50%', flexShrink: 0,
-                        background: 'var(--fill)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 15 : 17,
-                      }}>{catIconOf(t.type)}</div>
-
-                      {/* TITLE + meta line */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        {/* TITLE — inline editable */}
-                        <InlineEdit
-                          value={t.title}
-                          hint="คลิกเพื่อแก้ไขชื่อรายการ"
-                          onSave={async title => {
-                            await updateTransaction(t.id, { title });
-                            refresh();
-                          }}
-                          cellStyle={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 500, padding: '1px 4px' }}
-                        />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: isMobile ? 'nowrap' : 'wrap', marginTop: 1, minWidth: 0 }}>
-                          {/* DATE — inline editable */}
-                          <InlineEdit
-                            value={bangkokDate(t.occurred_at)}
-                            type="date"
-                            display={txDate(t.occurred_at, isMobile)}
-                            hint="คลิกเพื่อแก้ไขวันที่"
-                            onSave={async date => {
-                              // Edit value + display + save all speak Bangkok:
-                              // the old UTC split showed "1 ก.ค." but opened
-                              // 30 มิ.ย., and re-saving walked the date back.
-                              // B5: on a transfer leg this moves BOTH legs.
-                              await updateTransactionMaybePaired(t, { occurred_at: withBangkokTime(date, t.occurred_at) });
-                              refresh();
-                            }}
-                            cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
-                          />
-                          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>·</span>
-                          {/* CATEGORY — inline dropdown. Transfer rows are
-                              category-locked: recategorising a transfer leg
-                              books fake income/spending on both scopes. */}
-                          {isTransfer(t) ? (
-                            <span title="โอนระหว่าง scope — เปลี่ยนหมวด/จำนวนไม่ได้ (แก้ได้เฉพาะชื่อ/โน้ต/วันที่)"
-                              style={{
-                                fontSize: 12, color: 'var(--text-muted)', padding: '1px 6px',
-                                background: 'var(--fill)', borderRadius: 6, whiteSpace: 'nowrap',
-                              }}>
-                              🔒 โอนภายใน
-                            </span>
-                          ) : (
-                          <InlineSelect
-                            value={t.type}
-                            options={allCategories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
-                            onSave={async newType => {
-                              const cat = allCategories.find(c => c.id === newType);
-                              const patch = { type: newType, category: cat?.label || newType };
-                              // Enforce the sign invariant on category change:
-                              // รายรับ ⇒ amount > 0, expense types ⇒ amount < 0.
-                              const abs = Math.abs(Number(t.amount) || 0);
-                              patch.amount = newType === 'income' ? abs : -abs;
-                              await updateTransaction(t.id, patch);
-                              refresh();
-                            }}
-                            onAdd={addCategory}
-                            cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
-                          />
-                          )}
-                          {/* NOTE stays on this line on desktop; on mobile it drops
-                              to its own line below so nothing has to truncate to
-                              three characters — still inline-editable either way. */}
-                          {!isMobile && (
-                            <>
+                          {/* TITLE + meta line */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* TITLE — inline editable */}
+                            <InlineEdit
+                              value={t.title}
+                              hint="คลิกเพื่อแก้ไขชื่อรายการ"
+                              onSave={async title => {
+                                await updateTransaction(t.id, { title });
+                                refresh();
+                              }}
+                              cellStyle={{ color: 'var(--text-primary)', fontSize: 15, fontWeight: 500, padding: '1px 4px' }}
+                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: isMobile ? 'nowrap' : 'wrap', marginTop: 1, minWidth: 0 }}>
+                              {/* DATE — inline editable */}
+                              <InlineEdit
+                                value={bangkokDate(t.occurred_at)}
+                                type="date"
+                                display={txDate(t.occurred_at, isMobile)}
+                                hint="คลิกเพื่อแก้ไขวันที่"
+                                onSave={async date => {
+                                  // Edit value + display + save all speak Bangkok:
+                                  // the old UTC split showed "1 ก.ค." but opened
+                                  // 30 มิ.ย., and re-saving walked the date back.
+                                  // B5: on a transfer leg this moves BOTH legs.
+                                  await updateTransactionMaybePaired(t, { occurred_at: withBangkokTime(date, t.occurred_at) });
+                                  refresh();
+                                }}
+                                cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
+                              />
                               <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>·</span>
+                              {/* CATEGORY — inline dropdown. Transfer rows are
+                                  category-locked: recategorising a transfer leg
+                                  books fake income/spending on both scopes. */}
+                              {isTransfer(t) ? (
+                                <span title="โอนระหว่าง scope — เปลี่ยนหมวด/จำนวนไม่ได้ (แก้ได้เฉพาะชื่อ/โน้ต/วันที่)"
+                                  style={{
+                                    fontSize: 12, color: 'var(--text-muted)', padding: '1px 6px',
+                                    background: 'var(--fill)', borderRadius: 6, whiteSpace: 'nowrap',
+                                  }}>
+                                  🔒 โอนภายใน
+                                </span>
+                              ) : (
+                              <InlineSelect
+                                value={t.type}
+                                options={allCategories.map(c => ({ value: c.id, label: c.label, icon: c.icon }))}
+                                onSave={async newType => {
+                                  const cat = allCategories.find(c => c.id === newType);
+                                  const patch = { type: newType, category: cat?.label || newType };
+                                  // Enforce the sign invariant on category change:
+                                  // รายรับ ⇒ amount > 0, expense types ⇒ amount < 0.
+                                  const abs = Math.abs(Number(t.amount) || 0);
+                                  patch.amount = newType === 'income' ? abs : -abs;
+                                  await updateTransaction(t.id, patch);
+                                  refresh();
+                                }}
+                                onAdd={addCategory}
+                                cellStyle={{ fontSize: 13, color: 'var(--text-secondary)', padding: '1px 4px' }}
+                              />
+                              )}
+                              {/* NOTE stays on this line on desktop; on mobile it drops
+                                  to its own line below so nothing has to truncate to
+                                  three characters — still inline-editable either way. */}
+                              {!isMobile && (
+                                <>
+                                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>·</span>
+                                  <InlineEdit
+                                    value={t.note}
+                                    placeholder="+ เพิ่มโน้ต"
+                                    hint="คลิกเพื่อแก้ไขโน้ต"
+                                    onSave={async note => {
+                                      await updateTransactionMaybePaired(t, { note: note || null });
+                                      refresh();
+                                    }}
+                                    cellStyle={{ fontSize: 13, color: t.note ? 'var(--text-secondary)' : 'var(--text-muted)', padding: '1px 4px' }}
+                                  />
+                                </>
+                              )}
+                            </div>
+                            {isMobile && (
                               <InlineEdit
                                 value={t.note}
                                 placeholder="+ เพิ่มโน้ต"
@@ -1436,112 +1362,314 @@ export function FinanceView({ scope }) {
                                 }}
                                 cellStyle={{ fontSize: 13, color: t.note ? 'var(--text-secondary)' : 'var(--text-muted)', padding: '1px 4px' }}
                               />
-                            </>
-                          )}
-                        </div>
-                        {isMobile && (
+                            )}
+                          </div>
+
+                          {/* AMOUNT — inline editable, sign follows the TYPE.
+                              Transfer rows are amount-locked (both legs must
+                              stay mirrored; edit via a new transfer instead). */}
+                          {isTransfer(t) ? (
+                            <div title="โอนระหว่าง scope — จำนวนถูกล็อกให้สองฝั่งตรงกันเสมอ"
+                              style={{
+                                textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums',
+                                color: 'var(--text-muted)', fontWeight: 600,
+                                minWidth: isMobile ? 0 : 96, flexShrink: 0, whiteSpace: 'nowrap',
+                                padding: '3px 6px',
+                              }}>
+                              {`${isIn ? '+' : '−'}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
+                            </div>
+                          ) : (
                           <InlineEdit
-                            value={t.note}
-                            placeholder="+ เพิ่มโน้ต"
-                            hint="คลิกเพื่อแก้ไขโน้ต"
-                            onSave={async note => {
-                              await updateTransactionMaybePaired(t, { note: note || null });
+                            value={Math.abs(Number(t.amount))}
+                            type="number"
+                            display={`${isIn ? '+' : '−'}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
+                            hint="คลิกเพื่อแก้ไขจำนวน (เครื่องหมายตามหมวด)"
+                            onSave={async v => {
+                              // Sign comes from the row's TYPE, not its possibly
+                              // stale amount — รายรับ stays +, expenses stay −.
+                              const sign = isIncomeTxn(t) ? 1 : -1;
+                              await updateTransaction(t.id, { amount: Math.abs(Number(v)) * sign });
                               refresh();
                             }}
-                            cellStyle={{ fontSize: 13, color: t.note ? 'var(--text-secondary)' : 'var(--text-muted)', padding: '1px 4px' }}
+                            cellStyle={{
+                              textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums',
+                              color: isIn ? 'var(--success)' : 'var(--text-primary)', fontWeight: 600,
+                              minWidth: isMobile ? 0 : 96, flexShrink: 0, whiteSpace: 'nowrap',
+                            }}
+                            inputStyle={{ textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums' }}
                           />
-                        )}
-                      </div>
-
-                      {/* AMOUNT — inline editable, sign follows the TYPE.
-                          Transfer rows are amount-locked (both legs must
-                          stay mirrored; edit via a new transfer instead). */}
-                      {isTransfer(t) ? (
-                        <div title="โอนระหว่าง scope — จำนวนถูกล็อกให้สองฝั่งตรงกันเสมอ"
-                          style={{
-                            textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums',
-                            color: 'var(--text-muted)', fontWeight: 600,
-                            minWidth: isMobile ? 0 : 96, flexShrink: 0, whiteSpace: 'nowrap',
-                            padding: '3px 6px',
-                          }}>
-                          {`${isIn ? '+' : '−'}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
+                          )}
+                          {/* ACTIONS — link recurring + delete + full-edit drawer */}
+                          <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexShrink: 0 }}>
+                            <button onClick={(e) => {
+                              const row = e.currentTarget.closest('[data-txn-row]');
+                              const rect = (row || e.currentTarget).getBoundingClientRect();
+                              setLinkingTxn({ txn: t, anchorRect: rect });
+                            }} title={t.recurring_id ? 'ผูกกับบิลประจำแล้ว — คลิกเพื่อเปลี่ยน' : 'ผูกกับบิลประจำ'} aria-label="ผูกบิลประจำ"
+                              style={{
+                                color: t.recurring_id ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
+                                cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'background 150ms, color 150ms', opacity: t.recurring_id ? 1 : 0.7,
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                              🔁
+                            </button>
+                            <button onClick={(e) => {
+                              // Anchor to the whole ROW (not just the button) so the popup
+                              // centers over the transaction table, not over the sidebar.
+                              const row = e.currentTarget.closest('[data-txn-row]');
+                              const rect = (row || e.currentTarget).getBoundingClientRect();
+                              setEditingTxn({ ...t, _anchorRect: rect });
+                            }} title="แก้ไขทุก field (popup ตรงนี้)" aria-label="แก้ไขเต็ม"
+                              style={{
+                                color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0,
+                                cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'background 150ms, color 150ms',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                              ⋯
+                            </button>
+                            <button onClick={() => handleDeleteTxn(t)}
+                              title="ลบ" aria-label="ลบ"
+                              style={{
+                                color: 'var(--text-muted)', fontSize: 15, background: 'none', border: 0,
+                                cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'background 150ms, color 150ms',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
+                              ×
+                            </button>
+                          </div>
                         </div>
-                      ) : (
-                      <InlineEdit
-                        value={Math.abs(Number(t.amount))}
-                        type="number"
-                        display={`${isIn ? '+' : '−'}฿${Math.abs(Number(t.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}`}
-                        hint="คลิกเพื่อแก้ไขจำนวน (เครื่องหมายตามหมวด)"
-                        onSave={async v => {
-                          // Sign comes from the row's TYPE, not its possibly
-                          // stale amount — รายรับ stays +, expenses stay −.
-                          const sign = isIncomeTxn(t) ? 1 : -1;
-                          await updateTransaction(t.id, { amount: Math.abs(Number(v)) * sign });
-                          refresh();
-                        }}
-                        cellStyle={{
-                          textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums',
-                          color: isIn ? 'var(--success)' : 'var(--text-primary)', fontWeight: 600,
-                          minWidth: isMobile ? 0 : 96, flexShrink: 0, whiteSpace: 'nowrap',
-                        }}
-                        inputStyle={{ textAlign: 'right', fontSize: 15, fontVariantNumeric: 'tabular-nums' }}
-                      />
-                      )}
-                      {/* ACTIONS — link recurring + delete + full-edit drawer */}
-                      <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexShrink: 0 }}>
-                        <button onClick={(e) => {
-                          const row = e.currentTarget.closest('[data-txn-row]');
-                          const rect = (row || e.currentTarget).getBoundingClientRect();
-                          setLinkingTxn({ txn: t, anchorRect: rect });
-                        }} title={t.recurring_id ? 'ผูกกับบิลประจำแล้ว — คลิกเพื่อเปลี่ยน' : 'ผูกกับบิลประจำ'} aria-label="ผูกบิลประจำ"
-                          style={{
-                            color: t.recurring_id ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
-                            cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transition: 'background 150ms, color 150ms', opacity: t.recurring_id ? 1 : 0.7,
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-                          🔁
-                        </button>
-                        <button onClick={(e) => {
-                          // Anchor to the whole ROW (not just the button) so the popup
-                          // centers over the transaction table, not over the sidebar.
-                          const row = e.currentTarget.closest('[data-txn-row]');
-                          const rect = (row || e.currentTarget).getBoundingClientRect();
-                          setEditingTxn({ ...t, _anchorRect: rect });
-                        }} title="แก้ไขทุก field (popup ตรงนี้)" aria-label="แก้ไขเต็ม"
-                          style={{
-                            color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0,
-                            cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transition: 'background 150ms, color 150ms',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
-                          ⋯
-                        </button>
-                        <button onClick={() => handleDeleteTxn(t)}
-                          title="ลบ" aria-label="ลบ"
-                          style={{
-                            color: 'var(--text-muted)', fontSize: 15, background: 'none', border: 0,
-                            cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transition: 'background 150ms, color 150ms',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
-                          ×
-                        </button>
+                      );
+                    })}
+                  </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Categories + Top 10 */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+              <CategoryBreakdown data={categories} totalExpense={thisSum.expense} />
+              <TopExpenses data={top10} />
+            </div>
+
+            {/* Daily heatmap */}
+            <DailyHeatmap dailyMap={dailyMap} yearMonth={yearMonth} />
+          </TabPanel>
+        )}
+
+        {tab === 'cards' && (
+          <TabPanel id="cards">
+            <Card>
+              <CardHeader title="บัตรเครดิต" meta="โมดูลใหม่ — กำลังสร้าง" />
+              <EmptyState
+                icon="💳"
+                title="บัตรเครดิต — กำลังสร้าง เร็ว ๆ นี้"
+                description="ที่นี่จะรวมยอดที่ต้องจ่าย รอบบิล และดอกเบี้ยของบัตรแต่ละใบไว้ที่เดียว ระหว่างนี้บันทึกรายการบัตรเป็นรายการปกติในแท็บ “รายการ” ได้ตามเดิม"
+                compact
+              />
+            </Card>
+          </TabPanel>
+        )}
+
+        {tab === 'debt' && (
+          <TabPanel id="debt">
+            {/* Debt Tracker — the เงินรั่ว debt row jumps to this anchor (v4.34) */}
+            <div id={DEBT_TRACKER_ANCHOR}>
+              <DebtTracker
+                debts={debts}
+                payments={debtPayments}
+                yearMonth={yearMonth}
+                scope={scope}
+                onChange={refresh}
+              />
+            </div>
+          </TabPanel>
+        )}
+
+        {tab === 'budget' && (
+          <TabPanel id="budget">
+            {/* Budget vs Actual */}
+            <BudgetProgress budgets={budgets} categoryActuals={categories} />
+
+            {/* Recurring Expenses.
+                historyTxns = 12-month window: the suggestion detector needs 2+
+                months of history — feeding it the single viewed month meant
+                suggestions could NEVER appear. Status checks still use txns. */}
+            <RecurringTracker recurring={recurring} transactions={txns} historyTxns={history12}
+              yearMonth={yearMonth} scope={scope} onChange={refresh} />
+
+            {/* Goals */}
+            <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: '20px 22px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>เป้าหมายการเงิน</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
+                    {goals.length} เป้าหมาย
+                  </div>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => setShowGoalForm(true)}>+ เพิ่ม</Button>
+              </div>
+              {goals.length === 0 ? (
+                <EmptyState
+                  icon="◎"
+                  title="ยังไม่มีเป้าหมายการเงิน"
+                  description="เริ่มจาก 1 เป้าหมาย เช่น 'ออมเงินดาวน์บ้าน' หรือ 'ลดหนี้บัตรเครดิต'"
+                  actionLabel="เพิ่มเป้าหมายแรก"
+                  onAction={() => setShowGoalForm(true)}
+                  compact
+                />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {goals.map(g => {
+                    // target 0/blank made this NaN% — guard before dividing.
+                    const target = Number(g.target_amount) || 0;
+                    const pct = target > 0
+                      ? Math.min(Math.round((Number(g.current_amount) / target) * 100), 100)
+                      : 0;
+                    return (
+                      <div key={g.id}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, gap: 10 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 14.5, fontWeight: 500, color: 'var(--text-primary)' }}>{g.title}</div>
+                            {g.deadline && (
+                              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
+                                ⌛ {new Date(g.deadline).toLocaleDateString('th-TH')}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                              ฿{Number(g.current_amount).toLocaleString('th')} / ฿{Number(g.target_amount).toLocaleString('th')}
+                            </div>
+                            <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: pct >= 100 ? 'var(--success)' : 'var(--accent)', fontWeight: 600 }}>
+                              {pct}%
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: pct >= 100 ? 'var(--success)' : 'var(--accent)', transition: 'width 300ms' }} />
+                        </div>
+                        <button onClick={() => { if (confirm('ลบเป้าหมายนี้?')) deleteGoal(g.id).then(refresh); }}
+                          className="focus-ring"
+                          style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 11, background: 'none', border: 0, cursor: 'pointer', padding: 0 }}>ลบ</button>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </TabPanel>
+        )}
+
+        {tab === 'accounts' && (
+          <TabPanel id="accounts">
+            {/* Accounts */}
+            <div style={{ background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)', padding: '20px 22px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
+                    บัญชี & ทรัพย์สิน
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)', marginTop: 3 }}>
+                    {accounts.length} บัญชี · รวม{' '}
+                    <strong style={{ color: balancesUnconfirmed ? 'var(--warning)' : 'var(--ink-2)' }}>
+                      ฿{accounts.reduce((s, a) => s + Number(a.balance || 0), 0).toLocaleString('th', { maximumFractionDigits: 0 })}
+                    </strong>
+                    {balancesUnconfirmed && (
+                      <span style={{ color: 'var(--warning)', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em', marginLeft: 6 }}>
+                        · ยังไม่ยืนยัน
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {accountFilter && (
+                    <Button variant="ghost" size="sm" onClick={() => setAccountFilter(null)}>× ล้าง filter</Button>
+                  )}
+                  {/* Same modal the header button opens — account moves belong
+                      in the accounts room too, not only up in the toolbar. */}
+                  <Button variant="ghost" size="sm" onClick={() => setShowTransfer(true)} title="โอนระหว่าง scope">
+                    💸 โอน scope
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</Button>
+                </div>
               </div>
-              </div>
-            </>
-          )}
-        </div>
+              {accounts.length === 0 ? (
+                <EmptyState
+                  icon="💼"
+                  title="ยังไม่มีบัญชี"
+                  description={scope === 'personal'
+                    ? 'import CSV จาก Make จะสร้างบัญชี (Cloud Pockets) ให้อัตโนมัติ พร้อมยอดล่าสุด'
+                    : 'บัญชีครอบครัว (เช่น "กองทุนครอบครัว", "เงินเพื่อน้องอคิน") จะถูกสร้างอัตโนมัติเมื่อ Import CSV ที่หน้าการเงินส่วนตัว'}
+                  actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ สร้างเอง'}
+                  onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowAccForm(true)}
+                  secondaryLabel={scope === 'personal' ? '+ สร้างเอง' : null}
+                  onSecondary={scope === 'personal' ? () => setShowAccForm(true) : null}
+                  compact
+                />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 340, overflow: 'auto', marginTop: 2 }}>
+                  {accounts.map(a => {
+                    const isSelected = accountFilter === a.id;
+                    const txCount = txns.filter(t => t.account_id === a.id).length;
+                    return (
+                      <div key={a.id}
+                        onClick={() => setAccountFilter(isSelected ? null : a.id)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '9px 12px', borderRadius: 10,
+                          background: isSelected ? 'var(--accent-tint)' : 'transparent',
+                          border: 'none',
+                          fontSize: 13, cursor: 'pointer', transition: 'background 150ms',
+                        }}
+                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--fill)'; }}
+                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                          <span style={{ width: 4, height: 26, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
+                          <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                            <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : 400 }}>{a.name}</div>
+                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                              {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
+                              {a.balance_anchor_at && (a._balance_unconfirmed
+                                ? ` · ยอด ณ ${txDate(a.balance_anchor_at)} · ยังไม่รวมรายการหลังจากนั้น`
+                                : ` · ยอด ณ ${txDate(a.balance_anchor_at)} + รายการหลังจากนั้น`)}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: a._balance_unconfirmed ? 'var(--warning)' : (Number(a.balance) >= 0 ? 'var(--text-primary)' : 'var(--danger)') }}
+                            title={a._balance_unconfirmed ? 'ยังไม่ยืนยัน — อ่านรายการหลังวันตั้งต้นไม่สำเร็จ' : undefined}>
+                            ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
+                            {a._balance_unconfirmed && (
+                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 500, letterSpacing: '0.1em', marginLeft: 5 }}>
+                                ยังไม่ยืนยัน
+                              </span>
+                            )}
+                          </div>
+                          {/* Edit + archive replaced the hard delete — deleting
+                              an account nulled account_id on its whole history
+                              and destroyed the balance with no undo. */}
+                          <button onClick={(e) => { e.stopPropagation(); setEditingAccount(a); }}
+                            aria-label={`แก้ไขบัญชี ${a.name}`} title="แก้ไข / ตั้งยอด / เก็บบัญชี"
+                            style={{ color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>✎</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </TabPanel>
+        )}
 
         {/* Footer */}
         <div style={{
