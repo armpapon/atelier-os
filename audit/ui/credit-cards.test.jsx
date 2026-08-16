@@ -374,11 +374,48 @@ describe('บัตรเครดิต · รูปหน้าบัตร', 
     const { container } = render(<CreditCards scope="personal" debts={[]} />);
     expect(await screen.findByText('KBank PLUSTINUM')).toBeTruthy();
 
-    const img = screen.getByRole('img', { name: 'KBank PLUSTINUM' });
+    // Decorative image — not in the accessibility tree, so query the DOM
+    // directly rather than getByRole('img'). The name sits right next to it
+    // as visible text, which is why alt is empty (A5 · redundant alt).
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
     expect(img.getAttribute('src')).toBe('/cards/kbank-plustinum.png');
-    expect(img.getAttribute('alt')).toBe('KBank PLUSTINUM');
     // …and the coloured monogram is gone, not merely hidden behind it.
     expect(container.textContent).not.toContain('KBANK');
+  });
+
+  it('marks the face image decorative and lazy (A5 follow-up)', async () => {
+    __tables.credit_cards = [card({
+      name: 'KBank PLUSTINUM', issuer: 'KBank',
+      face_url: '/cards/kbank-plustinum.png',
+    })];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('KBank PLUSTINUM')).toBeTruthy();
+
+    const img = container.querySelector('img');
+    expect(img.getAttribute('alt')).toBe('');
+    expect(img.getAttribute('aria-hidden')).toBe('true');
+    expect(img.getAttribute('loading')).toBe('lazy');
+    expect(img.getAttribute('decoding')).toBe('async');
+  });
+
+  it('falls back to the monogram when the face image fails to load (A5 follow-up)', async () => {
+    __tables.credit_cards = [card({
+      name: 'KBank PLUSTINUM', issuer: 'KBank',
+      face_url: '/cards/kbank-plustinum.png',
+    })];
+
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('KBank PLUSTINUM')).toBeTruthy();
+
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+    fireEvent.error(img);
+
+    // The broken <img> is gone and the coloured monogram takes its place.
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('KBANK')).toBeTruthy();
   });
 
   it('keeps the monogram for a card with no face image', async () => {
@@ -396,8 +433,10 @@ describe('บัตรเครดิต · รูปหน้าบัตร', 
       face_url: '/cards/ktc-visa-platinum.png',
     })];
 
-    render(<CreditCards scope="personal" debts={[]} />);
-    const img = await screen.findByRole('img', { name: 'ใบที่ยกเลิกแต่มีรูป' });
+    const { container } = render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใบที่ยกเลิกแต่มีรูป')).toBeTruthy();
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
     expect(img.getAttribute('src')).toBe('/cards/ktc-visa-platinum.png');
     // The image itself is NOT special-cased; the muted block it sits in is.
     expect(img.style.opacity).toBe('');

@@ -33,6 +33,7 @@
 | Version history (sidebar version + changelog UI) | `src/components/VersionHistory.jsx` — **bump `CHANGELOG[0]` on every user-visible commit** |
 | Supabase client | `src/lib/supabase.js` |
 | SQL migrations | `supabase/migration_*.sql` (run manually in Supabase SQL Editor — no migration runner) |
+| SQL seed data | `supabase/seed_*.sql` (e.g. `seed_credit_cards.sql` — idempotent record of rows already inserted via the Supabase MCP; not a pending migration) |
 | Standalone HTML | `public/playbook.html` (XAUUSD trading playbook served at `/playbook.html`) |
 
 ---
@@ -136,6 +137,7 @@ every one. Each file is idempotent, so re-running is harmless.
 | Status | Migration | What it added |
 |---|---|---|
 | ✅ run | `migration_add_credit_cards_face.sql` | `credit_cards.face_url` — the real card-face image shown in the **บัตรเครดิต** tab (v4.41). Applied 2026-08-16 via the Supabase MCP, together with the three seeded rows pointing at `public/cards/*.png`. Empty/unsafe value → the card keeps its coloured monogram |
+| ✅ run | `seed_credit_cards.sql` | Not a migration — an idempotent record of the 3 real cards + 2 linked KTC debts + their `face_url` values, applied 2026-08-16 via the Supabase MCP in the same session (v4.42, A5 follow-up). Kept for reproducibility only |
 | ✅ run | `migration_add_credit_cards.sql` | `credit_cards` + owner-only RLS + `updated_at` trigger — powers the **บัตรเครดิต** tab (v4.36). Applied 2026-08-16. The page still degrades to a calm "ยังไม่ได้ติดตั้งตาราง" notice if the table ever goes missing |
 | ✅ run | `migration_add_tax_planner.sql` | `tax_profiles` + unique index + owner-only RLS — powers the **วางแผนภาษี** page (v4.28) |
 | ✅ run | `migration_add_account_source_key.sql` | `accounts.source_key` + partial unique index + `accounts_upsert_by_source_key()` |
