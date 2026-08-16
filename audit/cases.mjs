@@ -50,6 +50,7 @@ import {
   utilizationPct, waiverStatus, nextCycleDates, nextDayOfMonth,
   monthlyInterestEstimate, cardBalance, summarizeCards, sortCards,
   feeProfileRows, installmentRows, cycleDateLabel, daysInMonth, safeHttpUrl, safeFaceUrl,
+  lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../src/lib/creditCards.js';
 import {
@@ -3631,6 +3632,89 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     && safeFaceUrl('') === null && safeFaceUrl('   ') === null
     && safeFaceUrl(null) === null && safeFaceUrl(undefined) === null
     && safeFaceUrl(12345) === null && safeFaceUrl({}) === null);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.43 · วงเงินร่วม — บัตรสองใบ วงเงินก้อนเดียว
+  //
+  //  เจ้าของบัตรพูดเอง (16 ส.ค. 69): "จริงๆ KTC มี 2 ใบ mastercard คือบัตรหลัก
+  //  Visa คือบัตรคล้ายบัตรเสริม แต่ใช้วงเงินร่วมกับบัตรเเรก สองบัตรรวมกันคือ
+  //  150000" — ก่อนหน้านี้แอปคิดว่าทุกใบมีวงเงินของตัวเอง วงเงิน KTC เลยถูกนับ
+  //  เป็น 300,000฿ (สองใบ) หรือ Visa ขึ้นว่า "ยังไม่ได้ใส่วงเงิน" ทั้งสองแบบ
+  //  ทำให้ % ใช้วงเงินดูดีกว่าที่ธนาคาร/เครดิตบูโรเห็นจริง
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.43 · วงเงินร่วม — สองใบ KTC = วงเงินเดียว 150,000฿');
+
+  const mcDebt   = { id: 'debt-mc',   name: 'KTC Mastercard (วิศวจุฬา)', remaining_balance: 50674 };
+  const visaDebt = { id: 'debt-visa', name: 'KTC VISA Platinum',        remaining_balance: 60817 };
+  const ktcDebts = [mcDebt, visaDebt];
+
+  // ทรงเดียวกับแถวจริงในฐานข้อมูล (seed_credit_cards.sql §5)
+  const kbank  = { id: 'kb', name: 'KBank PLUSTINUM', status: 'active', pays_full: true,
+    credit_limit: 300000, manual_balance: 6540, shared_limit_card_id: null, sort_order: 0 };
+  const ktcMC  = { id: 'mc', name: 'KTC วิศวจุฬา Platinum', status: 'active', pays_full: false,
+    credit_limit: 150000, debt_id: 'debt-mc', shared_limit_card_id: null, sort_order: 1 };
+  const ktcVisa = { id: 'visa', name: 'KTC VISA PLATINUM', status: 'active', pays_full: false,
+    credit_limit: null, debt_id: 'debt-visa', shared_limit_card_id: 'mc', sort_order: 2 };
+  const lineCards = [kbank, ktcMC, ktcVisa];
+
+  check('ใบหลักเป็นเจ้าของวงเงินตัวเอง · ใบเสริมชี้ไปที่ใบหลัก',
+    lineOf(ktcMC, lineCards).id === 'mc' && lineOf(ktcVisa, lineCards).id === 'mc'
+    && lineOf(kbank, lineCards).id === 'kb');
+
+  check('ชี้ไปที่ใบที่ถูกลบไปแล้ว / ชี้ใส่ตัวเอง → ถือว่ามีวงเงินของตัวเอง ไม่ระเบิด',
+    lineOf({ id: 'x', shared_limit_card_id: 'ghost' }, lineCards).id === 'x'
+    && lineOf({ id: 'y', shared_limit_card_id: 'y' }, [] ).id === 'y'
+    && lineOf(null, lineCards) === null);
+
+  check('วงจร A→B→A → ต่างคนต่างถือวงเงินของตัวเอง (ไม่วนไม่ค้าง) และ A→B→C จบที่ C',
+    (() => {
+      const a = { id: 'a', shared_limit_card_id: 'b', credit_limit: 10000, status: 'active' };
+      const b = { id: 'b', shared_limit_card_id: 'a', credit_limit: 20000, status: 'active' };
+      const c = { id: 'c', shared_limit_card_id: null, credit_limit: 30000, status: 'active' };
+      const b2 = { id: 'b', shared_limit_card_id: 'c', credit_limit: null, status: 'active' };
+      const a2 = { id: 'a', shared_limit_card_id: 'b', credit_limit: null, status: 'active' };
+      return lineOf(a, [a, b]).id === 'a' && lineOf(b, [a, b]).id === 'b'
+        && lineOf(a2, [a2, b2, c]).id === 'c' && lineOf(b2, [a2, b2, c]).id === 'c';
+    })());
+
+  check('วงเงินของสายอยู่ที่ใบหลัก — ทั้งสองใบอ่านได้ 150,000฿ เท่ากัน',
+    lineLimit(ktcMC, lineCards) === 150000 && lineLimit(ktcVisa, lineCards) === 150000
+    && lineLimit(kbank, lineCards) === 300000
+    && lineLimit({ id: 'z', credit_limit: null }, []) === null);
+
+  check('ยอดของสาย = สองใบรวมกัน 50,674 + 60,817 = 111,491฿ และเท่ากันทั้งสองใบ',
+    lineBalance(ktcMC, lineCards, ktcDebts) === 111491
+    && lineBalance(ktcVisa, lineCards, ktcDebts) === 111491,
+    String(lineBalance(ktcMC, lineCards, ktcDebts)));
+
+  check('% ใช้วงเงินของสาย = 111,491 ÷ 150,000 ≈ 74.3% — การ์ดสองใบต้องโชว์เลขเดียวกัน',
+    Math.round(lineUtilizationPct(ktcMC, lineCards, ktcDebts) * 10) / 10 === 74.3
+    && lineUtilizationPct(ktcMC, lineCards, ktcDebts) === lineUtilizationPct(ktcVisa, lineCards, ktcDebts),
+    String(lineUtilizationPct(ktcMC, lineCards, ktcDebts)));
+
+  check('ใบที่ไม่ได้ร่วมวงเงินกับใคร ยังคิดจากวงเงินของตัวเองเหมือนเดิม',
+    isSharedLine(ktcMC, lineCards) && isSharedLine(ktcVisa, lineCards)
+    && !isSharedLine(kbank, lineCards)
+    && Math.round(lineUtilizationPct(kbank, lineCards, ktcDebts) * 10) / 10 === 2.2);
+
+  const lineSum = summarizeCards({ cards: lineCards, debts: ktcDebts, today: '2026-08-16' });
+
+  check('สรุปหัวแท็บนับวงเงินของสายครั้งเดียว — KBank 300,000 + KTC 150,000 = 450,000฿ ไม่ใช่ 600,000฿',
+    lineSum.limit === 450000, String(lineSum.limit));
+
+  check('ยอดรวมยังเป็นผลรวมยอดของทุกใบที่ใช้อยู่ (6,540 + 50,674 + 60,817)',
+    lineSum.balance === 118031
+    && Math.round(lineSum.utilization * 10) / 10 === 26.2,
+    `${lineSum.balance} → ${lineSum.utilization}`);
+
+  check('ใบเสริมที่ยกเลิกแล้วไม่ถูกนับในยอดของสาย แต่วงเงินของสายยังเป็นก้อนเดิม',
+    (() => {
+      const deadVisa = { ...ktcVisa, status: 'cancelled' };
+      const cards2 = [kbank, ktcMC, deadVisa];
+      const s2 = summarizeCards({ cards: cards2, debts: ktcDebts, today: '2026-08-16' });
+      return lineBalance(ktcMC, cards2, ktcDebts) === 50674
+        && s2.limit === 450000 && s2.balance === 57214;
+    })());
 
   section('v4.36 · credit_cards API — ยังไม่ได้รัน SQL ต้องไม่พัง');
 

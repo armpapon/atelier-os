@@ -12,7 +12,14 @@
  *      must never show two different numbers on the same screen. Only an
  *      unlinked card falls back to the manually typed `manual_balance`.
  *
- *   2. Cycle dates are Bangkok calendar arithmetic on `YYYY-MM-DD` strings
+ *   2. A credit LINE, not a card, is what has a limit. Two KTC cards can be
+ *      one 150,000฿ line ("mastercard คือบัตรหลัก Visa คือบัตรคล้ายบัตรเสริม
+ *      แต่ใช้วงเงินร่วมกับบัตรเเรก สองบัตรรวมกันคือ 150000"), so utilisation is
+ *      resolved through `lineOf()` and the header counts each line's limit
+ *      exactly once. Summing card limits would report a 150,000฿ line as
+ *      300,000฿ — flattering, and wrong in the direction that costs money.
+ *
+ *   3. Cycle dates are Bangkok calendar arithmetic on `YYYY-MM-DD` strings
  *      (via src/lib/dates.js), never on Date getters. A statement day of 31
  *      is CLAMPED to the last day of a short month — the bank bills on the
  *      30th in April, it does not skip April.
@@ -61,6 +68,76 @@ export function cardBalance(card, debts = []) {
     if (debt) return Math.max(0, num(debt.remaining_balance));
   }
   return Math.max(0, num(card.manual_balance));
+}
+
+// ── วงเงินร่วม · one credit line, several pieces of plastic ──────────────────
+//
+// `shared_limit_card_id` points at the card that OWNS the line. NULL means the
+// card owns its own. Every figure below is computed for the LINE, so the two
+// KTC cards show one identical "111,491 / 150,000฿" instead of two half-truths.
+
+/** One hop: the card this card points at, or the card itself. Never null. */
+function hopTarget(card, cards) {
+  const id = card?.shared_limit_card_id;
+  if (!id || id === card.id) return card;               // owns its line / points at itself
+  const owner = (cards || []).find(c => c && c.id === id);
+  return owner || card;                                 // target deleted → owns its line
+}
+
+/**
+ * The card that owns this card's credit line — the card itself when it does.
+ *
+ * At most ONE extra hop is followed, so a sharer pointing at another sharer
+ * resolves to that card's own owner and nothing here can ever loop:
+ *   A → B → C  ⇒  lineOf(A) = C
+ *   A → A      ⇒  A          (self-reference is just "no share")
+ *   A → ghost  ⇒  A          (the main card was deleted)
+ *   A → B → A  ⇒  A          (a cycle: each card owns its own line again)
+ */
+export function lineOf(card, cards = []) {
+  if (!card) return null;
+  const first = hopTarget(card, cards);
+  if (first.id === card.id) return card;
+  const second = hopTarget(first, cards);
+  if (second.id === first.id) return first;
+  if (second.id === card.id) return card;               // A → B → A
+  return second;
+}
+
+/** True when this card's line is spread over more than one card. */
+export function isSharedLine(card, cards = []) {
+  return lineFamily(card, cards).length > 1;
+}
+
+/** Every card on the same line — cancelled ones included (they still exist). */
+export function lineFamily(card, cards = []) {
+  const owner = lineOf(card, cards);
+  if (!owner) return [];
+  const pool = (cards || []).some(c => c && c.id === card.id)
+    ? (cards || []) : [card, ...(cards || [])];
+  return pool.filter(c => c && lineOf(c, cards)?.id === owner.id);
+}
+
+/** The line's limit — the OWNER's `credit_limit`, or null when there is none. */
+export function lineLimit(card, cards = []) {
+  const owner = lineOf(card, cards);
+  const lim = Number(owner?.credit_limit);
+  return Number.isFinite(lim) && lim > 0 ? lim : null;
+}
+
+/**
+ * Everything drawn against the line: the owner's balance plus every sharer's.
+ * Cancelled cards contribute nothing — they cannot be swiped.
+ */
+export function lineBalance(card, cards = [], debts = []) {
+  return lineFamily(card, cards)
+    .filter(isActive)
+    .reduce((sum, c) => sum + cardBalance(c, debts), 0);
+}
+
+/** The line's utilisation as a PERCENT, or null when the line has no limit. */
+export function lineUtilizationPct(card, cards = [], debts = []) {
+  return utilizationPct(lineBalance(card, cards, debts), lineLimit(card, cards));
 }
 
 /**
@@ -241,6 +318,11 @@ export function sortCards(cards = []) {
  * Cancelled cards are excluded from every figure — they have no limit left to
  * use, no fee to dodge and no statement to miss.
  *
+ * `balance` is the plain sum of what every active card owes; `limit` is the
+ * sum of each LINE's limit, counted once (see `lineOf`). So the owner's real
+ * shape — KBank 300,000฿ + one shared KTC line of 150,000฿ — reports 450,000฿
+ * of credit, not 600,000฿.
+ *
  * @returns {{
  *   limit: number, balance: number, utilization: number|null,
  *   revolvingBalance: number, revolvingCount: number, monthlyInterest: number,
@@ -257,13 +339,24 @@ export function summarizeCards({ cards = [], debts = [], today, rate = DEFAULT_I
   let limit = 0, balance = 0, revolvingBalance = 0, revolvingCount = 0;
   const watchCards = [];
   let nextStatement = null, nextDue = null;
+  // Each credit LINE is counted once, keyed by the card that owns it. Two
+  // cards sharing 150,000฿ are 150,000฿ of exposure, not 300,000฿.
+  const linesCounted = new Set();
 
   for (const card of active) {
     const bal = cardBalance(card, debts);
-    const lim = Number(card.credit_limit);
-    // Utilisation is a ratio of what is MEASURABLE: a card with no limit
-    // typed in contributes neither its balance nor a phantom limit.
-    if (Number.isFinite(lim) && lim > 0) { limit += lim; balance += bal; }
+    balance += bal;
+
+    // The limit belongs to the line, so the second card on a line adds only
+    // its balance. A card with no limit anywhere on its line adds nothing to
+    // the denominator — an unmeasured limit is not a phantom limit.
+    const owner = lineOf(card, cards) || card;
+    const lineKey = owner.id ?? owner;                  // ids in prod, identity in tests
+    if (!linesCounted.has(lineKey)) {
+      linesCounted.add(lineKey);
+      const lim = Number(owner.credit_limit);
+      if (Number.isFinite(lim) && lim > 0) limit += lim;
+    }
 
     if (card.pays_full === false) { revolvingBalance += bal; revolvingCount += 1; }
 
