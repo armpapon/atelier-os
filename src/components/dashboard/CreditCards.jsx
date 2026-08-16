@@ -68,6 +68,40 @@ const CARD_FACE = {
   boxShadow: '0 1px 2px rgba(74, 61, 43, 0.10), 0 5px 14px rgba(74, 61, 43, 0.18)',
 };
 
+/**
+ * The plastic itself when we have a usable `face_url` that actually loads;
+ * the coloured monogram — unchanged since v4.36 — for every card that has
+ * none, and also the moment a face image 404s or otherwise fails to load.
+ * `failed` resets whenever `url` changes so editing in a new (working) face
+ * doesn't stay stuck on a previous broken one.
+ */
+function CardFace({ card, url, cancelled }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [url]);
+
+  if (url && !failed) {
+    return (
+      <img
+        src={url}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        decoding="async"
+        style={CARD_FACE}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <div style={{
+      width: 44, height: 32, borderRadius: 7, flex: 'none',
+      display: 'grid', placeItems: 'center', color: '#fff',
+      background: cancelled ? 'var(--text-muted)' : chipTone(card),
+      fontFamily: 'var(--f-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+    }}>{chipLabel(card)}</div>
+  );
+}
+
 const utilTone = (pct) =>
   pct == null ? 'var(--text-muted)'
     : pct >= 70 ? 'var(--danger)'
@@ -219,18 +253,11 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
     }}>
       {/* ── head ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-        {/* The plastic itself when we have a picture of it; the coloured
-            monogram — unchanged since v4.36 — for every card that has none.
-            A cancelled card needs no special case: the whole block is dimmed
-            by the `opacity` on the <Card> above, image included. */}
-        {faceUrl
-          ? <img src={faceUrl} alt={card.name} style={CARD_FACE} />
-          : <div style={{
-            width: 44, height: 32, borderRadius: 7, flex: 'none',
-            display: 'grid', placeItems: 'center', color: '#fff',
-            background: cancelled ? 'var(--text-muted)' : chipTone(card),
-            fontFamily: 'var(--f-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
-          }}>{chipLabel(card)}</div>}
+        {/* CardFace decides picture-vs-monogram itself, including the case
+            where the picture exists but fails to load. A cancelled card
+            needs no special case here: the whole block is dimmed by the
+            `opacity` on the <Card> above, image included. */}
+        <CardFace card={card} url={faceUrl} cancelled={cancelled} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--text-primary)' }}>
