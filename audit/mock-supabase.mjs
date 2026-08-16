@@ -240,6 +240,13 @@ export const supabase = {
   },
   auth: {
     async getUser() { return { data: { user: { id: 'user-1' } } }; },
+    // Enough of the auth surface for useAuth() to run when a test mounts the
+    // whole App shell (sidebar-subnav). No session — those tests drive App in
+    // preview mode, where the login gate is bypassed by design.
+    async getSession() { return { data: { session: null }, error: null }; },
+    onAuthStateChange() {
+      return { data: { subscription: { unsubscribe() {} } } };
+    },
   },
 };
 

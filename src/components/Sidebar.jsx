@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Icon, IconButton } from './Icon.jsx';
 import { Badge } from './ui/index.js';
 import { signOut } from '../lib/useAuth.js';
 import { VersionHistory, CHANGELOG } from './VersionHistory.jsx';
 import { LoopMark } from './LoopMark.jsx';
+import { FINANCE_TABS, DEFAULT_FINANCE_TAB, financeScopeOf } from '../lib/financeTabs.js';
 
 // Shared nav model — Sidebar (desktop) + MobileNav (bottom bar) render from this
 export const NAV_GROUPS = [
@@ -14,8 +15,11 @@ export const NAV_GROUPS = [
   { group: 'เรียนรู้ & ทำเงิน', children: [
     { id: 'trading',          label: 'Trading Journal',  icon: 'trade',  badge: null },
     { id: 'learning',         label: 'Learning Hub',     icon: 'book',   badge: null },
-    { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null },
-    { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null },
+    // `subs: true` — the desktop sidebar renders these two as accordion groups
+    // holding the six finance rooms (v4.38). MobileNav ignores the flag: on a
+    // narrow screen the in-page tab bar is the sub-navigation.
+    { id: 'personal-finance', label: 'การเงินส่วนตัว',  icon: 'money',  badge: null, subs: true },
+    { id: 'family-finance',   label: 'การเงินครอบครัว', icon: 'money',  badge: null, subs: true },
   ]},
   { group: 'Seal Interactive', children: [
     { id: 'petty-cash', label: 'Petty Cash', icon: 'work', badge: null },
@@ -61,6 +65,12 @@ export function canSeePage(user, id) {
   return !allowed || allowed.includes(email);
 }
 
+/**
+ * The nav entry a page id belongs to. The pre-v4.0 'finance' id still routes to
+ * PersonalFinance, so it highlights (and expands) การเงินส่วนตัว.
+ */
+function navIdOf(pageId) { return pageId === 'finance' ? 'personal-finance' : pageId; }
+
 /** NAV_GROUPS with hidden pages — and any group left empty — stripped out. */
 export function visibleNavGroups(user) {
   return NAV_GROUPS
@@ -68,10 +78,25 @@ export function visibleNavGroups(user) {
     .filter(g => g.children.length > 0);
 }
 
-export function Sidebar({ active, onChange, user, onToggleCollapse, theme = 'light', onToggleTheme }) {
+/**
+ * @param onChange     (pageId, tabId?) — App.jsx's navigate(). The finance
+ *                     sub-items pass the room they want opened; everything else
+ *                     calls it with the page id alone, as before.
+ * @param financeTabs  { personal, family } — the room each finance page is in,
+ *                     so the open sub gets the accent dot.
+ */
+export function Sidebar({ active, onChange, user, financeTabs = {}, onToggleCollapse, theme = 'light', onToggleTheme }) {
   const [showVersion, setShowVersion] = useState(false);
   const currentVersion = CHANGELOG[0]?.version || 'v0.5';
 
+  // Accordion state: the open group follows the finance page the user is on,
+  // and collapses entirely on any other page. `setExpanded` on top of that is
+  // the manual toggle — clicking the header of the page you are already on
+  // folds it away without navigating anywhere else.
+  const [expanded, setExpanded] = useState(() => (financeScopeOf(active) ? navIdOf(active) : null));
+  useEffect(() => { setExpanded(financeScopeOf(active) ? navIdOf(active) : null); }, [active]);
+
+  const activeId = navIdOf(active);
   const items = visibleNavGroups(user);
 
   const displayName    = user?.user_metadata?.name || user?.email?.split('@')[0] || 'อาทิตย์';
@@ -118,9 +143,34 @@ export function Sidebar({ active, onChange, user, onToggleCollapse, theme = 'lig
               color: 'var(--text-muted)', padding: '0 10px 7px', fontWeight: 500,
             }}>{group.group}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {group.children.map(item => (
-                <NavItem key={item.id} item={item} active={active === item.id} onClick={() => onChange(item.id)} />
-              ))}
+              {group.children.map(item => {
+                const isActive = activeId === item.id;
+                if (!item.subs) {
+                  return <NavItem key={item.id} item={item} active={isActive} onClick={() => onChange(item.id)} />;
+                }
+                // Finance accordion group (v4.38).
+                const scope   = financeScopeOf(item.id);
+                const openTab = financeTabs[scope] || DEFAULT_FINANCE_TAB;
+                const isOpen  = expanded === item.id;
+                return (
+                  <div key={item.id}>
+                    <NavItem
+                      item={item} active={isActive}
+                      expandable expanded={isOpen}
+                      // Header click = go to the page at the room it is already
+                      // in, and fold/unfold the list. Landing on the page makes
+                      // the effect above re-open it, so the collapse only
+                      // sticks when you were already there — like the mockup.
+                      onClick={() => { onChange(item.id, openTab); setExpanded(prev => (prev === item.id ? null : item.id)); }}
+                    />
+                    <NavSubs
+                      open={isOpen} pageId={item.id}
+                      activeTab={isActive ? openTab : null}
+                      onPick={(tabId) => { onChange(item.id, tabId); setExpanded(item.id); }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
@@ -174,12 +224,14 @@ export function Sidebar({ active, onChange, user, onToggleCollapse, theme = 'lig
   );
 }
 
-function NavItem({ item, active, onClick }) {
+function NavItem({ item, active, onClick, expandable = false, expanded = false }) {
   const isSoon = item.badge === 'Soon';
   return (
     <button
       onClick={onClick}
       className="focus-ring"
+      aria-expanded={expandable ? expanded : undefined}
+      aria-controls={expandable ? `nav-subs-${item.id}` : undefined}
       style={{
         display: 'flex', alignItems: 'center', gap: 11,
         width: '100%', padding: '8px 10px',
@@ -208,6 +260,71 @@ function NavItem({ item, active, onClick }) {
           {item.badge}
         </Badge>
       )}
+      {expandable && (
+        <span aria-hidden="true" style={{
+          display: 'inline-flex', color: 'var(--text-muted)', flexShrink: 0,
+          transform: expanded ? 'rotate(90deg)' : 'none',
+          transition: 'transform 160ms',
+        }}>
+          <Icon name="chevron" size={13} />
+        </span>
+      )}
     </button>
+  );
+}
+
+/**
+ * The six finance rooms, folded under their page (v4.38).
+ *
+ * Kept MOUNTED and collapsed with max-height (the mockup's `.nav-subs`
+ * transition) rather than unmounted, so the fold actually animates. `hidden`
+ * would kill that animation outright, so the folded list is taken out of the
+ * accessibility tree and the tab order the other way: `aria-hidden` +
+ * `visibility: hidden` (switched only after the transition has run) and
+ * `tabIndex=-1` on every button while it is closed.
+ */
+function NavSubs({ open, pageId, activeTab, onPick }) {
+  return (
+    <div id={`nav-subs-${pageId}`} aria-hidden={open ? undefined : true}
+      style={{
+        overflow: 'hidden',
+        maxHeight: open ? 300 : 0,
+        visibility: open ? 'visible' : 'hidden',
+        transition: open
+          ? 'max-height 180ms ease, visibility 0s'
+          : 'max-height 180ms ease, visibility 0s 180ms',
+      }}>
+      {FINANCE_TABS.map(t => {
+        const on = t.id === activeTab;
+        return (
+          <button key={t.id} type="button" className="focus-ring"
+            data-sub-page={pageId} data-sub-tab={t.id}
+            aria-current={on ? 'page' : undefined}
+            tabIndex={open ? 0 : -1}
+            onClick={() => onPick(t.id)}
+            style={{
+              position: 'relative', display: 'flex', alignItems: 'center',
+              width: '100%', padding: '5.5px 10px 5.5px 36px',
+              background: 'transparent', border: 0, borderRadius: 8,
+              fontFamily: 'var(--f-body)', fontSize: 12.5,
+              fontWeight: on ? 600 : 500,
+              color: on ? 'var(--accent-strong)' : 'var(--text-secondary)',
+              cursor: 'pointer', textAlign: 'left',
+              transition: 'background 150ms, color 150ms',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+            {/* accent dot — the mockup's `.nav-sub.on::before` */}
+            {on && (
+              <span aria-hidden="true" style={{
+                position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)',
+                width: 4, height: 4, borderRadius: 999, background: 'var(--accent)',
+              }} />
+            )}
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

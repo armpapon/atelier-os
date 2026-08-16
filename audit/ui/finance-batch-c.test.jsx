@@ -27,8 +27,12 @@ beforeEach(() => {
   __config.opFailures = {};
   __config.opFailurePredicate = null;
   __stats.rpcCalls.length = 0;
+  // MOBILE viewport, explicitly. jsdom has no real matchMedia, and since v4.38
+  // the in-page tablist renders only under MOBILE_QUERY — on desktop the six
+  // rooms are reached from the sidebar instead. Every claim below is about the
+  // tablist, so the mock says mobile out loud rather than relying on a default.
   vi.stubGlobal('matchMedia', (query) => ({
-    matches: false, media: query, onchange: null,
+    matches: true, media: query, onchange: null,
     addEventListener: () => {}, removeEventListener: () => {},
     addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
   }));

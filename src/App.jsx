@@ -21,6 +21,7 @@ import { TaxPlanner } from './pages/TaxPlanner.jsx';
 import { Team } from './pages/Team.jsx';
 import { useAuth } from './lib/useAuth.js';
 import { useMediaQuery, MOBILE_QUERY } from './lib/useMediaQuery.js';
+import { financeScopeOf, initialFinanceTabs } from './lib/financeTabs.js';
 import { isSupabaseConfigured } from './lib/supabase.js';
 import { handleOAuthRedirect } from './lib/integrations.js';
 import { LoopBrand } from './components/LoopMark.jsx';
@@ -71,6 +72,10 @@ export default function App() {
     return safeLS.get('loop:sidebar') === 'collapsed';  // migrate pre-v4.1 key
   });
   const [theme, setTheme] = useState(() => safeLS.get('loop:theme', 'light'));
+  // Which room each finance scope is in (v4.38). Lifted out of FinanceView so
+  // the sidebar accordion and the page cannot disagree. Deliberately NOT
+  // persisted — a fresh load always opens on ภาพรวม, like the month does.
+  const [financeTabs, setFinanceTabs] = useState(initialFinanceTabs);
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const previewMode = isPreviewMode();
@@ -146,15 +151,34 @@ export default function App() {
   const demoMode = !isSupabaseConfigured;
   const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'));
 
+  const setFinanceTab = (scope, tabId) =>
+    setFinanceTabs(m => (m[scope] === tabId ? m : { ...m, [scope]: tabId }));
+
+  /**
+   * Nav with an optional destination sub-tab. The sidebar's finance sub-items
+   * pass one; every other caller passes the page id alone and behaves exactly
+   * as `setActive` always did.
+   */
+  const navigate = (pageId, tabId) => {
+    const scope = financeScopeOf(pageId);
+    if (scope && tabId) setFinanceTab(scope, tabId);
+    setActive(pageId);
+  };
+
+  const financeProps = (scope) => ({
+    tab: financeTabs[scope],
+    onTabChange: (tabId) => setFinanceTab(scope, tabId),
+  });
+
   const render = () => {
     switch (active) {
       case 'dashboard':        return <Dashboard onNav={setActive} user={user} />;
       case 'trading':          return <Trading />;
       case 'learning':         return <Learning />;
       case 'journal':          return <Journal />;
-      case 'finance':          return <PersonalFinance />;   // backward compat
-      case 'personal-finance': return <PersonalFinance />;
-      case 'family-finance':   return <FamilyFinance />;
+      case 'finance':          return <PersonalFinance {...financeProps('personal')} />;   // backward compat
+      case 'personal-finance': return <PersonalFinance {...financeProps('personal')} />;
+      case 'family-finance':   return <FamilyFinance {...financeProps('family')} />;
       case 'family':           return <Family />;
       case 'petty-cash':       return <PettyCash />;
       case 'tax':              return <TaxPlanner />;
@@ -175,7 +199,8 @@ export default function App() {
         />
       ) : (
         <Sidebar
-          active={active} onChange={setActive} user={user}
+          active={active} onChange={navigate} user={user}
+          financeTabs={financeTabs}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(v => !v)}
           theme={theme} onToggleTheme={toggleTheme}
