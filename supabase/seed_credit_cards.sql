@@ -1,12 +1,14 @@
 -- ════════════════════════════════════════════════════════════════════════════
---  บัตรเครดิต — production seed: the three real cards (v4.42 · A5 follow-up)
+--  บัตรเครดิต — production seed: the three real cards (v4.43 · วงเงินร่วม)
 --
 --  ALREADY APPLIED to production on 2026-08-16 via the Supabase MCP, in the
---  same session that ran migration_add_credit_cards.sql (v4.36) and
---  migration_add_credit_cards_face.sql (v4.41). This file is NOT a pending
---  migration — nothing here needs to be run again. It exists so the three
---  seeded cards, their two linked debts, and the face_url values are
---  reproducible from the repo instead of living only in Supabase.
+--  same session that ran migration_add_credit_cards.sql (v4.36),
+--  migration_add_credit_cards_face.sql (v4.41) and
+--  migration_add_credit_cards_shared_limit.sql (v4.43). This file is NOT a
+--  pending migration — nothing here needs to be run again. It exists so the
+--  three seeded cards, their two linked debts, the face_url values and the
+--  shared KTC credit line are reproducible from the repo instead of living
+--  only in Supabase.
 --
 --  Every statement is idempotent (INSERT ... WHERE NOT EXISTS, UPDATE ...
 --  guarded by IS DISTINCT FROM / IS NULL) — re-running it in the SQL Editor
@@ -14,18 +16,26 @@
 --
 --  Cards seeded
 --    · KBank PLUSTINUM       — personal — no revolving balance, waiver counter
---    · KTC วิศวจุฬา Platinum  — family   — revolving balance, linked to a debt
---    · KTC VISA PLATINUM     — family   — revolving balance, linked to a debt
+--    · KTC วิศวจุฬา Platinum  — family   — revolving balance, linked to a debt,
+--                                          OWNS the 150,000฿ KTC credit line
+--    · KTC VISA PLATINUM     — family   — revolving balance, linked to a debt,
+--                                          SHARES the Mastercard's line
+--
+--  The KTC line, in the owner's words (16 ส.ค. 69):
+--    "จริงๆ KTC มี 2 ใบ mastercard คือบัตรหลัก Visa คือบัตรคล้ายบัตรเสริม
+--     แต่ใช้วงเงินร่วมกับบัตรเเรก สองบัตรรวมกันคือ 150000"
+--  So the Mastercard carries credit_limit = 150000 and the Visa carries
+--  credit_limit = NULL + shared_limit_card_id → the Mastercard (§5 below).
 --
 --  fee_profile values are transcribed from the approved mockup
 --  (loop-credit-cards-mockup.html, ตรวจกับ ธปท. 16 ส.ค. 69) — the jsonb key
 --  names match src/lib/creditCards.js FEE_PROFILE_FIELDS plus bot_url /
 --  bot_checked (see migration_add_credit_cards.sql for the shape).
 --
---  Deliberately NOT seeded: credit_limit / statement_day / due_day on the two
---  KTC cards, and statement_day / due_day on the KBank card. The mockup marks
---  those with `*` — "ตัวเลขที่มี * ยังเป็นค่าสมมติรอ CEO กรอกเอง" — so they
---  stay NULL here rather than ship a fabricated real-world date or limit.
+--  Deliberately NOT seeded: statement_day / due_day on all three cards. The
+--  mockup marks those with `*` — "ตัวเลขที่มี * ยังเป็นค่าสมมติรอ CEO กรอกเอง"
+--  — so they stay NULL here rather than ship a fabricated real-world date.
+--  (The KTC limit is no longer in that bucket: the owner stated it himself.)
 --
 --  Uses the `WHERE email = 'armpapon@gmail.com'` user subquery per CLAUDE.md
 --  §3 (auth.uid() is NULL when run as postgres in the SQL Editor).
@@ -63,12 +73,12 @@ WHERE NOT EXISTS (
 
 INSERT INTO public.credit_cards (
   user_id, scope, name, issuer, network, status, pays_full,
-  manual_balance, opened_note, waiver_mode, fee_profile, sort_order
+  credit_limit, manual_balance, opened_note, waiver_mode, fee_profile, sort_order
 )
 SELECT
   (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com'),
   'family', 'KTC วิศวจุฬา Platinum', 'KTC', 'Mastercard', 'active', false,
-  50674, 'co-brand · หนี้หมุนอยู่', 'none',
+  150000, 50674, 'co-brand · หนี้หมุนอยู่ · บัตรหลักของวงเงิน KTC', 'none',
   jsonb_build_object(
     'annual_fee_display', 'ฟรี ไม่มีเงื่อนไข (ใบแรกของแบรนด์)',
     'interest',           '16% ต่อปี',
@@ -181,6 +191,32 @@ WHERE user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
   AND name = 'KTC VISA PLATINUM'
   AND face_url IS DISTINCT FROM '/cards/ktc-visa-platinum.png';
 
+-- ── 5 · วงเงินร่วม — the two KTC cards are ONE 150,000฿ line ─────────────────
+-- Requires migration_add_credit_cards_shared_limit.sql (v4.43).
+-- The Mastercard OWNS the line, the Visa spends it:
+--   Mastercard → credit_limit 150000, shared_limit_card_id NULL
+--   Visa       → credit_limit NULL,   shared_limit_card_id = the Mastercard
+-- src/lib/creditCards.js `lineOf`/`lineBalance` then show 111,491 / 150,000฿
+-- (50,674 + 60,817) on BOTH cards, and count the 150,000 once in the header.
+
+UPDATE public.credit_cards
+SET credit_limit = 150000
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
+  AND name = 'KTC วิศวจุฬา Platinum'
+  AND credit_limit IS DISTINCT FROM 150000;
+
+UPDATE public.credit_cards v
+SET shared_limit_card_id = m.id,
+    credit_limit = NULL
+FROM public.credit_cards m
+WHERE v.user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
+  AND m.user_id = v.user_id
+  AND v.name = 'KTC VISA PLATINUM'
+  AND m.name = 'KTC วิศวจุฬา Platinum'
+  AND (v.shared_limit_card_id IS DISTINCT FROM m.id OR v.credit_limit IS NOT NULL);
+
 -- ── Check it landed ─────────────────────────────────────────────────────────
--- select name, scope, manual_balance, debt_id, face_url from public.credit_cards order by sort_order;
+-- select name, scope, manual_balance, debt_id, face_url, credit_limit,
+--        shared_limit_card_id
+--   from public.credit_cards order by sort_order;
 -- select name, remaining_balance, interest_rate, monthly_payment from public.debts where type = 'credit_card';

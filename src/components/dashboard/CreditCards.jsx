@@ -10,6 +10,9 @@
  *     error card and never a crash.
  *   · A card linked to a debt row shows the DEBT's remaining balance, read
  *     from the list FinanceView already loaded. Nothing is refetched here.
+ *   · Two cards on ONE credit line (the two KTC cards, 150,000฿ together)
+ *     show the SAME utilisation row — the line's, not each card's half of it.
+ *     Which cards form a line is decided by lineOf() in the lib, never here.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardHeader, Badge, Button, EmptyState } from '../ui/index.js';
@@ -20,6 +23,7 @@ import {
   utilizationPct, waiverStatus, nextCycleDates, monthlyInterestEstimate,
   cardBalance, summarizeCards, sortCards, feeProfileRows, installmentRows,
   cycleDateLabel, cycleDayLabel, baht, isCancelled, safeHttpUrl, safeFaceUrl,
+  lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
 
@@ -220,10 +224,20 @@ function SummaryStrip({ summary, isMobile }) {
 // ════════════════════════════════════════════════════════════════════════════
 //  One card
 // ════════════════════════════════════════════════════════════════════════════
-function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
+function CreditCardBlock({ card, cards = [], debts, today, onEdit, onDelete }) {
   const cancelled = isCancelled(card);
   const balance   = cardBalance(card, debts);
-  const pct       = utilizationPct(balance, card.credit_limit);
+  // วงเงินร่วม: when this card's limit belongs to a LINE, the bar reports the
+  // line — the same figures on the main card and on the one that shares it,
+  // because that is the single number the bank (and the bureau) sees.
+  const shared      = isSharedLine(card, cards);
+  const lineOwner   = shared ? lineOf(card, cards) : card;
+  const sharesInto  = shared && lineOwner && lineOwner.id !== card.id ? lineOwner : null;
+  const shownBal    = shared ? lineBalance(card, cards, debts) : balance;
+  const shownLimit  = shared ? lineLimit(card, cards) : Number(card.credit_limit);
+  const pct         = shared
+    ? lineUtilizationPct(card, cards, debts)
+    : utilizationPct(balance, card.credit_limit);
   const waiver    = waiverStatus(card);
   const cycle     = nextCycleDates(card.statement_day, card.due_day, today);
   const interest  = monthlyInterestEstimate(balance);
@@ -244,6 +258,7 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
     card.opened_note,
     card.network,
     linkedDebt ? `เชื่อมกับหนี้ “${linkedDebt.name}”` : null,
+    sharesInto ? `ใช้วงเงินร่วมกับ ${sharesInto.name}` : null,
   ].filter(Boolean).join(' · ');
 
   return (
@@ -286,14 +301,14 @@ function CreditCardBlock({ card, debts, today, onEdit, onDelete }) {
       {/* ── utilisation ──────────────────────────────────────────────────── */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '2px 10px' }}>
-          <span style={MONO_LABEL}>ใช้วงเงิน</span>
+          <span style={MONO_LABEL}>{shared ? 'ใช้วงเงิน (วงเงินร่วม)' : 'ใช้วงเงิน'}</span>
           <span style={{
             fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 700,
             fontVariantNumeric: 'tabular-nums', color: utilTone(pct),
           }}>
             {pct == null
-              ? `${Math.round(balance).toLocaleString('en-US')}฿ · ยังไม่ได้ใส่วงเงิน`
-              : `${pct.toFixed(0)}% · ${Math.round(balance).toLocaleString('en-US')} / ${Math.round(Number(card.credit_limit)).toLocaleString('en-US')}฿`}
+              ? `${Math.round(shownBal).toLocaleString('en-US')}฿ · ยังไม่ได้ใส่วงเงิน`
+              : `${pct.toFixed(0)}% · ${Math.round(shownBal).toLocaleString('en-US')} / ${Math.round(Number(shownLimit)).toLocaleString('en-US')}฿`}
           </span>
         </div>
         <UtilBar pct={pct} />
@@ -485,7 +500,7 @@ function WaiverBox({ card, waiver }) {
 // ════════════════════════════════════════════════════════════════════════════
 const BLANK = {
   name: '', issuer: '', network: '', face_url: '', status: 'active', pays_full: 'true',
-  credit_limit: '', manual_balance: '', debt_id: '',
+  credit_limit: '', shared_limit_card_id: '', manual_balance: '', debt_id: '',
   statement_day: '', due_day: '', opened_note: '',
   waiver_mode: 'none', waiver_target: '', waiver_progress: '', waiver_period_note: '',
   annual_fee: '', annual_fee_note: '', sort_order: '',
@@ -502,7 +517,9 @@ function toForm(card) {
     face_url: s(card.face_url),
     status: card.status || 'active',
     pays_full: card.pays_full === false ? 'false' : 'true',
-    credit_limit: s(card.credit_limit), manual_balance: s(card.manual_balance),
+    credit_limit: s(card.credit_limit),
+    shared_limit_card_id: s(card.shared_limit_card_id),
+    manual_balance: s(card.manual_balance),
     debt_id: s(card.debt_id),
     statement_day: s(card.statement_day), due_day: s(card.due_day),
     opened_note: s(card.opened_note),
@@ -524,12 +541,19 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
+function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) {
   const [form, setForm] = useState(() => toForm(initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const formRef = useRef(null);
+
+  // A line can only be held by another card the owner still holds, in this
+  // same scope (the list is already scoped) — and never by the card itself.
+  const shareTargets = useMemo(
+    () => (cards || []).filter(c => c && !isCancelled(c) && c.id !== initial?.id),
+    [cards, initial],
+  );
 
   // Every exit is inert while the write is in flight (audited: DLG-FIN-001 ·
   // A2). Closing mid-save unmounts the only place a rejected write can report
@@ -598,7 +622,11 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
         face_url: safeFaceUrl(form.face_url),
         status: form.status,
         pays_full: form.pays_full === 'true',
-        credit_limit: numOrNull(form.credit_limit),
+        // A card that spends someone else's line has no limit of its own —
+        // the typed figure is dropped rather than left to contradict the
+        // main card (same rule as manual_balance under a debt link).
+        credit_limit: form.shared_limit_card_id ? null : numOrNull(form.credit_limit),
+        shared_limit_card_id: form.shared_limit_card_id || null,
         // A linked card reads its balance from the debt row, so the typed
         // figure is dropped rather than left to rot next to a live number.
         manual_balance: form.debt_id ? null : numOrNull(form.manual_balance),
@@ -690,13 +718,27 @@ function CardFormModal({ initial, scope, debts, onSaved, onClose }) {
         {row(<>
           {field('วงเงิน (฿)', <input type="number" min="0" step="1" value={form.credit_limit}
             onChange={e => set('credit_limit', e.target.value)} placeholder="300000"
-            style={{ ...INPUT, fontFamily: 'var(--f-mono)' }} />)}
+            disabled={!!form.shared_limit_card_id}
+            style={{ ...INPUT, fontFamily: 'var(--f-mono)', opacity: form.shared_limit_card_id ? 0.5 : 1 }} />,
+          form.shared_limit_card_id ? 'ใช้วงเงินร่วม — วงเงินถือที่ใบหลัก ไม่ต้องกรอกซ้ำ' : null)}
           {field('ยอดคงค้าง (฿)', <input type="number" min="0" step="1" value={form.manual_balance}
             onChange={e => set('manual_balance', e.target.value)} placeholder="6540"
             disabled={!!form.debt_id}
             style={{ ...INPUT, fontFamily: 'var(--f-mono)', opacity: form.debt_id ? 0.5 : 1 }} />,
           form.debt_id ? 'ผูกกับหนี้อยู่ — ใช้ยอดคงเหลือจากตารางหนี้' : null)}
         </>)}
+
+        {field('ใช้วงเงินร่วมกับบัตร (ถ้ามี)',
+          <select value={form.shared_limit_card_id}
+            onChange={e => set('shared_limit_card_id', e.target.value)} style={INPUT}>
+            <option value="">— ไม่ร่วม (บัตรใบนี้มีวงเงินของตัวเอง) —</option>
+            {shareTargets.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.credit_limit ? ` · วงเงิน ${baht(c.credit_limit)}` : ''}
+              </option>
+            ))}
+          </select>,
+          'บัตรเสริม/บัตรใบที่สองที่แชร์วงเงินกับใบหลัก (เช่น KTC 2 ใบ = วงเงินเดียว) — เลือกแล้ว % ใช้วงเงินจะคิดจากวงเงินก้อนเดียวทั้งสองใบ')}
 
         {field('ผูกกับหนี้ในตารางหนี้',
           <select value={form.debt_id} onChange={e => set('debt_id', e.target.value)} style={INPUT}>
@@ -875,7 +917,7 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
         gridTemplateColumns: isMobile ? 'minmax(0, 1fr)' : 'repeat(auto-fit, minmax(340px, 1fr))',
       }}>
         {ordered.map(card => (
-          <CreditCardBlock key={card.id} card={card} debts={debts} today={today}
+          <CreditCardBlock key={card.id} card={card} cards={cards} debts={debts} today={today}
             onEdit={openEdit} onDelete={remove} />
         ))}
 
@@ -908,7 +950,7 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
       </div>
 
       {showForm && (
-        <CardFormModal initial={editing} scope={scope} debts={debts}
+        <CardFormModal initial={editing} scope={scope} cards={cards} debts={debts}
           onSaved={onSaved} onClose={closeForm} />
       )}
     </>

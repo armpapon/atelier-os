@@ -47,7 +47,7 @@ const card = (over = {}) => ({
   user_id: 'user-1', scope: 'personal',
   name: 'บัตรทดสอบ', issuer: null, network: null, face_url: null,
   status: 'active', pays_full: true,
-  credit_limit: null, manual_balance: null, debt_id: null,
+  credit_limit: null, shared_limit_card_id: null, manual_balance: null, debt_id: null,
   statement_day: null, due_day: null, opened_note: null,
   waiver_mode: 'none', waiver_target: null, waiver_progress: 0,
   waiver_period_note: null, annual_fee: null, annual_fee_note: null,
@@ -488,6 +488,136 @@ describe('บัตรเครดิต · รูปหน้าบัตร', 
     await waitFor(() => expect(__tables.credit_cards).toHaveLength(1));
     expect(__tables.credit_cards[0].face_url).toBeNull();
     expect(JSON.stringify(__tables.credit_cards[0])).not.toContain('evil.com');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.43 · วงเงินร่วม. The arithmetic is pinned in audit/cases.mjs (lineOf /
+//  lineBalance / lineUtilizationPct / summarizeCards). What only the mounted
+//  grid can prove is that BOTH cards print the SAME line figures, that the
+//  supplementary card says whose line it is spending, and that the form both
+//  refuses a second limit and stores the link.
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · วงเงินร่วม (KTC 2 ใบ = 150,000฿ ก้อนเดียว)', () => {
+  const KTC_DEBTS = [
+    { id: 'debt-mc',   name: 'KTC Mastercard (วิศวจุฬา)', remaining_balance: 50674 },
+    { id: 'debt-visa', name: 'KTC VISA Platinum',        remaining_balance: 60817 },
+  ];
+  const seedKtcLine = () => {
+    __tables.credit_cards = [
+      card({
+        id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', issuer: 'KTC', network: 'Mastercard',
+        pays_full: false, credit_limit: 150000, debt_id: 'debt-mc', sort_order: 1,
+      }),
+      card({
+        id: 'ktc-visa', name: 'KTC VISA PLATINUM', issuer: 'KTC', network: 'Visa',
+        pays_full: false, credit_limit: null, debt_id: 'debt-visa',
+        shared_limit_card_id: 'ktc-mc', sort_order: 2,
+      }),
+    ];
+  };
+
+  it('prints the same 111,491 / 150,000 line on the main card and on the sharer', async () => {
+    seedKtcLine();
+    render(<CreditCards scope="personal" debts={KTC_DEBTS} />);
+    expect(await screen.findByText('KTC วิศวจุฬา Platinum')).toBeTruthy();
+    expect(screen.getByText('KTC VISA PLATINUM')).toBeTruthy();
+
+    // One line, one pair of numbers — printed twice, identically.
+    const rows = screen.getAllByText('74% · 111,491 / 150,000฿');
+    expect(rows).toHaveLength(2);
+    // …and both are labelled as a shared line, never as this card's own limit.
+    expect(screen.getAllByText('ใช้วงเงิน (วงเงินร่วม)')).toHaveLength(2);
+    expect(screen.queryByText('ใช้วงเงิน')).toBeNull();
+    // The Visa's own row is NULL in the database — it must never say so.
+    expect(document.body.textContent).not.toContain('ยังไม่ได้ใส่วงเงิน');
+    expect(document.body.textContent).not.toContain('60,817 / 150,000฿');
+  });
+
+  it('names the main card on the supplementary one only', async () => {
+    seedKtcLine();
+    const { container } = render(<CreditCards scope="personal" debts={KTC_DEBTS} />);
+    expect(await screen.findByText('KTC VISA PLATINUM')).toBeTruthy();
+
+    const notes = Array.from(container.querySelectorAll('div'))
+      .map(n => n.textContent)
+      .filter(t => t && t.includes('ใช้วงเงินร่วมกับ KTC วิศวจุฬา Platinum'));
+    expect(notes.length).toBeGreaterThan(0);
+    // The note belongs to the sharer's header meta, beside its network.
+    expect(notes[notes.length - 1]).toContain('Visa');
+    // Exactly one card carries it — the main card is not "sharing with itself".
+    expect(container.textContent.match(/ใช้วงเงินร่วมกับ KTC วิศวจุฬา Platinum/g)).toHaveLength(1);
+  });
+
+  it('leaves a standalone card on its own limit and its old label', async () => {
+    __tables.credit_cards = [card({
+      name: 'KBank PLUSTINUM', issuer: 'KBank', credit_limit: 300000, manual_balance: 6540,
+    })];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('KBank PLUSTINUM')).toBeTruthy();
+    expect(screen.getByText('ใช้วงเงิน')).toBeTruthy();
+    expect(screen.queryByText('ใช้วงเงิน (วงเงินร่วม)')).toBeNull();
+    expect(document.body.textContent).toContain('2% · 6,540 / 300,000฿');
+  });
+
+  it('counts the shared limit once in the header stat', async () => {
+    seedKtcLine();
+    __tables.credit_cards.push(card({
+      id: 'kbank', name: 'KBank PLUSTINUM', issuer: 'KBank',
+      credit_limit: 300000, manual_balance: 6540, sort_order: 0,
+    }));
+
+    render(<CreditCards scope="personal" debts={KTC_DEBTS} />);
+    expect(await screen.findByText('ใช้วงเงินรวม (Bureau)')).toBeTruthy();
+    // 118,031 ÷ 450,000 — not ÷ 600,000, which two card limits would give.
+    expect(document.body.textContent).toContain('118,031 / 450,000฿');
+    expect(document.body.textContent).not.toContain('600,000฿');
+    expect(screen.getByText('26.2%')).toBeTruthy();
+  });
+
+  it('disables the limit input and stores the link when a share target is picked', async () => {
+    __tables.credit_cards = [card({
+      id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', issuer: 'KTC', credit_limit: 150000,
+    })];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    // The grid is not empty, so the add CTA is the dashed tile at the end of it.
+    fireEvent.click(await screen.findByRole('button', { name: /\+ เพิ่มบัตร/ }));
+
+    const limitInput = screen.getByLabelText('วงเงิน (฿)');
+    expect(limitInput.disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('ชื่อบัตร'), { target: { value: 'KTC VISA PLATINUM' } });
+    fireEvent.change(screen.getByLabelText('วงเงิน (฿)'), { target: { value: '150000' } });
+    fireEvent.change(screen.getByLabelText('ใช้วงเงินร่วมกับบัตร (ถ้ามี)'), { target: { value: 'ktc-mc' } });
+
+    // The limit is held by the main card, so this field goes dead and says why.
+    expect(screen.getByLabelText('วงเงิน (฿)').disabled).toBe(true);
+    expect(document.body.textContent).toContain('วงเงินถือที่ใบหลัก');
+
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มบัตร' }));
+
+    await waitFor(() => expect(__tables.credit_cards).toHaveLength(2));
+    const saved = __tables.credit_cards.find(c => c.name === 'KTC VISA PLATINUM');
+    expect(saved.shared_limit_card_id).toBe('ktc-mc');
+    // …and the typed 150,000 is dropped rather than kept to contradict it.
+    expect(saved.credit_limit).toBeNull();
+  });
+
+  it('offers only the other active cards as a share target, never itself', async () => {
+    __tables.credit_cards = [
+      card({ id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', credit_limit: 150000, sort_order: 1 }),
+      card({ id: 'dead',   name: 'ใบที่ยกเลิกแล้ว', status: 'cancelled', sort_order: 2 }),
+    ];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข KTC วิศวจุฬา Platinum' }));
+
+    const select = screen.getByLabelText('ใช้วงเงินร่วมกับบัตร (ถ้ามี)');
+    const values = Array.from(select.querySelectorAll('option')).map(o => o.value);
+    expect(values).toEqual(['']);          // no self, no cancelled card
+    expect(select.value).toBe('');
   });
 });
 
