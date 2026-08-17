@@ -23,7 +23,7 @@ import {
   utilizationPct, waiverStatus, nextCycleDates, monthlyInterestEstimate,
   cardBalance, summarizeCards, sortCards, feeProfileRows, installmentRows,
   cycleDateLabel, cycleDayLabel, baht, isCancelled, safeHttpUrl, safeFaceUrl,
-  lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine,
+  lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine, cardTips,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
 
@@ -252,6 +252,9 @@ function CreditCardBlock({ card, cards = [], debts, today, onEdit, onDelete }) {
   // link plus same-origin paths, so `/cards/ktc-chula.png` renders and
   // `//evil.com/x.png` does not — that one is a foreign host wearing a slash.
   const faceUrl   = safeFaceUrl(card.face_url);
+  // "วิธีใช้ให้คุ้ม" — curated by hand via SQL (see cardTips in the lib),
+  // never through a form here. Empty tips → no second accordion at all.
+  const tips      = cardTips(card);
 
   const meta = [
     card.scope === 'family' ? 'ครอบครัว' : 'ส่วนตัว',
@@ -422,6 +425,26 @@ function CreditCardBlock({ card, cards = [], debts, today, onEdit, onDelete }) {
               : <span />}
             {card.fee_profile?.bot_checked && <span>✓ ตรวจกับ ธปท. แล้ว {card.fee_profile.bot_checked}</span>}
           </div>
+        </details>
+      )}
+
+      {/* ── usage tips — curated via SQL, no form editor here ───────────────── */}
+      {tips.tips.length > 0 && (
+        <details style={{ borderTop: '1px solid var(--hairline)', paddingTop: 10 }}>
+          <summary style={{ ...MONO_LABEL, cursor: 'pointer' }}>
+            วิธีใช้ให้คุ้ม · คำแนะนำ
+          </summary>
+          <ul style={{
+            margin: '10px 0 0', paddingLeft: 18, fontSize: 12.5,
+            lineHeight: 1.7, color: 'var(--text-secondary)',
+          }}>
+            {tips.tips.map((t, i) => <li key={i}>{t}</li>)}
+          </ul>
+          {tips.updated && (
+            <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)' }}>
+              อัปเดตคำแนะนำ {tips.updated}
+            </div>
+          )}
         </details>
       )}
     </Card>

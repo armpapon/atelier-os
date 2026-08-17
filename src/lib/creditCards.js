@@ -397,6 +397,25 @@ export function feeProfileRows(card) {
     .filter(f => f.value);
 }
 
+/**
+ * Curated point-maximizing tips for a card, plus when they were last updated.
+ *
+ * `fee_profile.tips` is typed by hand (via SQL, not a form — see the
+ * comment on the accordion in CreditCards.jsx), so this is a filter, not a
+ * parser: only a real array survives, and only its non-empty string entries.
+ * Anything else — missing key, a string, an object — is quietly `[]` rather
+ * than a crash, the same contract as `feeProfileRows` above.
+ *
+ * @returns {{tips: string[], updated: string|null}}
+ */
+export function cardTips(card) {
+  const fp = card?.fee_profile || {};
+  const raw = Array.isArray(fp.tips) ? fp.tips : [];
+  const tips = raw.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim());
+  const updatedRaw = typeof fp.tips_updated === 'string' ? fp.tips_updated.trim() : '';
+  return { tips, updated: updatedRaw || null };
+}
+
 /** The instalment rows a card is carrying, normalised for display. */
 export function installmentRows(card) {
   const list = Array.isArray(card?.installments) ? card.installments : [];

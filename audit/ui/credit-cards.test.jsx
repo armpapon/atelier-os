@@ -621,6 +621,65 @@ describe('บัตรเครดิต · วงเงินร่วม (KTC 
   });
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.44 · วิธีใช้ให้คุ้ม. The filter rule (cardTips) is pinned in
+//  audit/cases.mjs. What only the mounted card can prove is that the SECOND
+//  accordion appears directly under the fee one with both tip texts and the
+//  updated footer, and — just as important — that a card with no tips draws
+//  no trace of it at all.
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · วิธีใช้ให้คุ้ม (per-card tips)', () => {
+  it('renders the accordion title, both tips and the updated footer', async () => {
+    __tables.credit_cards = [card({
+      name: 'KBank PLUSTINUM', issuer: 'KBank',
+      fee_profile: {
+        interest: '16% ต่อปี',
+        tips: ['ผูกแอป K PLUS รับแต้มเพิ่ม', 'จ่ายเต็มทุกเดือนเลี่ยงดอกเบี้ย'],
+        tips_updated: '17 ส.ค. 69',
+      },
+    })];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('KBank PLUSTINUM')).toBeTruthy();
+
+    expect(screen.getByText('วิธีใช้ให้คุ้ม · คำแนะนำ')).toBeTruthy();
+    expect(screen.getByText('ผูกแอป K PLUS รับแต้มเพิ่ม')).toBeTruthy();
+    expect(screen.getByText('จ่ายเต็มทุกเดือนเลี่ยงดอกเบี้ย')).toBeTruthy();
+    expect(document.body.textContent).toContain('อัปเดตคำแนะนำ 17 ส.ค. 69');
+
+    // Sits directly below the fee accordion — both <details> are siblings.
+    const feeDetails = screen.getByText('โปรไฟล์ค่าธรรมเนียม (ธปท.)').closest('details');
+    const tipsDetails = screen.getByText('วิธีใช้ให้คุ้ม · คำแนะนำ').closest('details');
+    expect(feeDetails).toBeTruthy();
+    expect(tipsDetails).toBeTruthy();
+    expect(feeDetails.nextElementSibling).toBe(tipsDetails);
+  });
+
+  it('renders no trace of the tips accordion for a card without tips', async () => {
+    __tables.credit_cards = [card({
+      name: 'ใบที่ไม่มีคำแนะนำ', issuer: 'KTC',
+      fee_profile: { interest: '16% ต่อปี' },
+    })];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใบที่ไม่มีคำแนะนำ')).toBeTruthy();
+
+    expect(screen.queryByText('วิธีใช้ให้คุ้ม · คำแนะนำ')).toBeNull();
+    expect(document.body.textContent).not.toContain('วิธีใช้ให้คุ้ม');
+    expect(document.body.textContent).not.toContain('อัปเดตคำแนะนำ');
+  });
+
+  it('renders neither accordion for a card with no fee_profile at all', async () => {
+    __tables.credit_cards = [card({ name: 'บัตรเปล่า', issuer: 'SCB', fee_profile: {} })];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('บัตรเปล่า')).toBeTruthy();
+
+    expect(screen.queryByText('โปรไฟล์ค่าธรรมเนียม (ธปท.)')).toBeNull();
+    expect(screen.queryByText('วิธีใช้ให้คุ้ม · คำแนะนำ')).toBeNull();
+  });
+});
+
 describe('บัตรเครดิต · a card linked to a debt', () => {
   it('reads its balance from the debts the page already loaded', async () => {
     __tables.credit_cards = [card({
