@@ -50,7 +50,7 @@ import {
   utilizationPct, waiverStatus, nextCycleDates, nextDayOfMonth,
   monthlyInterestEstimate, cardBalance, summarizeCards, sortCards,
   feeProfileRows, installmentRows, cycleDateLabel, daysInMonth, safeHttpUrl, safeFaceUrl,
-  lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine,
+  lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine, cardTips,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../src/lib/creditCards.js';
 import {
@@ -3715,6 +3715,41 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       return lineBalance(ktcMC, cards2, ktcDebts) === 50674
         && s2.limit === 450000 && s2.balance === 57214;
     })());
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.44 · วิธีใช้ให้คุ้ม — คำแนะนำต่อใบ
+  //
+  //  fee_profile.tips / fee_profile.tips_updated are curated by hand via SQL
+  //  (see the KBank PLUSTINUM row seeded 17 ส.ค. 69), never through a form —
+  //  cardTips() is a filter, not a parser, so a stray non-array shape or a
+  //  blank string in the array must never reach the accordion.
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.44 · วิธีใช้ให้คุ้ม — คำแนะนำต่อใบ (cardTips)');
+
+  check('อาร์เรย์จริงที่มีค่าว่างปนอยู่ → เหลือเฉพาะสตริงไม่ว่าง ตัดช่องว่างหัวท้าย',
+    (() => {
+      const r = cardTips({ fee_profile: { tips: ['  ผูกแอปธนาคารรับแต้ม  ', '', '   ', 'จ่ายเต็มทุกเดือน'] } });
+      return r.tips.length === 2 && r.tips[0] === 'ผูกแอปธนาคารรับแต้ม' && r.tips[1] === 'จ่ายเต็มทุกเดือน';
+    })());
+
+  check('ไม่ใช่อาร์เรย์ (string/object/ไม่มี key เลย) → [] เสมอ ไม่ throw',
+    cardTips({ fee_profile: { tips: 'ผูกแอป' } }).tips.length === 0
+    && cardTips({ fee_profile: { tips: { a: 1 } } }).tips.length === 0
+    && cardTips({ fee_profile: {} }).tips.length === 0
+    && cardTips({}).tips.length === 0
+    && cardTips(null).tips.length === 0);
+
+  check('รายการที่ไม่ใช่สตริง (number/null/object) ในอาร์เรย์ถูกกรองทิ้ง ไม่ทำให้ throw',
+    (() => {
+      const r = cardTips({ fee_profile: { tips: ['ok', 42, null, { x: 1 }, 'ok2'] } });
+      return r.tips.length === 2 && r.tips[0] === 'ok' && r.tips[1] === 'ok2';
+    })());
+
+  check('tips_updated ถูกตัดช่องว่างหัวท้าย และไม่ใช่สตริง/ว่าง → null',
+    cardTips({ fee_profile: { tips: ['x'], tips_updated: '  17 ส.ค. 69  ' } }).updated === '17 ส.ค. 69'
+    && cardTips({ fee_profile: { tips: ['x'], tips_updated: '   ' } }).updated === null
+    && cardTips({ fee_profile: { tips: ['x'], tips_updated: 42 } }).updated === null
+    && cardTips({ fee_profile: { tips: ['x'] } }).updated === null);
 
   section('v4.36 · credit_cards API — ยังไม่ได้รัน SQL ต้องไม่พัง');
 
