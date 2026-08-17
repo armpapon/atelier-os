@@ -24,6 +24,7 @@ import {
   cardBalance, summarizeCards, sortCards, feeProfileRows, installmentRows,
   cycleDateLabel, cycleDayLabel, baht, isCancelled, safeHttpUrl, safeFaceUrl,
   lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine, cardTips,
+  canShareInto, lineSharersOf,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
 
@@ -160,9 +161,16 @@ function Stat({ label, value, sub, tone = 'var(--text-primary)', children }) {
 // ════════════════════════════════════════════════════════════════════════════
 function SummaryStrip({ summary, isMobile }) {
   const {
-    utilization, balance, limit, revolvingBalance, revolvingCount,
+    utilization, limit, measuredBalance = 0, unmeasuredBalance = 0,
+    revolvingBalance, revolvingCount,
     monthlyInterest, watchCards, annualFeeAtRisk, nextStatement, nextDue,
   } = summary;
+
+  // The percent above is the MEASURABLE lines only, so the fraction under it
+  // must be those same lines — and whatever is left over is named out loud
+  // rather than folded into a number it cannot honestly belong to (A6).
+  const unknownNote = unmeasuredBalance > 0
+    ? ` · ยังไม่ทราบวงเงินอีก ${baht(unmeasuredBalance)}` : '';
 
   return (
     <div style={{
@@ -174,8 +182,8 @@ function SummaryStrip({ summary, isMobile }) {
         value={utilization == null ? '—' : `${utilization.toFixed(1)}%`}
         tone={utilTone(utilization)}
         sub={limit > 0
-          ? `${Math.round(balance).toLocaleString('en-US')} / ${Math.round(limit).toLocaleString('en-US')}฿ · เส้น 30% คือเกณฑ์สุขภาพเครดิตบูโร`
-          : 'ยังไม่ได้ใส่วงเงินของบัตรใบไหน'}
+          ? `${Math.round(measuredBalance).toLocaleString('en-US')} / ${Math.round(limit).toLocaleString('en-US')}฿ · เส้น 30% คือเกณฑ์สุขภาพเครดิตบูโร${unknownNote}`
+          : `ยังไม่ได้ใส่วงเงินของบัตรใบไหน${unknownNote}`}
       >
         <UtilBar pct={utilization} />
       </Stat>
@@ -564,17 +572,45 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
+/** The fee-profile keys this form owns. Everything else in the jsonb is data
+ *  curated elsewhere (tips / tips_updated, and whatever is added next) and is
+ *  carried through a save untouched — see submit() below. */
+const EDITABLE_FEE_KEYS = [
+  'annual_fee_display', 'interest', 'cash_advance', 'fx', 'benefits',
+  'bot_url', 'bot_checked',
+];
+
+/** The fee_profile as an object, whatever the row actually holds. */
+function feeProfileObject(card) {
+  const fp = card?.fee_profile;
+  return fp && typeof fp === 'object' && !Array.isArray(fp) ? fp : {};
+}
+
 function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) {
-  const [form, setForm] = useState(() => toForm(initial));
+  const [form, setForm] = useState(() => {
+    const f = toForm(initial);
+    // A link the rules no longer allow (its target became a sharer, lost its
+    // limit or was cancelled) is shown as "ไม่ร่วม" rather than as a value with
+    // no matching option — lineOf() already treats such a link as "owns its own
+    // line", so clearing it on the next save only restores the invariant (A6).
+    if (f.shared_limit_card_id) {
+      const target = (cards || []).find(c => c && c.id === f.shared_limit_card_id);
+      if (!canShareInto(target, initial?.id, cards)) f.shared_limit_card_id = '';
+    }
+    return f;
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const formRef = useRef(null);
 
-  // A line can only be held by another card the owner still holds, in this
-  // same scope (the list is already scoped) — and never by the card itself.
+  // A line can only be held by a card that may legally hold one: active, in
+  // this same scope (the list is already scoped), holding a limit of its own,
+  // and not already spending someone else's. `canShareInto` is the single
+  // rule — used here to build the list and again in submit() as a guard, so a
+  // chain or a cycle cannot be built from this form at all (A6).
   const shareTargets = useMemo(
-    () => (cards || []).filter(c => c && !isCancelled(c) && c.id !== initial?.id),
+    () => (cards || []).filter(c => canShareInto(c, initial?.id, cards)),
     [cards, initial],
   );
 
@@ -620,10 +656,26 @@ function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) 
   const submit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) { setError('ใส่ชื่อบัตร'); return; }
+    // The dropdown only offers legal owners, but a stale list (or a value left
+    // over from before the rules tightened) must never slip past into a chain
+    // or a cycle — so the same rule is checked again here, and an unsafe
+    // choice stops the save instead of being written (A6).
+    if (form.shared_limit_card_id) {
+      const target = (cards || []).find(c => c && c.id === form.shared_limit_card_id);
+      if (!canShareInto(target, initial?.id, cards)) {
+        setError('บัตรที่เลือกใช้วงเงินร่วมด้วยไม่ได้ — ต้องเป็นบัตรใบอื่นที่ยังใช้งานอยู่ มีวงเงินของตัวเอง และไม่ได้ไปใช้วงเงินร่วมกับใบอื่นอยู่แล้ว');
+        return;
+      }
+    }
     setSaving(true); setError(null);
     try {
-      const fee_profile = {};
-      const put = (k, v) => { if (String(v).trim()) fee_profile[k] = String(v).trim(); };
+      // Start from what the row already holds, so keys this form does not show
+      // — `tips` / `tips_updated`, curated by hand via SQL, and anything added
+      // later — survive an edit instead of being wiped by a save of unrelated
+      // fields (audited: DLG-FIN-001 · A7).
+      const fee_profile = { ...feeProfileObject(initial) };
+      const typed = {};
+      const put = (k, v) => { if (String(v).trim()) typed[k] = String(v).trim(); };
       put('annual_fee_display', form.fp_annual_fee_display);
       put('interest', form.fp_interest);
       put('cash_advance', form.fp_cash_advance);
@@ -633,6 +685,11 @@ function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) 
       // is dropped rather than kept for the grid to render (A2).
       put('bot_url', safeHttpUrl(form.fp_bot_url) || '');
       put('bot_checked', form.fp_bot_checked);
+      // Editable keys win; one cleared in the form is REMOVED, same as before.
+      for (const k of EDITABLE_FEE_KEYS) {
+        if (k in typed) fee_profile[k] = typed[k];
+        else delete fee_profile[k];
+      }
 
       const payload = {
         scope,
@@ -895,6 +952,18 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
   const onSaved = async () => { closeForm(); await load(); };
 
   const remove = async (card) => {
+    // The FK is ON DELETE SET NULL, so deleting a line owner would leave every
+    // sharer with no owner AND no limit of its own — the 150,000฿ KTC line
+    // would simply disappear from the model (audited: DLG-FIN-001 · A6). The
+    // confirm becomes an explanation instead, and nothing is sent.
+    const sharers = lineSharersOf(card.id, cards);
+    if (sharers.length > 0) {
+      window.alert(
+        `ลบไม่ได้ — มีบัตรอื่นใช้วงเงินร่วมกับใบนี้อยู่ (${sharers.map(c => c.name).join(', ')}) `
+        + 'ให้แก้บัตรเหล่านั้นออกจากวงเงินร่วมก่อน',
+      );
+      return;
+    }
     if (!window.confirm(`ลบบัตร “${card.name}” ออกจากรายการ?`)) return;
     try {
       await deleteCreditCard(card.id);

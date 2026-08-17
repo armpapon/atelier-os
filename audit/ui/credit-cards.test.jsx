@@ -23,7 +23,12 @@ import { __tables } from '../mock-supabase.mjs';
 // observe. `gate.pending`, when set, holds createCreditCard open until the test
 // resolves or rejects it by hand; when it is null (every other test in this
 // file) the real API runs untouched.
-const gate = vi.hoisted(() => ({ pending: null }));
+//
+// v4.45 · A6/A7 — `gate.updates` / `gate.deletes` record what the component
+// actually SENT. A payload that quietly dropped fee_profile.tips, or a delete
+// that reached the table at all, is invisible in the rendered output but
+// obvious here.
+const gate = vi.hoisted(() => ({ pending: null, updates: [], deletes: [] }));
 vi.mock('../../src/lib/api/creditCards.js', async (importOriginal) => {
   const real = await importOriginal();
   return {
@@ -31,6 +36,14 @@ vi.mock('../../src/lib/api/creditCards.js', async (importOriginal) => {
     createCreditCard: async (payload) => {
       if (gate.pending) await gate.pending;
       return real.createCreditCard(payload);
+    },
+    updateCreditCard: async (id, payload) => {
+      gate.updates.push({ id, payload });
+      return real.updateCreditCard(id, payload);
+    },
+    deleteCreditCard: async (id) => {
+      gate.deletes.push(id);
+      return real.deleteCreditCard(id);
     },
   };
 });
@@ -66,6 +79,8 @@ beforeEach(() => {
   vi.stubGlobal('alert', vi.fn());
   vi.stubGlobal('confirm', vi.fn(() => true));
   gate.pending = null;
+  gate.updates = [];
+  gate.deletes = [];
 });
 
 afterEach(() => { gate.pending = null; });
@@ -677,6 +692,248 @@ describe('บัตรเครดิต · วิธีใช้ให้คุ
 
     expect(screen.queryByText('โปรไฟล์ค่าธรรมเนียม (ธปท.)')).toBeNull();
     expect(screen.queryByText('วิธีใช้ให้คุ้ม · คำแนะนำ')).toBeNull();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.45 · A7 — แก้ไขบัตรแล้วบันทึก ต้องไม่ลบคำแนะนำที่ curate ไว้
+//
+//  The form shows seven fee_profile keys and used to rebuild the whole jsonb
+//  from them, so saving ANY unrelated field (a new limit, a new face) deleted
+//  `tips` / `tips_updated` — nine researched sentences gone, with no SQL in the
+//  repo to restore them. The proof has to be the PAYLOAD, not the screen: a
+//  wiped jsonb still renders fine until the next reload.
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · แก้ไขบัตรแล้วคำแนะนำต้องอยู่ครบ (A7)', () => {
+  const TIPS = ['ผูกแอป K PLUS รับแต้มเพิ่ม', 'จ่ายเต็มทุกเดือนเลี่ยงดอกเบี้ย'];
+  const seedTipped = () => {
+    __tables.credit_cards = [card({
+      id: 'kb', name: 'KBank PLUSTINUM', issuer: 'KBank',
+      credit_limit: 300000, manual_balance: 6540,
+      fee_profile: {
+        interest: '16% ต่อปี',
+        cash_advance: '2.5% + VAT',
+        bot_url: 'https://app.bot.or.th/fee',
+        bot_checked: '16 ส.ค. 69',
+        tips: [...TIPS],
+        tips_updated: '17 ส.ค. 2569',
+      },
+    })];
+  };
+
+  it('keeps tips + tips_updated in the update payload when an unrelated field changes', async () => {
+    seedTipped();
+    render(<CreditCards scope="personal" debts={[]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข KBank PLUSTINUM' }));
+    await screen.findByRole('dialog', { name: 'แก้ไขบัตร' });
+
+    // The one thing the owner came here to change.
+    fireEvent.change(screen.getByLabelText('วงเงิน (฿)'), { target: { value: '320000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(gate.updates).toHaveLength(1));
+    const { id, payload } = gate.updates[0];
+    expect(id).toBe('kb');
+    expect(payload.credit_limit).toBe(320000);
+
+    // …and the curated keys are in the payload, byte for byte.
+    expect(payload.fee_profile.tips).toEqual(TIPS);
+    expect(payload.fee_profile.tips_updated).toBe('17 ส.ค. 2569');
+    // The visible fee keys are still written as before.
+    expect(payload.fee_profile.interest).toBe('16% ต่อปี');
+    expect(payload.fee_profile.bot_url).toBe('https://app.bot.or.th/fee');
+
+    // The row itself kept them, and the accordion is still on the grid.
+    await waitFor(() => expect(__tables.credit_cards[0].credit_limit).toBe(320000));
+    expect(__tables.credit_cards[0].fee_profile.tips).toEqual(TIPS);
+    expect(await screen.findByText('วิธีใช้ให้คุ้ม · คำแนะนำ')).toBeTruthy();
+    expect(screen.getByText(TIPS[0])).toBeTruthy();
+    expect(document.body.textContent).toContain('อัปเดตคำแนะนำ 17 ส.ค. 2569');
+  });
+
+  it('still clears a fee field the owner blanked, without touching the tips', async () => {
+    seedTipped();
+    render(<CreditCards scope="personal" debts={[]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข KBank PLUSTINUM' }));
+    await screen.findByRole('dialog', { name: 'แก้ไขบัตร' });
+
+    fireEvent.change(screen.getByLabelText('กดเงินสด'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(gate.updates).toHaveLength(1));
+    const fp = gate.updates[0].payload.fee_profile;
+    expect(fp.cash_advance).toBeUndefined();          // blanked field really goes
+    expect(fp.interest).toBe('16% ต่อปี');            // the others stay
+    expect(fp.tips).toEqual(TIPS);                    // and so do the tips
+    expect(fp.tips_updated).toBe('17 ส.ค. 2569');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.45 · A6 — วงเงินร่วมที่พังต้องสร้างไม่ได้ และเจ้าของวงเงินต้องลบไม่ได้
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · ฟอร์มวงเงินร่วมต้องเสนอเฉพาะใบที่ถือวงเงินจริง (A6)', () => {
+  const seedLine = () => {
+    __tables.credit_cards = [
+      card({ id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', issuer: 'KTC',
+        credit_limit: 150000, manual_balance: 50674, sort_order: 1 }),
+      card({ id: 'ktc-visa', name: 'KTC VISA PLATINUM', issuer: 'KTC',
+        credit_limit: null, shared_limit_card_id: 'ktc-mc', manual_balance: 60817, sort_order: 2 }),
+      card({ id: 'nolimit', name: 'ใบยังไม่ใส่วงเงิน', credit_limit: null,
+        manual_balance: 1000, sort_order: 3 }),
+      card({ id: 'dead', name: 'ใบที่ยกเลิกแล้ว', status: 'cancelled',
+        credit_limit: 90000, sort_order: 4 }),
+    ];
+  };
+
+  it('lists only the line owner — never a sharer, a limit-less card, itself or a cancelled one', async () => {
+    seedLine();
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข ใบยังไม่ใส่วงเงิน' }));
+
+    const select = await screen.findByLabelText('ใช้วงเงินร่วมกับบัตร (ถ้ามี)');
+    const values = Array.from(select.querySelectorAll('option')).map(o => o.value);
+    expect(values).toEqual(['', 'ktc-mc']);
+    expect(values).not.toContain('ktc-visa');       // already spends someone else's line
+    expect(values).not.toContain('nolimit');        // itself
+    expect(values).not.toContain('dead');           // cancelled
+  });
+
+  it('offers nothing at all when the only other cards cannot hold a line', async () => {
+    seedLine();
+    render(<CreditCards scope="personal" debts={[]} />);
+    // Editing the main card: the Visa points AT it, so offering the Visa back
+    // would be exactly the A→B→A the audit found.
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข KTC วิศวจุฬา Platinum' }));
+
+    const select = await screen.findByLabelText('ใช้วงเงินร่วมกับบัตร (ถ้ามี)');
+    expect(Array.from(select.querySelectorAll('option')).map(o => o.value)).toEqual(['']);
+  });
+
+  it('blocks the save with a Thai error when the picked target is not a legal owner', async () => {
+    seedLine();
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข KTC วิศวจุฬา Platinum' }));
+
+    const select = await screen.findByLabelText('ใช้วงเงินร่วมกับบัตร (ถ้ามี)');
+    // A value the dropdown refuses to offer — a stale list, or a row edited
+    // before the rule existed. The guard, not the option list, has to stop it.
+    const smuggled = document.createElement('option');
+    smuggled.value = 'ktc-visa';
+    smuggled.textContent = 'KTC VISA PLATINUM';
+    select.appendChild(smuggled);
+    fireEvent.change(select, { target: { value: 'ktc-visa' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    expect(await screen.findByText(/บัตรที่เลือกใช้วงเงินร่วมด้วยไม่ได้/)).toBeTruthy();
+    // Nothing was sent, and the form is still open on the owner's data.
+    expect(gate.updates).toHaveLength(0);
+    expect(screen.getByRole('dialog', { name: 'แก้ไขบัตร' })).toBeTruthy();
+    expect(__tables.credit_cards.find(c => c.id === 'ktc-mc').shared_limit_card_id).toBeNull();
+    expect(__tables.credit_cards.find(c => c.id === 'ktc-mc').credit_limit).toBe(150000);
+  });
+
+  it('still saves a legal share, storing the link and dropping the second limit', async () => {
+    seedLine();
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'แก้ไข ใบยังไม่ใส่วงเงิน' }));
+
+    fireEvent.change(await screen.findByLabelText('ใช้วงเงินร่วมกับบัตร (ถ้ามี)'),
+      { target: { value: 'ktc-mc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(gate.updates).toHaveLength(1));
+    expect(gate.updates[0].payload.shared_limit_card_id).toBe('ktc-mc');
+    expect(gate.updates[0].payload.credit_limit).toBeNull();
+    expect(screen.queryByText(/บัตรที่เลือกใช้วงเงินร่วมด้วยไม่ได้/)).toBeNull();
+  });
+});
+
+describe('บัตรเครดิต · ลบเจ้าของวงเงินที่ยังมีใบอื่นเกาะอยู่ไม่ได้ (A6)', () => {
+  it('explains instead of deleting, and sends nothing to the table', async () => {
+    __tables.credit_cards = [
+      card({ id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', credit_limit: 150000, sort_order: 1 }),
+      card({ id: 'ktc-visa', name: 'KTC VISA PLATINUM', credit_limit: null,
+        shared_limit_card_id: 'ktc-mc', sort_order: 2 }),
+    ];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ลบ KTC วิศวจุฬา Platinum' }));
+
+    const said = window.alert.mock.calls.map(c => String(c[0])).join('\n');
+    expect(said).toContain('ลบไม่ได้');
+    expect(said).toContain('KTC VISA PLATINUM');       // names who would lose the line
+    expect(said).toContain('วงเงินร่วม');
+    // The destructive path was never entered: no confirm, no API call, no loss.
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(gate.deletes).toHaveLength(0);
+    expect(__tables.credit_cards).toHaveLength(2);
+    expect(screen.getByText('KTC วิศวจุฬา Platinum')).toBeTruthy();
+  });
+
+  it('deletes a card nobody shares with, exactly as before', async () => {
+    __tables.credit_cards = [
+      card({ id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', credit_limit: 150000, sort_order: 1 }),
+      card({ id: 'solo', name: 'ใบเดี่ยว', credit_limit: 50000, sort_order: 2 }),
+    ];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ลบ ใบเดี่ยว' }));
+
+    await waitFor(() => expect(__tables.credit_cards).toHaveLength(1));
+    expect(gate.deletes).toEqual(['solo']);
+    expect(window.confirm).toHaveBeenCalled();
+    expect(window.alert).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByText('ใบเดี่ยว')).toBeNull());
+  });
+
+  it('lets the owner go once the sharer has been cancelled', async () => {
+    __tables.credit_cards = [
+      card({ id: 'ktc-mc', name: 'KTC วิศวจุฬา Platinum', credit_limit: 150000, sort_order: 1 }),
+      card({ id: 'ktc-visa', name: 'KTC VISA PLATINUM', status: 'cancelled',
+        shared_limit_card_id: 'ktc-mc', sort_order: 2 }),
+    ];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'ลบ KTC วิศวจุฬา Platinum' }));
+
+    await waitFor(() => expect(gate.deletes).toEqual(['ktc-mc']));
+    expect(window.alert).not.toHaveBeenCalled();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.45 · A6 — % ใช้วงเงินรวมคิดจากสายที่วัดได้เท่านั้น
+// ════════════════════════════════════════════════════════════════════════════
+describe('บัตรเครดิต · % ใช้วงเงินรวมไม่กลืนยอดที่ไม่รู้วงเงิน (A6)', () => {
+  it('reports 0% with the unknown balance beside it, not 90%', async () => {
+    __tables.credit_cards = [
+      card({ id: 'known', name: 'ใบมีวงเงิน', credit_limit: 100000, manual_balance: 0, sort_order: 1 }),
+      card({ id: 'unknown', name: 'ใบไม่รู้วงเงิน', credit_limit: null, manual_balance: 90000, sort_order: 2 }),
+    ];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใช้วงเงินรวม (Bureau)')).toBeTruthy();
+
+    expect(screen.getByText('0.0%')).toBeTruthy();
+    expect(screen.queryByText('90.0%')).toBeNull();
+    expect(document.body.textContent).toContain('0 / 100,000฿');
+    expect(document.body.textContent).toContain('ยังไม่ทราบวงเงินอีก ฿90,000');
+  });
+
+  it('says nothing extra when every line is measurable', async () => {
+    __tables.credit_cards = [
+      card({ id: 'known', name: 'ใบมีวงเงิน', credit_limit: 100000, manual_balance: 20000 }),
+    ];
+
+    render(<CreditCards scope="personal" debts={[]} />);
+    expect(await screen.findByText('ใช้วงเงินรวม (Bureau)')).toBeTruthy();
+    expect(screen.getByText('20.0%')).toBeTruthy();
+    expect(document.body.textContent).toContain('20,000 / 100,000฿');
+    expect(document.body.textContent).not.toContain('ยังไม่ทราบวงเงินอีก');
   });
 });
 
