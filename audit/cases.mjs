@@ -1371,8 +1371,16 @@ section('A · B10 · "Bangkok today" no longer follows the device timezone');
 
   withFrozenNow(NOW, () => {
     const deviceMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    // The expectation must come from the EFFECTIVE zone, not the TZ env var:
+    // with TZ unset Node falls back to the host zone, and on a machine that
+    // is itself set to Asia/Bangkok the device month IS 2026-09 — guessing
+    // '2026-08' for every non-Bangkok TZ string made this the harness's one
+    // host-dependent check.
+    const effectiveTZ = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const expectedDeviceMonth = new Intl.DateTimeFormat('en-CA',
+      { timeZone: effectiveTZ, year: 'numeric', month: '2-digit' }).format(new Date(NOW));
     check(`device-local month under TZ=${TZ} is what the OLD code returned`,
-      deviceMonth === (TZ === 'Asia/Bangkok' ? '2026-09' : '2026-08'), deviceMonth);
+      deviceMonth === expectedDeviceMonth, deviceMonth);
 
     // Finance.jsx:711 + dashboard/MonthNav.jsx:15 — the month the page opens on.
     check('month-nav default = 2026-09 in every device timezone',
