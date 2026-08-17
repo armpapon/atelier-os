@@ -51,6 +51,7 @@ import {
   monthlyInterestEstimate, cardBalance, summarizeCards, sortCards,
   feeProfileRows, installmentRows, cycleDateLabel, daysInMonth, safeHttpUrl, safeFaceUrl,
   lineOf, lineLimit, lineBalance, lineUtilizationPct, isSharedLine, cardTips,
+  canShareInto, lineSharersOf,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../src/lib/creditCards.js';
 import {
@@ -3714,6 +3715,124 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       const s2 = summarizeCards({ cards: cards2, debts: ktcDebts, today: '2026-08-16' });
       return lineBalance(ktcMC, cards2, ktcDebts) === 50674
         && s2.limit === 450000 && s2.balance === 57214;
+    })());
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.45 · A6 — วงเงินร่วมที่ "รอดได้" ยังไม่พอ ต้อง "สร้างของพังไม่ได้"
+  //
+  //  lineOf() ทนกับกราฟที่พังอยู่แล้ว (A→B→A ไม่วนไม่ค้าง) แต่ตัวฟอร์มยังปล่อย
+  //  ให้สร้างรูปทรงนั้นได้ — แก้ MC ให้ชี้ไป Visa ทั้งคู่ก็ไม่มีวงเงิน วงเงิน KTC
+  //  150,000฿ หายจากโมเดลทันที. canShareInto() คือกฎเดียวที่ฟอร์มใช้ทั้งตอน
+  //  สร้างตัวเลือกและตอนกันบันทึก และ lineSharersOf() คือคำถามที่ต้องถามก่อนลบ
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.45 · A6 — เลือกบัตรวงเงินร่วมได้เฉพาะใบที่ถือวงเงินจริง');
+
+  check('ใบหลักที่มีวงเงินของตัวเองและยังใช้อยู่ → เลือกได้',
+    canShareInto(ktcMC, 'visa', lineCards) === true
+    && canShareInto(kbank, 'visa', lineCards) === true);
+
+  check('ใบที่ไปใช้วงเงินร่วมกับใบอื่นอยู่แล้ว → เลือกไม่ได้ (นี่คือตัวปิด A→B→A และ A→B→C)',
+    canShareInto(ktcVisa, 'mc', lineCards) === false);
+
+  check('เลือกตัวเองไม่ได้ — บัตรใบเดียวแชร์วงเงินกับตัวเองไม่ได้',
+    canShareInto(ktcMC, 'mc', lineCards) === false);
+
+  check('ใบที่ยังไม่ได้ใส่วงเงิน / วงเงิน 0 → เลือกไม่ได้ (แชร์ "ไม่มีวงเงิน" ไม่ใช่การแชร์)',
+    (() => {
+      const blank = { id: 'blank', name: 'ใบยังไม่ใส่วงเงิน', status: 'active', credit_limit: null };
+      const zero  = { id: 'zero',  name: 'ใบวงเงิน 0',        status: 'active', credit_limit: 0 };
+      const pool  = [...lineCards, blank, zero];
+      return canShareInto(blank, 'visa', pool) === false
+        && canShareInto(zero, 'visa', pool) === false;
+    })());
+
+  check('ใบที่ยกเลิกแล้ว / ใบนอกรายการ scope นี้ / null → เลือกไม่ได้ ไม่ throw',
+    (() => {
+      const dead = { id: 'dead', name: 'ใบที่ยกเลิกแล้ว', status: 'cancelled', credit_limit: 90000 };
+      const alien = { id: 'alien', name: 'ใบของอีก scope', status: 'active', credit_limit: 90000 };
+      return canShareInto(dead, 'visa', [...lineCards, dead]) === false
+        && canShareInto(alien, 'visa', lineCards) === false
+        && canShareInto(null, 'visa', lineCards) === false
+        && canShareInto(undefined, null, undefined) === false;
+    })());
+
+  check('ใบที่ชี้ใส่ตัวเอง ยังนับว่าถือวงเงินของตัวเอง → เลือกได้ (ตรงกับ lineOf)',
+    (() => {
+      const selfie = { id: 'self', name: 'ใบชี้ตัวเอง', status: 'active',
+        credit_limit: 80000, shared_limit_card_id: 'self' };
+      return canShareInto(selfie, 'visa', [...lineCards, selfie]) === true;
+    })());
+
+  section('v4.45 · A6 — ลบเจ้าของวงเงินที่ยังมีใบอื่นเกาะอยู่ไม่ได้');
+
+  check('ใบหลักที่มีใบเสริมเกาะอยู่ → lineSharersOf บอกชื่อใบที่จะเสียวงเงิน',
+    (() => {
+      const s = lineSharersOf('mc', lineCards);
+      return s.length === 1 && s[0].id === 'visa';
+    })());
+
+  check('ใบเสริมเอง / ใบเดี่ยว / id ที่ไม่มีจริง → ไม่มีใครเกาะ ลบได้ตามปกติ',
+    lineSharersOf('visa', lineCards).length === 0
+    && lineSharersOf('kb', lineCards).length === 0
+    && lineSharersOf('ghost', lineCards).length === 0
+    && lineSharersOf(null, lineCards).length === 0
+    && lineSharersOf('mc', undefined).length === 0);
+
+  check('ใบเสริมที่ยกเลิกแล้วไม่นับเป็นคนเกาะ — ลบใบหลักได้ ไม่มีวงเงินของใครหาย',
+    (() => {
+      const deadVisa = { ...ktcVisa, status: 'cancelled' };
+      return lineSharersOf('mc', [kbank, ktcMC, deadVisa]).length === 0;
+    })());
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  v4.45 · A6 — % ใช้วงเงินรวมต้องคิดจากสายที่วัดได้เท่านั้น
+  //
+  //  เดิมยอดของสายที่ไม่รู้วงเงินถูกบวกเข้า "เศษ" แต่ไม่มีอะไรลงไปที่ "ส่วน"
+  //  สายที่รู้วงเงิน 100,000฿ ยอด 0 + ใบไม่รู้วงเงินยอด 90,000฿ จึงขึ้น 90%
+  //  ทั้งที่ความจริงคือ 0% และ "ยังไม่ทราบวงเงินอีก 90,000฿"
+  // ══════════════════════════════════════════════════════════════════════════
+  section('v4.45 · A6 — ยอดที่ไม่รู้วงเงินไม่ถูกนับเป็น % ใช้วงเงิน');
+
+  check('เคสของ audit: สายวงเงิน 100,000 ยอด 0 + ใบไม่รู้วงเงินยอด 90,000 → 0% ไม่ใช่ 90%',
+    (() => {
+      const known   = { id: 'k', name: 'ใบมีวงเงิน', status: 'active', credit_limit: 100000, manual_balance: 0 };
+      const unknown = { id: 'u', name: 'ใบไม่รู้วงเงิน', status: 'active', credit_limit: null, manual_balance: 90000 };
+      const s = summarizeCards({ cards: [known, unknown], today: '2026-08-17' });
+      return s.utilization === 0 && s.limit === 100000
+        && s.measuredBalance === 0 && s.unmeasuredBalance === 90000
+        && s.balance === 90000;
+    })());
+
+  check('เคสผสม: 20,000 บนสายที่รู้วงเงิน 100,000 + 90,000 ที่ไม่รู้ → 20% และแยกยอดที่ไม่รู้ไว้ต่างหาก',
+    (() => {
+      const known   = { id: 'k', status: 'active', credit_limit: 100000, manual_balance: 20000 };
+      const unknown = { id: 'u', status: 'active', credit_limit: null, manual_balance: 90000 };
+      const s = summarizeCards({ cards: [known, unknown], today: '2026-08-17' });
+      return s.utilization === 20 && s.measuredBalance === 20000
+        && s.unmeasuredBalance === 90000 && s.balance === 110000;
+    })());
+
+  check('ใบเสริมของสายที่ไม่รู้วงเงินก็ถูกแยกออกทั้งสาย ไม่ใช่เฉพาะใบหลัก',
+    (() => {
+      const owner  = { id: 'o', status: 'active', credit_limit: null, manual_balance: 5000 };
+      const sharer = { id: 's', status: 'active', credit_limit: null, shared_limit_card_id: 'o', manual_balance: 7000 };
+      const known  = { id: 'k', status: 'active', credit_limit: 50000, manual_balance: 5000 };
+      const s = summarizeCards({ cards: [owner, sharer, known], today: '2026-08-17' });
+      return s.limit === 50000 && s.measuredBalance === 5000
+        && s.unmeasuredBalance === 12000 && s.utilization === 10;
+    })());
+
+  check('ทุกสายวัดได้ → ตัวเลขเดิมทุกช่อง (450,000฿ · 26.2%) ยอดที่ไม่รู้วงเงินเป็น 0',
+    lineSum.measuredBalance === 118031 && lineSum.unmeasuredBalance === 0
+    && lineSum.limit === 450000 && Math.round(lineSum.utilization * 10) / 10 === 26.2,
+    `${lineSum.measuredBalance} / ${lineSum.unmeasuredBalance}`);
+
+  check('ไม่มีบัตรใบไหนใส่วงเงินเลย → % เป็น null และยอดทั้งก้อนไปอยู่ในช่อง "ยังไม่ทราบวงเงิน"',
+    (() => {
+      const a = { id: 'a', status: 'active', credit_limit: null, manual_balance: 4000 };
+      const s = summarizeCards({ cards: [a], today: '2026-08-17' });
+      return s.utilization === null && s.limit === 0
+        && s.measuredBalance === 0 && s.unmeasuredBalance === 4000;
     })());
 
   // ══════════════════════════════════════════════════════════════════════════

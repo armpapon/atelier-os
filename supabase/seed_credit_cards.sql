@@ -6,9 +6,12 @@
 --  migration_add_credit_cards_face.sql (v4.41) and
 --  migration_add_credit_cards_shared_limit.sql (v4.43). This file is NOT a
 --  pending migration — nothing here needs to be run again. It exists so the
---  three seeded cards, their two linked debts, the face_url values and the
---  shared KTC credit line are reproducible from the repo instead of living
---  only in Supabase.
+--  three seeded cards, their two linked debts, the face_url values, the
+--  shared KTC credit line and the KBank usage tips are reproducible from the
+--  repo instead of living only in Supabase.
+--
+--  §6 (the nine KBank PLUSTINUM tips behind the "วิธีใช้ให้คุ้ม" accordion)
+--  was APPLIED 2026-08-17 via the Supabase MCP, in the v4.44 session.
 --
 --  Every statement is idempotent (INSERT ... WHERE NOT EXISTS, UPDATE ...
 --  guarded by IS DISTINCT FROM / IS NULL) — re-running it in the SQL Editor
@@ -199,11 +202,16 @@ WHERE user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
 -- src/lib/creditCards.js `lineOf`/`lineBalance` then show 111,491 / 150,000฿
 -- (50,674 + 60,817) on BOTH cards, and count the 150,000 once in the header.
 
+-- The owner's row must come back as an OWNER on a rerun, so this statement
+-- clears shared_limit_card_id as well: if the graph ever drifts (the main card
+-- gets pointed at the Visa), setting only the limit would leave a card that
+-- holds 150,000฿ and spends someone else's line at the same time.
 UPDATE public.credit_cards
-SET credit_limit = 150000
+SET credit_limit = 150000,
+    shared_limit_card_id = NULL
 WHERE user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
   AND name = 'KTC วิศวจุฬา Platinum'
-  AND credit_limit IS DISTINCT FROM 150000;
+  AND (credit_limit IS DISTINCT FROM 150000 OR shared_limit_card_id IS NOT NULL);
 
 UPDATE public.credit_cards v
 SET shared_limit_card_id = m.id,
@@ -215,8 +223,54 @@ WHERE v.user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
   AND m.name = 'KTC วิศวจุฬา Platinum'
   AND (v.shared_limit_card_id IS DISTINCT FROM m.id OR v.credit_limit IS NOT NULL);
 
+-- ── 6 · วิธีใช้ให้คุ้ม — the KBank PLUSTINUM tips (v4.44) ────────────────────
+-- APPLIED to production on 2026-08-17 via the Supabase MCP, at the same time
+-- the accordion shipped. Recorded here because the nine sentences ARE the
+-- feature: they are curated research, not generated at render time, so a fresh
+-- environment (or a row that lost them) has to be able to get them back from
+-- the repo instead of from a screenshot.
+--
+-- jsonb || jsonb merges the two keys into whatever fee_profile already holds,
+-- leaving the ธปท. keys above untouched. The guard compares both keys, so a
+-- rerun on a database that already has them is a no-op.
+
+UPDATE public.credit_cards
+SET fee_profile = COALESCE(fee_profile, '{}'::jsonb) || jsonb_build_object(
+  'tips_updated', '17 ส.ค. 2569',
+  'tips', jsonb_build_array(
+    'รับคะแนน K Point 1 คะแนน ต่อการใช้จ่ายทุก 25 บาท ในทุกหมวดการใช้จ่าย',
+    'รับคะแนนสูงสุด 3 เท่า เมื่อใช้จ่ายหมวดร้านอาหาร ห้างสรรพสินค้า และร้านค้าแฟชั่น รวมครบ 8,000 บาทขึ้นไปต่อเดือน — แนะนำให้นำค่าอาหารและค่าใช้จ่ายในห้างที่จ่ายประจำอยู่แล้ว มาชำระผ่านบัตรนี้',
+    'รับสิทธิ์กด E-Coupon มูลค่าสูงสุด 260 บาทต่อเดือน ในแอป K PLUS เมื่อใช้จ่ายรวมครบ 10,000 บาทขึ้นไปต่อเดือน (จำกัด 1 สิทธิ์ต่อบัตรต่อเดือน และสิทธิ์มีจำนวนจำกัด) — แนะนำให้กดรับทันทีที่ยอดครบ',
+    'เดือนเกิด: แลกคะแนนเท่ายอดใช้จ่าย รับเครดิตเงินคืนสูงสุด 25% (แลกได้ไม่เกิน 5,000 คะแนน รับเงินคืนสูงสุด 1,250 บาทต่อปี จำกัด 1 เซลล์สลิปต่อปี) — แนะนำให้รวมรายจ่ายก้อนใหญ่ประมาณ 5,000 บาทไว้ในบิลเดียว',
+    'ชำระค่าบัตรโดยสารเครื่องบินด้วยบัตรนี้ รับความคุ้มครองประกันการเดินทางสูงสุด 200,000 บาท และกระเป๋าเดินทางล่าช้า/สูญหายสูงสุด 20,000 บาท พร้อมใช้ห้องรับรอง Miracle Lounge สนามบินสุวรรณภูมิได้ 2 ครั้งต่อปี ไม่จำกัดสายการบิน',
+    'ใช้คะแนนสะสม 500 คะแนน แลกประกันอุบัติเหตุวงเงินคุ้มครอง 100,000 บาทได้ (สิทธิ์มีจำนวนจำกัดต่อเดือน)',
+    'รับยกเว้นค่าธรรมเนียมรายปี 1,250 บาท เมื่อใช้จ่ายผ่านบัตรตั้งแต่ 12 ครั้งต่อปีขึ้นไป (นับจำนวนครั้ง ไม่กำหนดยอดขั้นต่ำต่อครั้ง)',
+    'ข้อควรระวัง: ไม่ควรใช้จ่ายเพิ่มเพียงเพื่อให้ถึงเงื่อนไขโปรโมชั่น — ระหว่างที่ยังมียอดค้างบัตร KTC ดอกเบี้ย 16% ต่อปีสูงกว่ามูลค่าคะแนนที่จะได้รับ',
+    'สิทธิประโยชน์ชุดนี้มีระยะเวลาถึง 31 ธันวาคม 2569'
+  )
+)
+WHERE user_id = (SELECT id FROM auth.users WHERE email = 'armpapon@gmail.com')
+  AND name = 'KBank PLUSTINUM'
+  AND (
+    fee_profile -> 'tips_updated' IS DISTINCT FROM to_jsonb('17 ส.ค. 2569'::text)
+    OR fee_profile -> 'tips' IS DISTINCT FROM jsonb_build_array(
+      'รับคะแนน K Point 1 คะแนน ต่อการใช้จ่ายทุก 25 บาท ในทุกหมวดการใช้จ่าย',
+      'รับคะแนนสูงสุด 3 เท่า เมื่อใช้จ่ายหมวดร้านอาหาร ห้างสรรพสินค้า และร้านค้าแฟชั่น รวมครบ 8,000 บาทขึ้นไปต่อเดือน — แนะนำให้นำค่าอาหารและค่าใช้จ่ายในห้างที่จ่ายประจำอยู่แล้ว มาชำระผ่านบัตรนี้',
+      'รับสิทธิ์กด E-Coupon มูลค่าสูงสุด 260 บาทต่อเดือน ในแอป K PLUS เมื่อใช้จ่ายรวมครบ 10,000 บาทขึ้นไปต่อเดือน (จำกัด 1 สิทธิ์ต่อบัตรต่อเดือน และสิทธิ์มีจำนวนจำกัด) — แนะนำให้กดรับทันทีที่ยอดครบ',
+      'เดือนเกิด: แลกคะแนนเท่ายอดใช้จ่าย รับเครดิตเงินคืนสูงสุด 25% (แลกได้ไม่เกิน 5,000 คะแนน รับเงินคืนสูงสุด 1,250 บาทต่อปี จำกัด 1 เซลล์สลิปต่อปี) — แนะนำให้รวมรายจ่ายก้อนใหญ่ประมาณ 5,000 บาทไว้ในบิลเดียว',
+      'ชำระค่าบัตรโดยสารเครื่องบินด้วยบัตรนี้ รับความคุ้มครองประกันการเดินทางสูงสุด 200,000 บาท และกระเป๋าเดินทางล่าช้า/สูญหายสูงสุด 20,000 บาท พร้อมใช้ห้องรับรอง Miracle Lounge สนามบินสุวรรณภูมิได้ 2 ครั้งต่อปี ไม่จำกัดสายการบิน',
+      'ใช้คะแนนสะสม 500 คะแนน แลกประกันอุบัติเหตุวงเงินคุ้มครอง 100,000 บาทได้ (สิทธิ์มีจำนวนจำกัดต่อเดือน)',
+      'รับยกเว้นค่าธรรมเนียมรายปี 1,250 บาท เมื่อใช้จ่ายผ่านบัตรตั้งแต่ 12 ครั้งต่อปีขึ้นไป (นับจำนวนครั้ง ไม่กำหนดยอดขั้นต่ำต่อครั้ง)',
+      'ข้อควรระวัง: ไม่ควรใช้จ่ายเพิ่มเพียงเพื่อให้ถึงเงื่อนไขโปรโมชั่น — ระหว่างที่ยังมียอดค้างบัตร KTC ดอกเบี้ย 16% ต่อปีสูงกว่ามูลค่าคะแนนที่จะได้รับ',
+      'สิทธิประโยชน์ชุดนี้มีระยะเวลาถึง 31 ธันวาคม 2569'
+    )
+  );
+
 -- ── Check it landed ─────────────────────────────────────────────────────────
 -- select name, scope, manual_balance, debt_id, face_url, credit_limit,
 --        shared_limit_card_id
 --   from public.credit_cards order by sort_order;
+-- select name, fee_profile -> 'tips_updated' as tips_updated,
+--        jsonb_array_length(fee_profile -> 'tips') as tip_count
+--   from public.credit_cards where name = 'KBank PLUSTINUM';
 -- select name, remaining_balance, interest_rate, monthly_payment from public.debts where type = 'credit_card';

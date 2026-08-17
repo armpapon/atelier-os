@@ -141,6 +141,55 @@ export function lineUtilizationPct(card, cards = [], debts = []) {
 }
 
 /**
+ * Can `target` hold the line that `editedCardId` wants to spend?
+ *
+ * `lineOf` above SURVIVES a broken graph — a cycle or a chain resolves to
+ * something sane instead of looping — but surviving is not the same as being
+ * right: A→B→A leaves BOTH KTC cards with no limit and reports the 150,000฿
+ * line as 0 (audited: DLG-FIN-001 · A6). The fix is to make the broken shape
+ * unbuildable, so this is the ONE rule the form uses twice — once to build the
+ * dropdown, once as a save guard — and a line owner must be all four of:
+ *
+ *   · a real card in the same (already scoped) list
+ *   · not the card being edited          — a card cannot share with itself
+ *   · still active                       — a cancelled card owns no line
+ *   · holding a limit of its own         — sharing "no limit" is not sharing
+ *   · not a sharer itself                — this is what kills A→B→A and A→B→C
+ *
+ * A card pointing at ITSELF is "no share" everywhere else in this module
+ * (see `hopTarget`), so it counts as an owner here too.
+ *
+ * @returns {boolean} true when the target may legally hold the line
+ */
+export function canShareInto(target, editedCardId, cards = []) {
+  if (!target || !target.id) return false;
+  if (editedCardId != null && target.id === editedCardId) return false;
+  // The list is one scope's cards; a target outside it is not offerable.
+  if (!(cards || []).some(c => c && c.id === target.id)) return false;
+  if (!isActive(target)) return false;
+  const lim = Number(target.credit_limit);
+  if (!Number.isFinite(lim) || lim <= 0) return false;
+  const points = target.shared_limit_card_id;
+  if (points && points !== target.id) return false;      // target already shares
+  return true;
+}
+
+/**
+ * The ACTIVE cards spending `cardId`'s line — the cards that would silently
+ * lose their limit if this card were deleted.
+ *
+ * The FK is `ON DELETE SET NULL`, so deleting a line owner leaves each sharer
+ * with `shared_limit_card_id = NULL` *and* `credit_limit = NULL`: the row
+ * survives and the 150,000฿ line vanishes from the model (DLG-FIN-001 · A6).
+ * The grid asks this before deleting and refuses when the answer is non-empty.
+ */
+export function lineSharersOf(cardId, cards = []) {
+  if (!cardId) return [];
+  return (cards || []).filter(c =>
+    c && c.id !== cardId && isActive(c) && c.shared_limit_card_id === cardId);
+}
+
+/**
  * Annual-fee waiver progress.
  *
  *   mode 'none'   → nothing to chase; `met` is true and the UI says
@@ -323,8 +372,18 @@ export function sortCards(cards = []) {
  * shape — KBank 300,000฿ + one shared KTC line of 150,000฿ — reports 450,000฿
  * of credit, not 600,000฿.
  *
+ * `utilization` divides ONLY the measurable part: the balances sitting on
+ * lines whose owner has a limit, over those same lines' limits. A balance on
+ * a line with no limit anywhere is not utilisation of anything — it used to be
+ * added to the numerator while adding nothing to the denominator, so a line of
+ * 100,000฿ at zero plus an unmeasured 90,000฿ read "90% used" when the true
+ * figure was 0% plus 90,000฿ of unknown (audited: DLG-FIN-001 · A6). That
+ * unknown is now reported beside the percent as `unmeasuredBalance` instead of
+ * being smuggled into it.
+ *
  * @returns {{
  *   limit: number, balance: number, utilization: number|null,
+ *   measuredBalance: number, unmeasuredBalance: number,
  *   revolvingBalance: number, revolvingCount: number, monthlyInterest: number,
  *   watchCards: object[], annualFeeAtRisk: number,
  *   nextStatement: {card: object, date: string}|null,
@@ -337,6 +396,7 @@ export function summarizeCards({ cards = [], debts = [], today, rate = DEFAULT_I
   const active = (cards || []).filter(isActive);
 
   let limit = 0, balance = 0, revolvingBalance = 0, revolvingCount = 0;
+  let measuredBalance = 0, unmeasuredBalance = 0;
   const watchCards = [];
   let nextStatement = null, nextDue = null;
   // Each credit LINE is counted once, keyed by the card that owns it. Two
@@ -349,13 +409,16 @@ export function summarizeCards({ cards = [], debts = [], today, rate = DEFAULT_I
 
     // The limit belongs to the line, so the second card on a line adds only
     // its balance. A card with no limit anywhere on its line adds nothing to
-    // the denominator — an unmeasured limit is not a phantom limit.
+    // the denominator — an unmeasured limit is not a phantom limit — and its
+    // balance stays out of the numerator too, reported separately instead.
     const owner = lineOf(card, cards) || card;
     const lineKey = owner.id ?? owner;                  // ids in prod, identity in tests
+    const lim = Number(owner.credit_limit);
+    const measurable = Number.isFinite(lim) && lim > 0;
+    if (measurable) measuredBalance += bal; else unmeasuredBalance += bal;
     if (!linesCounted.has(lineKey)) {
       linesCounted.add(lineKey);
-      const lim = Number(owner.credit_limit);
-      if (Number.isFinite(lim) && lim > 0) limit += lim;
+      if (measurable) limit += lim;
     }
 
     if (card.pays_full === false) { revolvingBalance += bal; revolvingCount += 1; }
@@ -372,7 +435,8 @@ export function summarizeCards({ cards = [], debts = [], today, rate = DEFAULT_I
 
   return {
     limit, balance,
-    utilization: utilizationPct(balance, limit),
+    utilization: utilizationPct(measuredBalance, limit),
+    measuredBalance, unmeasuredBalance,
     revolvingBalance, revolvingCount,
     monthlyInterest: monthlyInterestEstimate(revolvingBalance, rate),
     watchCards, annualFeeAtRisk,
