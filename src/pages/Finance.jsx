@@ -24,6 +24,7 @@ import { MonthNav, formatThaiMonth } from '../components/dashboard/MonthNav.jsx'
 import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
+import { DebtAdvice } from '../components/dashboard/DebtAdvice.jsx';
 import { CreditCards } from '../components/dashboard/CreditCards.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
@@ -1548,6 +1549,9 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                 tabIndex -1 makes the anchor a legal focus target so the jump can
                 hand the keyboard over (A1); it stays out of the tab order. */}
             <div id={DEBT_TRACKER_ANCHOR} tabIndex={-1} style={{ outline: 'none' }}>
+              {/* Computed advice card — reads the same `debts` the tracker does,
+                  renders nothing when there is no computable signal (v4.46). */}
+              <DebtAdvice debts={debts} />
               <DebtTracker
                 debts={debts}
                 payments={debtPayments}
