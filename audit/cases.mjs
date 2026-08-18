@@ -67,6 +67,10 @@ import {
   groupExpensesByCategory, buildLeakInsights, isRecurringAlive, resolveYearMonth,
   CREEP_MIN_DELTA, FREQUENT_MIN_COUNT, OTHER_CATEGORY, MAX_RECURRING_ROWS,
 } from '../src/lib/moneyLeaks.js';
+import {
+  monthlyInterest, totalInterestBurn, annualInterestBurn,
+  payoffPriority, rolloverOpportunities, creditCardDeadline, dataGaps,
+} from '../src/lib/debtAdvice.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
 let pass = 0, fail = 0;
@@ -3941,6 +3945,175 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       gone && /ลบไม่สำเร็จ/.test(gone.message));
 
     __tables.credit_cards = [];
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.46 · คำแนะนำเรื่องหนี้ — src/lib/debtAdvice.js
+//
+//  Pure maths for the Debt Advice card at the top of the หนี้ tab. Synthetic
+//  fixtures only — never the owner's real balances. Proven here: the interest
+//  burn math, that the burn sums only active debts, the avalanche ordering and
+//  its fact-derived reason tags, the near-done rollover detector, the BoT
+//  minimum-payment deadline figures (and its null case), and the data-gap list.
+// ════════════════════════════════════════════════════════════════════════════
+{
+  section('v4.46 · monthlyInterest — ยอด × ดอก/100/12 ปัดเศษ, null-safe');
+
+  check('60,000฿ @ 16%/ปี → 800฿/เดือน',
+    monthlyInterest({ remaining_balance: 60000, interest_rate: 16 }) === 800,
+    String(monthlyInterest({ remaining_balance: 60000, interest_rate: 16 })));
+
+  check('ปัดเศษเป็นบาท (50,674 @ 16% = 675.65 → 676)',
+    monthlyInterest({ remaining_balance: 50674, interest_rate: 16 }) === 676,
+    String(monthlyInterest({ remaining_balance: 50674, interest_rate: 16 })));
+
+  check('ยอดหรือดอกเป็น null/0/ติดลบ → 0',
+    monthlyInterest({ remaining_balance: null, interest_rate: 16 }) === 0
+    && monthlyInterest({ remaining_balance: 60000, interest_rate: null }) === 0
+    && monthlyInterest({ remaining_balance: 60000, interest_rate: 0 }) === 0
+    && monthlyInterest({ remaining_balance: -5000, interest_rate: 16 }) === 0
+    && monthlyInterest(null) === 0
+    && monthlyInterest({}) === 0);
+
+  check('สตริงตัวเลขถูก coerce เหมือนไลบรารีอื่น',
+    monthlyInterest({ remaining_balance: '60000', interest_rate: '16' }) === 800);
+
+  section('v4.46 · totalInterestBurn — รวมเฉพาะหนี้ที่ active, มี perYear');
+
+  {
+    const debts = [
+      { id: 'a', remaining_balance: 60000, interest_rate: 16 },                       // 800
+      { id: 'b', remaining_balance: 120000, interest_rate: 10 },                      // 1000
+      { id: 'c', remaining_balance: 90000, interest_rate: 12, is_active: false },     // excluded
+      { id: 'd', remaining_balance: null, interest_rate: 5 },                         // 0
+    ];
+    const burn = totalInterestBurn(debts);
+    check('รวม active เท่านั้น (800 + 1000), ก้อนที่ปิดแล้วไม่ถูกนับ',
+      burn.perMonth === 1800, String(burn.perMonth));
+    check('perYear = perMonth × 12',
+      burn.perYear === 21600, String(burn.perYear));
+    check('annualInterestBurn ให้ตัวเลขเดียวกับ perYear',
+      annualInterestBurn(debts) === 21600);
+    check('อาร์เรย์ว่าง → { perMonth: 0, perYear: 0 }',
+      totalInterestBurn([]).perMonth === 0 && totalInterestBurn([]).perYear === 0);
+  }
+
+  section('v4.46 · payoffPriority — avalanche + reasonTags จากข้อเท็จจริง');
+
+  {
+    const debts = [
+      { id: 'card', name: 'บัตร KTC', type: 'credit_card', remaining_balance: 111491, interest_rate: 16 },
+      { id: 'car',  name: 'รถ BMW',   type: 'lease',       remaining_balance: 789373, interest_rate: 9.25 },
+      { id: 'home', name: 'ค่าบ้าน',   type: 'mortgage',    remaining_balance: 4020000, interest_rate: 4.8 },
+      { id: 'zero', name: 'ผ่อน 0%',  type: 'installment', remaining_balance: 20000, interest_rate: 0 },   // no rate → excluded
+      { id: 'off',  name: 'ปิดแล้ว',   type: 'credit_card', remaining_balance: 5000, interest_rate: 20, is_active: false }, // excluded
+    ];
+    const prio = payoffPriority(debts);
+
+    check('เรียง 16% > 9.25% > 4.8% และตัดก้อนที่ไม่มีดอก/ปิดแล้วออก',
+      prio.length === 3
+      && prio[0].debt.id === 'card' && prio[1].debt.id === 'car' && prio[2].debt.id === 'home',
+      prio.map(p => `${p.debt.id}:${p.rate}`).join(' '));
+
+    check('rank 1 = highest-rate + credit-card-bureau (บัตร)',
+      prio[0].rank === 1
+      && prio[0].reasonTags.includes('highest-rate')
+      && prio[0].reasonTags.includes('credit-card-bureau'));
+
+    check('rank 2 = second-rate (รถ)',
+      prio[1].rank === 2 && prio[1].reasonTags.includes('second-rate'));
+
+    check('อัตราต่ำสุด < 6% (บ้าน 4.8%) → low-rate-no-rush',
+      prio[2].reasonTags.includes('low-rate-no-rush')
+      && !prio[2].reasonTags.includes('highest-rate')
+      && !prio[0].reasonTags.includes('low-rate-no-rush'));
+
+    check('แต่ละแถวพก rank + balance + monthlyInterest ให้ UI',
+      prio[0].balance === 111491 && prio[0].monthlyInterest === monthlyInterest(debts[0]));
+
+    // Tie on rate → larger balance first.
+    const tie = payoffPriority([
+      { id: 'small', name: 's', remaining_balance: 10000, interest_rate: 12 },
+      { id: 'big',   name: 'b', remaining_balance: 90000, interest_rate: 12 },
+    ]);
+    check('ดอกเท่ากัน → ยอดมากกว่าอยู่บน',
+      tie[0].debt.id === 'big' && tie[1].debt.id === 'small');
+
+    check('อาร์เรย์ว่าง → []',
+      payoffPriority([]).length === 0 && payoffPriority(null).length === 0);
+  }
+
+  section('v4.46 · rolloverOpportunities — เหลือ 1–3 งวด, เรียงใกล้จบก่อน');
+
+  {
+    const debts = [
+      { id: 'shopee', name: 'Shopee Cash', monthly_payment: 3661, total_months: 6,  months_paid: 4 },  // 2 left ✓
+      { id: 'near',   name: 'ผ่อนมือถือ',  monthly_payment: 1200, total_months: 10, months_paid: 9 },  // 1 left ✓
+      { id: 'far',    name: 'รถ',          monthly_payment: 6000, total_months: 48, months_paid: 10 }, // 38 left ✗
+      { id: 'nodata', name: 'ไม่รู้งวด',    monthly_payment: 900,  total_months: null, months_paid: null }, // ✗
+      { id: 'done',   name: 'จบพอดี',       monthly_payment: 500,  total_months: 12, months_paid: 12 },  // 0 left ✗
+    ];
+    const roll = rolloverOpportunities(debts);
+    check('เจอเฉพาะก้อนที่เหลือ 1–3 งวด (มือถือ 1, Shopee 2), เรียงใกล้จบก่อน',
+      roll.length === 2 && roll[0].debt.id === 'near' && roll[1].debt.id === 'shopee',
+      roll.map(r => `${r.debt.id}:${r.monthsLeft}`).join(' '));
+    check('freesPerMonth = ค่างวดเดิม, monthsLeft ถูกต้อง',
+      roll[1].freesPerMonth === 3661 && roll[1].monthsLeft === 2);
+    check('งวดที่จ่ายครบ (12/12) และไม่รู้งวดไม่ถูกนับ',
+      !roll.some(r => r.debt.id === 'done' || r.debt.id === 'nodata'));
+    check('months_paid = 0 นับได้ (ไม่ตกเพราะ falsy)',
+      rolloverOpportunities([{ id: 'x', name: 'x', monthly_payment: 100, total_months: 2, months_paid: 0 }]).length === 1);
+  }
+
+  section('v4.46 · creditCardDeadline — ขั้นต่ำ 8% → 10% รอบบิล ม.ค. 2570');
+
+  {
+    const cards = [
+      { id: 'mc',   name: 'MC',   type: 'credit_card', remaining_balance: 60000, interest_rate: 16 },
+      { id: 'visa', name: 'VISA', type: 'credit_card', remaining_balance: 50000, interest_rate: 16 },
+    ];
+    const dl = creditCardDeadline(cards);
+    check('currentMinTotal = ยอด × 8% (4800 + 4000) = 8800',
+      dl.currentMinTotal === 8800, String(dl.currentMinTotal));
+    check('futureMinTotal = ยอด × 10% (6000 + 5000) = 11000',
+      dl.futureMinTotal === 11000, String(dl.futureMinTotal));
+    check('effectiveLabel = ม.ค. 2570',
+      dl.effectiveLabel === 'ม.ค. 2570');
+
+    check('มี monthly_payment → ใช้ค่างวดจริงเป็น current, future ยังคิดจากยอด',
+      (() => {
+        const d = creditCardDeadline([
+          { id: 'mc', name: 'MC', type: 'credit_card', remaining_balance: 60000, interest_rate: 16, monthly_payment: 7000 },
+        ]);
+        return d.currentMinTotal === 7000 && d.futureMinTotal === 6000;
+      })());
+
+    check('ไม่มีบัตรเข้าเงื่อนไข (ไม่ใช่บัตร / ไม่มียอด / ไม่มีดอก / ปิดแล้ว) → null',
+      creditCardDeadline([{ id: 'l', type: 'lease', remaining_balance: 100000, interest_rate: 9 }]) === null
+      && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 0, interest_rate: 16 }]) === null
+      && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 5000, interest_rate: 0 }]) === null
+      && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 5000, interest_rate: 16, is_active: false }]) === null
+      && creditCardDeadline([]) === null);
+  }
+
+  section('v4.46 · dataGaps — หนี้ที่ยังไม่ได้กรอกดอก/ยอด ทำให้ burn ต่ำกว่าจริง');
+
+  {
+    const debts = [
+      { id: 'full', name: 'ครบ',        remaining_balance: 60000, interest_rate: 16 },
+      { id: 'norate', name: 'ไม่มีดอก',  remaining_balance: 30000, interest_rate: null },
+      { id: 'nobal',  name: 'ไม่มียอด',  remaining_balance: null,  interest_rate: 9 },
+      { id: 'off',    name: 'ปิดแล้ว',    remaining_balance: null,  interest_rate: null, is_active: false }, // excluded
+    ];
+    const gaps = dataGaps(debts);
+    check('ลิสต์เฉพาะ active ที่ขาดดอกหรือยอด (ไม่มีดอก, ไม่มียอด)',
+      gaps.count === 2
+      && gaps.debts.includes('ไม่มีดอก') && gaps.debts.includes('ไม่มียอด')
+      && !gaps.debts.includes('ครบ') && !gaps.debts.includes('ปิดแล้ว'),
+      gaps.debts.join(', '));
+    check('ทุกก้อนกรอกครบ → count 0, debts []',
+      dataGaps([{ id: 'x', name: 'x', remaining_balance: 1000, interest_rate: 5 }]).count === 0);
   }
 }
 
