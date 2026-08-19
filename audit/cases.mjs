@@ -71,6 +71,10 @@ import {
   monthlyInterest, totalInterestBurn, annualInterestBurn,
   payoffPriority, rolloverOpportunities, creditCardDeadline, dataGaps,
 } from '../src/lib/debtAdvice.js';
+import {
+  planDebts, simulatePayoff as simulatePayoffMP, comparePayoff,
+  paymentBelowInterest, MONTH_CAP,
+} from '../src/lib/moneyPlanner.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
 let pass = 0, fail = 0;
@@ -4201,6 +4205,128 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       ]).count === 3);
     check('A8-3 · zero string "0" ถือเป็นตัวเลข 0 → ไม่ใช่ gap',
       dataGaps([{ id: 's', name: 's', remaining_balance: '0', interest_rate: '0' }]).count === 0);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.48 · Money Planner — src/lib/moneyPlanner.js
+//
+//  The payoff simulator (avalanche + rollover over ALL filled-in debts). All
+//  fixtures are SYNTHETIC — never the owner's real balances. Pinned here:
+//  planDebts filtering, a two-card payoff that clears in a sane window, the
+//  extra saving both interest AND months, and — the tricky one — a mortgage
+//  whose payment is below its own interest STILL clearing (rollover reaches it)
+//  and surfacing in paymentBelowInterest.
+// ════════════════════════════════════════════════════════════════════════════
+{
+  section('v4.48 · planDebts — active + ยอด>0 + ดอก>0 เท่านั้น');
+
+  {
+    const mixed = [
+      { id: 'a', name: 'บัตร A',     remaining_balance: 50000, interest_rate: 16 },
+      { id: 'z', name: 'ผ่อน 0%',    remaining_balance: 20000, interest_rate: 0 },   // rate 0 → out
+      { id: 'b', name: 'ปิดจบ',      remaining_balance: 0,     interest_rate: 16 },  // balance 0 → out
+      { id: 'i', name: 'ปิดบัญชี',   remaining_balance: 50000, interest_rate: 16, is_active: false }, // inactive → out
+      { id: 's', name: 'string coerce', remaining_balance: '60000', interest_rate: '9.25' },          // strings ok
+    ];
+    const kept = planDebts(mixed).map(d => d.id);
+    check('รวมเฉพาะก้อนที่ active + มีทั้งยอดและดอก (string ก็ coerce ได้)',
+      kept.length === 2 && kept.includes('a') && kept.includes('s'),
+      kept.join(', '));
+    check('ก้อนดอก 0 / ยอด 0 / inactive ถูกตัดออก',
+      !kept.includes('z') && !kept.includes('b') && !kept.includes('i'));
+    check('planDebts([]) = [] (ไม่พัง)', planDebts([]).length === 0);
+  }
+
+  section('v4.48 · simulatePayoff — สองบัตร avalanche ปลดในกรอบเดือนที่คาดไว้');
+
+  {
+    const twoCards = [
+      { id: 'c1', name: 'KTC MC',   remaining_balance: 50000, interest_rate: 16, monthly_payment: 4000 },
+      { id: 'c2', name: 'KTC VISA', remaining_balance: 60000, interest_rate: 16, monthly_payment: 4800 },
+    ];
+    const min = simulatePayoffMP(twoCards, 0);
+    check('ปลดหนี้ทั้งหมดในกรอบ 12–16 เดือน (จ่ายขั้นต่ำรวม 8,800/เดือน)',
+      min.monthsToAllClear >= 12 && min.monthsToAllClear <= 16,
+      String(min.monthsToAllClear));
+    check('perDebt เรียงตามเดือนที่ปลด ASC + ก้อนยอดน้อยกว่าปลดก่อน (ดอกเท่ากัน tie→ยอดน้อย)',
+      min.perDebt.length === 2
+      && min.perDebt[0].id === 'c1'
+      && min.perDebt[0].clearedMonth <= min.perDebt[1].clearedMonth,
+      min.perDebt.map(d => `${d.id}@${d.clearedMonth}`).join(', '));
+    check('totalInterest เป็นจำนวนเต็มบวก (มีการคิดดอกจริง)',
+      Number.isInteger(min.totalInterest) && min.totalInterest > 0,
+      String(min.totalInterest));
+
+    const plan = simulatePayoffMP(twoCards, 5000);
+    check('เพิ่มเงินโปะ → ปลดเร็วขึ้นและดอกรวมน้อยลง',
+      plan.monthsToAllClear < min.monthsToAllClear
+      && plan.totalInterest < min.totalInterest,
+      `${plan.monthsToAllClear}ด / ฿${plan.totalInterest} vs ${min.monthsToAllClear}ด / ฿${min.totalInterest}`);
+  }
+
+  section('v4.48 · comparePayoff — baseline วิธีเดียวกัน แยกผลของเงินที่โปะเพิ่ม');
+
+  {
+    const twoCards = [
+      { id: 'c1', name: 'KTC MC',   remaining_balance: 50000, interest_rate: 16, monthly_payment: 4000 },
+      { id: 'c2', name: 'KTC VISA', remaining_balance: 60000, interest_rate: 16, monthly_payment: 4800 },
+    ];
+    const cmp = comparePayoff(twoCards, 5000);
+    check('interestSaved > 0 และ monthsSaved > 0 เมื่อโปะเพิ่ม',
+      cmp.interestSaved > 0 && cmp.monthsSaved > 0,
+      `saved ฿${cmp.interestSaved} / ${cmp.monthsSaved}ด`);
+    check('baseline กับ plan ปลดได้ทั้งคู่ (ค่า monthsToAllClear เป็น finite)',
+      cmp.baseline.monthsToAllClear != null && cmp.plan.monthsToAllClear != null);
+    check('interestSaved = baseline.totalInterest − plan.totalInterest (ไม่ติดลบ)',
+      cmp.interestSaved === Math.max(0, cmp.baseline.totalInterest - cmp.plan.totalInterest));
+
+    const same = comparePayoff(twoCards, 0);
+    check('โปะเพิ่ม 0 → ไม่มีอะไรประหยัด (saved 0/0)',
+      same.interestSaved === 0 && same.monthsSaved === 0);
+  }
+
+  section('v4.48 · ค่างวดต่ำกว่าดอก — บ้านยังปลดได้ด้วย rollover + ติดธง');
+
+  {
+    // Mortgage: 4,000,000 @ 4.82% → interest ~16,067/เดือน, but payment only 15,000
+    // (negative amortisation on its own). Sat next to the two cards, the whole
+    // avalanche pool eventually rolls onto it and clears it — the cap never hits.
+    const withMortgage = [
+      { id: 'c1',   name: 'KTC MC',   remaining_balance: 50000,   interest_rate: 16,   monthly_payment: 4000 },
+      { id: 'c2',   name: 'KTC VISA', remaining_balance: 60000,   interest_rate: 16,   monthly_payment: 4800 },
+      { id: 'home', name: 'ค่าบ้าน',   remaining_balance: 4000000, interest_rate: 4.82, monthly_payment: 15000 },
+    ];
+    const run = simulatePayoffMP(withMortgage, 0);
+    check('ปลดหนี้ทุกก้อนได้จริง (monthsToAllClear finite, ≤ cap) แม้ค่างวดบ้าน < ดอก',
+      run.monthsToAllClear != null && run.monthsToAllClear <= MONTH_CAP,
+      String(run.monthsToAllClear));
+    check('บ้านเป็นก้อนที่ปลดหลังสุด (ดอกต่ำสุด → avalanche เก็บไว้ท้าย)',
+      run.perDebt[run.perDebt.length - 1].id === 'home',
+      run.perDebt.map(d => `${d.id}@${d.clearedMonth}`).join(', '));
+
+    const below = paymentBelowInterest(withMortgage);
+    check('paymentBelowInterest ติดธงเฉพาะบ้าน (ค่างวด 15,000 ≤ ดอก ~16,067)',
+      below.length === 1 && below[0].id === 'home'
+      && below[0].monthlyPayment === 15000 && below[0].monthlyInterest > below[0].monthlyPayment,
+      `฿${below[0].monthlyPayment} ≤ ฿${below[0].monthlyInterest}`);
+    check('บัตรที่ค่างวด > ดอก ไม่ติดธง',
+      !below.some(o => o.id === 'c1' || o.id === 'c2'));
+
+    const cmp = comparePayoff(withMortgage, 10000);
+    check('comparePayoff ทั้ง baseline และ plan finite เมื่อมีบ้านรวมอยู่',
+      cmp.baseline.monthsToAllClear != null && cmp.plan.monthsToAllClear != null
+      && cmp.interestSaved > 0,
+      `saved ฿${cmp.interestSaved} / ${cmp.monthsSaved}ด`);
+  }
+
+  section('v4.48 · simulatePayoff — สโคปที่ไม่มีก้อนให้วางแผน');
+
+  {
+    const none = simulatePayoffMP([{ id: 'x', name: 'x', remaining_balance: 0, interest_rate: 0 }], 5000);
+    check('ไม่มี planDebts → monthsToAllClear 0, ดอกรวม 0, perDebt ว่าง',
+      none.monthsToAllClear === 0 && none.totalInterest === 0 && none.perDebt.length === 0);
+    check('paymentBelowInterest([]) = [] (null-safe)', paymentBelowInterest([]).length === 0);
   }
 }
 
