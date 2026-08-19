@@ -50,8 +50,35 @@ export function DebtAdvice({ debts }) {
 
   const { priority, burn, rollovers, deadline, gaps } = advice;
 
-  // No priority rows, no burn, no rollovers → nothing worth saying.
-  if (!priority.length && !burn.perMonth && !rollovers.length) return null;
+  // Something computable to show: a payoff ranking, a live burn figure, a
+  // rollover, or the credit-card deadline. Gaps ALONE also earn a render — a
+  // scope of all-incomplete debts still needs the prompt to fill them in.
+  const hasComputedSignal =
+    priority.length || burn.perMonth || rollovers.length || deadline;
+  if (!hasComputedSignal && !gaps.count) return null;
+
+  // Gap-only scope → a compact card that is just the fill-in-your-data prompt,
+  // with no burn headline (there's no honest number to headline yet).
+  if (!hasComputedSignal) {
+    return (
+      <div
+        data-debt-advice
+        data-debt-advice-compact
+        style={{
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)',
+          padding: 18, marginBottom: 14,
+        }}
+      >
+        <div data-gap-note style={{
+          fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6,
+        }}>
+          <b style={{ color: 'var(--text-secondary)' }}>ข้อมูลหนี้ยังไม่ครบ {gaps.count} ก้อน</b> — {gaps.debts.join(', ')} ยังไม่ได้กรอกดอก/ยอด
+          {' '}· กรอกอัตราดอกเบี้ยและยอดคงเหลือในตารางหนี้ด้านล่าง แล้วคำแนะนำจะคำนวณให้
+        </div>
+      </div>
+    );
+  }
 
   const shownPriority = priority.slice(0, MAX_PRIORITY_ROWS);
   const overflowCount = Math.max(0, priority.length - MAX_PRIORITY_ROWS);
@@ -113,12 +140,18 @@ export function DebtAdvice({ debts }) {
         </Callout>
       ))}
 
-      {/* Credit-card minimum-payment deadline */}
+      {/* Credit-card minimum-payment scenario (dated — see MIN_PAYMENT_RISE) */}
       {deadline && (
         <Callout tone="warn" icon="⏰" data-deadline>
-          <b>เดดไลน์:</b> ขั้นต่ำบัตรเครดิตจะขึ้นจาก 8% → 10% ตั้งแต่รอบบิล {deadline.effectiveLabel} —
-          ยอดขั้นต่ำบัตรจะเด้งจาก ~{baht(deadline.currentMinTotal)} เป็น <b>~{baht(deadline.futureMinTotal)}/เดือน</b>
-          {' '}วางแผนให้จบก่อนถึงตอนนั้น
+          <b>ขั้นต่ำบัตร (มาตรการชั่วคราว):</b> เกณฑ์ขั้นต่ำ {deadline.fromPct}% มีผลถึง 31 ธ.ค. 2569 —
+          หากปี 2570 กลับสู่เกณฑ์ปกติ {deadline.toPct}% ยอดขั้นต่ำจะขยับจาก ~{baht(deadline.currentMinTotal)}
+          {' '}เป็น <b>~{baht(deadline.futureMinTotal)}/เดือน</b> วางแผนโปะให้จบก่อนถึงตอนนั้น
+          <div style={{
+            marginTop: 6, fontFamily: 'var(--f-mono)', fontSize: 10.5,
+            letterSpacing: '0.04em', color: 'var(--text-muted)',
+          }}>
+            ตรวจแหล่ง ธปท. ส.ค. 2569 · ทบทวนก่อน {deadline.effectiveLabel}
+          </div>
         </Callout>
       )}
 

@@ -4042,6 +4042,44 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
 
     check('อาร์เรย์ว่าง → []',
       payoffPriority([]).length === 0 && payoffPriority(null).length === 0);
+
+    // A8-2: no contradictory tags. no-rush needs a STRICTLY dearer debt to exist.
+    const solo = payoffPriority([
+      { id: 'home', name: 'บ้าน', type: 'mortgage', remaining_balance: 4000000, interest_rate: 4.8 },
+    ]);
+    check('A8-2 · ก้อนเดียว 4.8% → highest-rate เท่านั้น ไม่มี no-rush (ไม่มีก้อนแพงกว่า)',
+      solo.length === 1
+      && solo[0].reasonTags.includes('highest-rate')
+      && !solo[0].reasonTags.includes('low-rate-no-rush'),
+      solo[0].reasonTags.join(','));
+
+    const twoLow = payoffPriority([
+      { id: 'a', name: 'A', type: 'mortgage', remaining_balance: 1000000, interest_rate: 5 },
+      { id: 'b', name: 'B', type: 'mortgage', remaining_balance: 900000,  interest_rate: 5 },
+      { id: 'c', name: 'C', type: 'credit_card', remaining_balance: 50000, interest_rate: 16 },
+    ]);
+    check('A8-2 · [5%,5%,16%] → ทั้งสองก้อน 5% ได้ no-rush, ก้อน 16% เป็น highest ไม่มี no-rush',
+      (() => {
+        const c16 = twoLow.find(p => p.debt.id === 'c');
+        const fives = twoLow.filter(p => p.debt.id !== 'c');
+        return c16.reasonTags.includes('highest-rate')
+          && !c16.reasonTags.includes('low-rate-no-rush')
+          && fives.every(p => p.reasonTags.includes('low-rate-no-rush')
+            && !p.reasonTags.includes('highest-rate'));
+      })());
+
+    const allEqual = payoffPriority([
+      { id: 'a', name: 'A', type: 'mortgage', remaining_balance: 100000, interest_rate: 5 },
+      { id: 'b', name: 'B', type: 'mortgage', remaining_balance: 200000, interest_rate: 5 },
+      { id: 'c', name: 'C', type: 'mortgage', remaining_balance: 300000, interest_rate: 5 },
+    ]);
+    check('A8-2 · ดอกเท่ากันทั้งพอร์ต → ไม่มี no-rush ที่ใดเลย (ไม่มีก้อนแพงกว่า)',
+      allEqual.every(p => !p.reasonTags.includes('low-rate-no-rush')));
+
+    check('A8-2 · highest-rate กับ low-rate-no-rush ไม่มีทางอยู่ก้อนเดียวกัน',
+      [solo, twoLow, allEqual, prio].every(list =>
+        list.every(p => !(p.reasonTags.includes('highest-rate')
+          && p.reasonTags.includes('low-rate-no-rush')))));
   }
 
   section('v4.46 · rolloverOpportunities — เหลือ 1–3 งวด, เรียงใกล้จบก่อน');
@@ -4064,35 +4102,69 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       !roll.some(r => r.debt.id === 'done' || r.debt.id === 'nodata'));
     check('months_paid = 0 นับได้ (ไม่ตกเพราะ falsy)',
       rolloverOpportunities([{ id: 'x', name: 'x', monthly_payment: 100, total_months: 2, months_paid: 0 }]).length === 1);
+
+    // A8-5: a near-done debt that frees ฿0/เดือน is not an opportunity to show.
+    check('A8-5 · เหลือ 2 งวดแต่ค่างวด 0/null → ถูกตัด (ไม่โชว์ "ปลดล็อก ฿0/เดือน")',
+      rolloverOpportunities([{ id: 'z', name: 'z', monthly_payment: 0, total_months: 2, months_paid: 0 }]).length === 0
+      && rolloverOpportunities([{ id: 'z', name: 'z', monthly_payment: null, total_months: 3, months_paid: 1 }]).length === 0
+      && rolloverOpportunities([{ id: 'z', name: 'z', monthly_payment: 900, total_months: 2, months_paid: 0 }]).length === 1);
   }
 
-  section('v4.46 · creditCardDeadline — ขั้นต่ำ 8% → 10% รอบบิล ม.ค. 2570');
+  section('v4.46/v4.47 · creditCardDeadline — floor 8% → 10% จากฐานยอดเดียวกัน (A8-1)');
 
   {
+    // A8-1: both floors from the SAME base (balance), rounded per-card, summed.
     const cards = [
       { id: 'mc',   name: 'MC',   type: 'credit_card', remaining_balance: 60000, interest_rate: 16 },
       { id: 'visa', name: 'VISA', type: 'credit_card', remaining_balance: 50000, interest_rate: 16 },
     ];
     const dl = creditCardDeadline(cards);
-    check('currentMinTotal = ยอด × 8% (4800 + 4000) = 8800',
+    check('currentMinTotal = Σ round(ยอด × 8%) (4800 + 4000) = 8800',
       dl.currentMinTotal === 8800, String(dl.currentMinTotal));
-    check('futureMinTotal = ยอด × 10% (6000 + 5000) = 11000',
+    check('futureMinTotal = Σ round(ยอด × 10%) (6000 + 5000) = 11000',
       dl.futureMinTotal === 11000, String(dl.futureMinTotal));
-    check('effectiveLabel = ม.ค. 2570',
-      dl.effectiveLabel === 'ม.ค. 2570');
+    check('future > current เสมอ (10% > 8%, ยอดบวก) — "floor rises" ที่ซื่อสัตย์',
+      dl.futureMinTotal > dl.currentMinTotal);
+    check('effectiveLabel = ม.ค. 2570, พก fromPct/toPct ให้ UI',
+      dl.effectiveLabel === 'ม.ค. 2570' && dl.fromPct === 8 && dl.toPct === 10);
 
-    check('มี monthly_payment → ใช้ค่างวดจริงเป็น current, future ยังคิดจากยอด',
+    // A8-1: the person's actual payment is kept SEPARATE and never drives the
+    // floors — a card paid ABOVE the future floor still reads an honest rise.
+    check('actualPaymentTotal = Σ monthly_payment แยกจาก floor ที่คิดจากยอด',
       (() => {
         const d = creditCardDeadline([
           { id: 'mc', name: 'MC', type: 'credit_card', remaining_balance: 60000, interest_rate: 16, monthly_payment: 7000 },
         ]);
-        return d.currentMinTotal === 7000 && d.futureMinTotal === 6000;
+        // 7000 paid > 6000 future floor, yet current(4800) < future(6000): still rises.
+        return d.currentMinTotal === 4800 && d.futureMinTotal === 6000
+          && d.actualPaymentTotal === 7000 && d.futureMinTotal > d.currentMinTotal;
       })());
 
-    check('ไม่มีบัตรเข้าเงื่อนไข (ไม่ใช่บัตร / ไม่มียอด / ไม่มีดอก / ปิดแล้ว) → null',
+    // A8-1: eligibility = revolving card (total_months == null), NOT rate-gated.
+    check('บัตร revolving ที่ยังไม่กรอกดอก (rate null/0) ยังเข้าเงื่อนไข — ไม่ผูกกับ interest_rate',
+      (() => {
+        const noRate = creditCardDeadline([{ id: 'c', name: 'C', type: 'credit_card', remaining_balance: 60000 }]);
+        const zeroRate = creditCardDeadline([{ id: 'c', name: 'C', type: 'credit_card', remaining_balance: 60000, interest_rate: 0 }]);
+        return noRate && noRate.currentMinTotal === 4800 && noRate.futureMinTotal === 6000
+          && zeroRate && zeroRate.currentMinTotal === 4800;
+      })());
+
+    // A8-1: a fixed instalment card (total_months set — e.g. ค่าประกันอคิน) is NOT
+    // revolving, so it's excluded even though type === 'credit_card'.
+    check('บัตรที่เป็นงวดผ่อน (total_months set) ถูกตัดออก — เหลือแต่ revolving',
+      (() => {
+        const mixed = creditCardDeadline([
+          { id: 'rev', name: 'Revolve', type: 'credit_card', remaining_balance: 60000, interest_rate: 16 },
+          { id: 'inst', name: 'ค่าประกันอคิน', type: 'credit_card', remaining_balance: 50000, interest_rate: 16, total_months: 10, months_paid: 2 },
+        ]);
+        return mixed.currentMinTotal === 4800 && mixed.futureMinTotal === 6000;
+      })()
+      && creditCardDeadline([{ id: 'inst', type: 'credit_card', remaining_balance: 50000, interest_rate: 16, total_months: 10, months_paid: 2 }]) === null);
+
+    check('ไม่มีบัตร revolving เข้าเงื่อนไข (ไม่ใช่บัตร / ไม่มียอด / เป็นงวดผ่อน / ปิดแล้ว) → null',
       creditCardDeadline([{ id: 'l', type: 'lease', remaining_balance: 100000, interest_rate: 9 }]) === null
       && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 0, interest_rate: 16 }]) === null
-      && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 5000, interest_rate: 0 }]) === null
+      && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 5000, interest_rate: 16, total_months: 12, months_paid: 0 }]) === null
       && creditCardDeadline([{ id: 'c', type: 'credit_card', remaining_balance: 5000, interest_rate: 16, is_active: false }]) === null
       && creditCardDeadline([]) === null);
   }
@@ -4114,6 +4186,21 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       gaps.debts.join(', '));
     check('ทุกก้อนกรอกครบ → count 0, debts []',
       dataGaps([{ id: 'x', name: 'x', remaining_balance: 1000, interest_rate: 5 }]).count === 0);
+
+    // A8-3: an explicit numeric 0 is KNOWN data, not a gap. A genuine 0% instalment
+    // (rate 0) or a fully-cleared balance (0) must NOT be flagged as missing.
+    check('A8-3 · ดอก 0% จริง (rate 0, มียอด) → ไม่ใช่ gap',
+      dataGaps([{ id: 'zero', name: 'ผ่อน 0%', remaining_balance: 20000, interest_rate: 0 }]).count === 0);
+    check('A8-3 · ยอด 0 (ปิดจบ) ที่กรอกดอกแล้ว → ไม่ใช่ gap',
+      dataGaps([{ id: 'cleared', name: 'ปิดจบ', remaining_balance: 0, interest_rate: 16 }]).count === 0);
+    check('A8-3 · missing จริง = null / blank / non-finite เท่านั้น',
+      dataGaps([
+        { id: 'n', name: 'null', remaining_balance: 1000, interest_rate: null },
+        { id: 'b', name: 'blank', remaining_balance: '', interest_rate: 5 },
+        { id: 'x', name: 'nan', remaining_balance: 1000, interest_rate: 'abc' },
+      ]).count === 3);
+    check('A8-3 · zero string "0" ถือเป็นตัวเลข 0 → ไม่ใช่ gap',
+      dataGaps([{ id: 's', name: 's', remaining_balance: '0', interest_rate: '0' }]).count === 0);
   }
 }
 
