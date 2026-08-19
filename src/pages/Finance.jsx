@@ -25,6 +25,7 @@ import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { DebtAdvice } from '../components/dashboard/DebtAdvice.jsx';
+import { MoneyPlanner } from '../components/dashboard/MoneyPlanner.jsx';
 import { CreditCards } from '../components/dashboard/CreditCards.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
@@ -1552,6 +1553,9 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
               {/* Computed advice card — reads the same `debts` the tracker does,
                   renders nothing when there is no computable signal (v4.46). */}
               <DebtAdvice debts={debts} />
+              {/* Payoff simulator — slide the extra to see how much sooner all
+                  filled-in debts clear and how much interest is saved (v4.48). */}
+              <MoneyPlanner debts={debts} />
               <DebtTracker
                 debts={debts}
                 payments={debtPayments}
