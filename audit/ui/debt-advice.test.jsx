@@ -8,7 +8,10 @@
 //      naming the debt and the money it frees.
 //   4. A qualifying credit card raises the ⏰ minimum-payment deadline callout.
 //   5. Debts missing a rate/balance produce the data-gap note by name.
-//   6. A scope with no computable signal renders nothing at all.
+//   6. A gap-only scope (every debt missing rate/balance) renders a COMPACT
+//      data-gap notice prompting the owner to fill the data in — the corrected
+//      A8-3 expectation. It is a real render, not "nothing": the scope that most
+//      needs the prompt used to hide it. Only a genuinely empty scope renders nothing.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import React from 'react';
@@ -84,16 +87,25 @@ describe('คำแนะนำเรื่องหนี้ · การ์ด
     expect(container.textContent).toContain('ยังไม่ได้กรอกดอก/ยอด');
   });
 
-  it('renders nothing when no debt yields a computable signal', () => {
+  it('renders a compact data-gap notice for a gap-only scope (A8-3)', () => {
+    // Every debt is missing rate AND balance → no burn, no ranking, no rollover,
+    // no deadline. This is the scope that most needs the prompt, so it must show
+    // the compact fill-in-your-data card — NOT hide itself (the pre-A8 behaviour).
     const { container } = render(
       <DebtAdvice debts={[{ id: 'x', name: 'ไม่รู้อะไรเลย', type: 'loan' }]} />,
     );
-    expect(container.querySelector('[data-debt-advice]')).toBeNull();
-    expect(container.textContent).toBe('');
+    const card = container.querySelector('[data-debt-advice-compact]');
+    expect(card).toBeTruthy();
+    const gap = container.querySelector('[data-gap-note]');
+    expect(gap.textContent).toContain('ข้อมูลหนี้ยังไม่ครบ 1 ก้อน');
+    expect(gap.textContent).toContain('ไม่รู้อะไรเลย');
+    // The compact card carries no burn headline — there's no honest number yet.
+    expect(container.querySelector('[data-burn-permonth]')).toBeNull();
   });
 
-  it('renders nothing for an empty scope', () => {
+  it('renders nothing for a genuinely empty scope', () => {
     const { container } = render(<DebtAdvice debts={[]} />);
     expect(container.querySelector('[data-debt-advice]')).toBeNull();
+    expect(container.textContent).toBe('');
   });
 });

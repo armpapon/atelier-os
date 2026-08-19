@@ -18,10 +18,13 @@
  * minimum on revolving cards jumps from 8% to 10% of the balance at the
  * ม.ค. 2570 billing cycle, so a card should be paid down before the floor rises.
  *
- * ⚠️ REVISIT AFTER THE DATE PASSES: once ม.ค. 2570 (Jan 2027 CE) is in the past
- * the "future" figure is just the present, and this whole deadline callout
- * should be removed or re-pointed at the next scheduled change. This constant is
- * the single place to edit / delete when that happens.
+ * ⚠️ TEMPORARY RELIEF MEASURE — re-check policy BEFORE ม.ค. 2570, not only after.
+ * The 8% floor is confirmed by the BoT only for 1 ม.ค.–31 ธ.ค. 2569; the return
+ * to the normal 10% in 2570 is the *scheduled* next step, not a certainty — the
+ * BoT may extend or revise it (official source, checked ส.ค. 2569:
+ * app.bot.or.th/FIPCS/Thai/PFIPCS_summary.aspx?packId=25680245). Treat the
+ * "future" figure as a dated scenario. This constant is the single place to edit
+ * / delete when the policy for 2570 is confirmed.
  */
 const MIN_PAYMENT_RISE = {
   effective: '2570-01',        // Thai Buddhist-year, YYYY-MM (Jan 2027 CE)
@@ -83,8 +86,12 @@ export function annualInterestBurn(debts = []) {
  * Each entry carries fact-derived `reasonTags` (a debt may carry several):
  *   'highest-rate'       — rank 1 (most expensive rate in the port)
  *   'second-rate'        — rank 2
- *   'low-rate-no-rush'   — the LOWEST rate in the list AND under 6% (mortgage-
- *                          style: don't rush to prepay, refinance instead)
+ *   'low-rate-no-rush'   — a debt tied at the LOWEST rate in the list, that rate
+ *                          under 6%, AND at least one OTHER debt has a strictly
+ *                          higher rate (mortgage-style: don't rush to prepay,
+ *                          attack the pricier balance first). Mutually exclusive
+ *                          with 'highest-rate': a portfolio with no dearer debt
+ *                          gets no no-rush tag at all.
  *   'credit-card-bureau' — type === 'credit_card' (paying it down cuts
  *                          utilisation → helps the credit bureau)
  *
@@ -103,15 +110,23 @@ export function payoffPriority(debts = []) {
   const lowestRate = sorted.length
     ? Math.min(...sorted.map(d => pos(d.interest_rate)))
     : 0;
+  // no-rush only makes sense when there's somewhere dearer to send the money.
+  const hasStrictlyHigherRate = sorted.some(d => pos(d.interest_rate) > lowestRate);
 
   return sorted.map((debt, i) => {
     const rank = i + 1;
     const rate = pos(debt.interest_rate);
     const balance = pos(debt.remaining_balance);
     const reasonTags = [];
-    if (rank === 1) reasonTags.push('highest-rate');
+    const isHighest = rank === 1;
+    if (isHighest) reasonTags.push('highest-rate');
     if (rank === 2) reasonTags.push('second-rate');
-    if (rate === lowestRate && rate < 6) reasonTags.push('low-rate-no-rush');
+    // Mutually exclusive with 'highest-rate' (the isHighest guard makes it
+    // explicit; the hasStrictlyHigherRate condition already implies rank 1,
+    // being the max, is never tied at the strict-lowest here).
+    if (!isHighest && rate === lowestRate && rate < 6 && hasStrictlyHigherRate) {
+      reasonTags.push('low-rate-no-rush');
+    }
     if (debt.type === 'credit_card') reasonTags.push('credit-card-bureau');
     return { debt, rank, rate, balance, monthlyInterest: monthlyInterest(debt), reasonTags };
   });
@@ -122,8 +137,10 @@ export function payoffPriority(debts = []) {
  * can be rolled straight onto a high-rate balance without finding new money.
  *
  * ACTIVE debts where total_months and months_paid are both known and 1–3 (incl.)
- * instalments remain. Returns [{ debt, monthsLeft, freesPerMonth }] sorted by
- * monthsLeft ASC (soonest first).
+ * instalments remain AND the monthly payment it frees is positive (a debt with
+ * no monthly_payment frees no cash — there's no "โอกาส ฿0/เดือน" to show).
+ * Returns [{ debt, monthsLeft, freesPerMonth }] sorted by monthsLeft ASC
+ * (soonest first).
  */
 export function rolloverOpportunities(debts = []) {
   return activeDebts(debts)
@@ -133,53 +150,72 @@ export function rolloverOpportunities(debts = []) {
       monthsLeft: Number(d.total_months) - Number(d.months_paid),
       freesPerMonth: pos(d.monthly_payment),
     }))
-    .filter(o => o.monthsLeft >= 1 && o.monthsLeft <= 3)
+    .filter(o => o.monthsLeft >= 1 && o.monthsLeft <= 3 && o.freesPerMonth > 0)
     .sort((a, b) => a.monthsLeft - b.monthsLeft);
 }
 
 /**
  * The BoT minimum-payment-rise deadline (see MIN_PAYMENT_RISE above).
  *
- * null when there are no active credit_card debts with a positive balance AND a
- * positive interest_rate. Otherwise:
- *   { effectiveLabel, currentMinTotal, futureMinTotal }
- * currentMinTotal = Σ each card's monthly_payment, falling back to
- *                   balance × fromPct/100 when monthly_payment is missing.
- * futureMinTotal  = Σ balance × toPct/100.
+ * Eligibility is a REVOLVING credit card only: active && type === 'credit_card'
+ * && balance > 0 && total_months == null. A fixed instalment (total_months set,
+ * e.g. a card-linked ประกัน paid over N months) is NOT revolving, so it is
+ * excluded. Eligibility does NOT depend on interest_rate — the minimum-payment
+ * floor is a % of the BALANCE, not of the rate.
+ *
+ * null when no card qualifies. Otherwise:
+ *   { effectiveLabel, fromPct, toPct, currentMinTotal, futureMinTotal, actualPaymentTotal }
+ * Both floors are computed from the SAME base (the balance), rounded per-card
+ * before summing, so they are honestly comparable:
+ *   currentMinTotal    = Σ round(balance × fromPct/100)   // today's 8% floor
+ *   futureMinTotal     = Σ round(balance × toPct/100)     // the 2570 10% floor
+ *   actualPaymentTotal = Σ monthly_payment                // what's actually paid
+ * Since toPct (10) > fromPct (8) and every card has a positive balance,
+ * futureMinTotal > currentMinTotal always — the honest "the floor rises" figure.
  */
 export function creditCardDeadline(debts = []) {
   const cards = activeDebts(debts).filter(
     d => d.type === 'credit_card'
       && pos(d.remaining_balance) > 0
-      && pos(d.interest_rate) > 0,
+      && d.total_months == null,
   );
   if (!cards.length) return null;
 
-  let currentMinTotal = 0;
-  let futureMinTotal  = 0;
+  let currentMinTotal   = 0;
+  let futureMinTotal    = 0;
+  let actualPaymentTotal = 0;
   for (const d of cards) {
     const bal = pos(d.remaining_balance);
-    const mp  = pos(d.monthly_payment);
-    currentMinTotal += mp > 0 ? mp : Math.round(bal * MIN_PAYMENT_RISE.fromPct / 100);
-    futureMinTotal  += Math.round(bal * MIN_PAYMENT_RISE.toPct / 100);
+    currentMinTotal    += Math.round(bal * MIN_PAYMENT_RISE.fromPct / 100);
+    futureMinTotal     += Math.round(bal * MIN_PAYMENT_RISE.toPct / 100);
+    actualPaymentTotal += pos(d.monthly_payment);
   }
   return {
     effectiveLabel: MIN_PAYMENT_RISE.label,
+    fromPct: MIN_PAYMENT_RISE.fromPct,
+    toPct: MIN_PAYMENT_RISE.toPct,
     currentMinTotal,
     futureMinTotal,
+    actualPaymentTotal,
   };
 }
 
 /**
- * Active debts missing an interest_rate OR a remaining_balance, so the burn
- * headline is understated. An interest-free instalment legitimately has a null
- * rate — it still counts here, and the wording stays neutral ("ยังไม่ได้กรอก
- * ดอก/ยอด"), never accusatory.
+ * Active debts whose interest_rate OR remaining_balance is genuinely MISSING —
+ * null, blank, or non-finite — so the burn headline is understated by an unknown
+ * amount. A value that is explicitly a numeric 0 is KNOWN, not missing: a genuine
+ * 0% instalment (rate 0) or a fully-cleared balance (0) is complete data, not a
+ * gap, and must not be reported as "ตัวเลขจริงสูงกว่านี้". The wording stays
+ * neutral ("ยังไม่ได้กรอกดอก/ยอด"), never accusatory.
  *
  * Returns { debts: [...names], count }.
  */
 export function dataGaps(debts = []) {
-  const isMissing = v => v == null || pos(v) <= 0;
+  const isMissing = v => {
+    if (v == null) return true;
+    if (typeof v === 'string' && v.trim() === '') return true;
+    return !Number.isFinite(Number(v));
+  };
   const gapped = activeDebts(debts).filter(
     d => isMissing(d.interest_rate) || isMissing(d.remaining_balance),
   );
