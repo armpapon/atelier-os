@@ -68,7 +68,7 @@ import {
   CREEP_MIN_DELTA, FREQUENT_MIN_COUNT, OTHER_CATEGORY, MAX_RECURRING_ROWS,
 } from '../src/lib/moneyLeaks.js';
 import {
-  monthlyInterest, totalInterestBurn, annualInterestBurn,
+  monthlyInterest, principalOf, totalInterestBurn, annualInterestBurn,
   payoffPriority, rolloverOpportunities, creditCardDeadline, dataGaps,
 } from '../src/lib/debtAdvice.js';
 import {
@@ -3962,14 +3962,16 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
 //  minimum-payment deadline figures (and its null case), and the data-gap list.
 // ════════════════════════════════════════════════════════════════════════════
 {
-  section('v4.46 · monthlyInterest — ยอด × ดอก/100/12 ปัดเศษ, null-safe');
+  section('v4.49 · monthlyInterest — เงินต้นจริง × ดอก/1200 (RAW ไม่ปัด), null-safe');
 
-  check('60,000฿ @ 16%/ปี → 800฿/เดือน',
+  check('60,000฿ @ 16%/ปี → 800฿/เดือน (revolving: ยอด = เงินต้น)',
     monthlyInterest({ remaining_balance: 60000, interest_rate: 16 }) === 800,
     String(monthlyInterest({ remaining_balance: 60000, interest_rate: 16 })));
 
-  check('ปัดเศษเป็นบาท (50,674 @ 16% = 675.65 → 676)',
-    monthlyInterest({ remaining_balance: 50674, interest_rate: 16 }) === 676,
+  // A9 · Minor 6: monthlyInterest ให้ค่า RAW (ไม่ปัด) — ปัดเฉพาะตอนแสดงผล
+  // 50,674 × 16 / 1200 = 675.6533… (เดิม A8 ปัดเป็น 676; ตอนนี้ RAW).
+  check('RAW ไม่ปัด (50,674 @ 16% = 675.6533…, ปัดเฉพาะตอน render)',
+    Math.abs(monthlyInterest({ remaining_balance: 50674, interest_rate: 16 }) - 675.65333333) < 1e-6,
     String(monthlyInterest({ remaining_balance: 50674, interest_rate: 16 })));
 
   check('ยอดหรือดอกเป็น null/0/ติดลบ → 0',
@@ -4219,22 +4221,23 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
 //  and surfacing in paymentBelowInterest.
 // ════════════════════════════════════════════════════════════════════════════
 {
-  section('v4.48 · planDebts — active + ยอด>0 + ดอก>0 เท่านั้น');
+  section('v4.49 · planDebts — active + ยอด>0 + rate ที่รู้จริง (รวม 0%, A9 · Major 4)');
 
   {
     const mixed = [
       { id: 'a', name: 'บัตร A',     remaining_balance: 50000, interest_rate: 16 },
-      { id: 'z', name: 'ผ่อน 0%',    remaining_balance: 20000, interest_rate: 0 },   // rate 0 → out
+      { id: 'z', name: 'ผ่อน 0%',    remaining_balance: 20000, interest_rate: 0 },   // rate 0 จริง → IN (Major 4)
       { id: 'b', name: 'ปิดจบ',      remaining_balance: 0,     interest_rate: 16 },  // balance 0 → out
       { id: 'i', name: 'ปิดบัญชี',   remaining_balance: 50000, interest_rate: 16, is_active: false }, // inactive → out
+      { id: 'm', name: 'ไม่กรอกดอก', remaining_balance: 30000, interest_rate: null },  // rate หาย → out
       { id: 's', name: 'string coerce', remaining_balance: '60000', interest_rate: '9.25' },          // strings ok
     ];
     const kept = planDebts(mixed).map(d => d.id);
-    check('รวมเฉพาะก้อนที่ active + มีทั้งยอดและดอก (string ก็ coerce ได้)',
-      kept.length === 2 && kept.includes('a') && kept.includes('s'),
+    check('รวมก้อน active ที่มียอด>0 + rate ที่รู้จริง (0% นับด้วย, string coerce)',
+      kept.length === 3 && kept.includes('a') && kept.includes('z') && kept.includes('s'),
       kept.join(', '));
-    check('ก้อนดอก 0 / ยอด 0 / inactive ถูกตัดออก',
-      !kept.includes('z') && !kept.includes('b') && !kept.includes('i'));
+    check('ยอด 0 / inactive / rate ที่หายไป (null) ถูกตัด — แต่ 0% ไม่ถูกตัด',
+      !kept.includes('b') && !kept.includes('i') && !kept.includes('m'));
     check('planDebts([]) = [] (ไม่พัง)', planDebts([]).length === 0);
   }
 
@@ -4327,6 +4330,145 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     check('ไม่มี planDebts → monthsToAllClear 0, ดอกรวม 0, perDebt ว่าง',
       none.monthsToAllClear === 0 && none.totalInterest === 0 && none.perDebt.length === 0);
     check('paymentBelowInterest([]) = [] (null-safe)', paymentBelowInterest([]).length === 0);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  v4.49 · A9 (DLG-FIN-001) — the unified principal + APR debt model
+//
+//  ROOT CAUSE (Major 1): for a debt with total_months the data model stores
+//  remaining_balance = (total_months − months_paid) × monthly_payment — the SUM
+//  OF REMAINING PAYMENTS, which already includes every future interest charge
+//  (supabase/migration_add_debt_rpc.sql:74-80 · :132-137). Accruing APR on it
+//  double-counts. principalOf() recovers the true principal via annuity PV;
+//  every interest computation now runs on it. All fixtures SYNTHETIC.
+// ════════════════════════════════════════════════════════════════════════════
+{
+  section('v4.49 · principalOf — annuity PV สำหรับหนี้ผ่อน (A9 · Major 1)');
+
+  {
+    // The audit's 60-month counterexample: 60 งวดเหลือ × ฿1,000 @ 12%.
+    // remaining_balance stores the payment-sum 60,000; the TRUE principal is the
+    // annuity PV ≈ 44,955 (< payment-sum). At 12% it amortizes in exactly 60
+    // months with lifetime interest ≈ 15,045 — vs the OLD double-count bug that
+    // reported 93 months / ฿32,087 on the payment-inclusive balance.
+    const fixed = {
+      id: 'ft', name: 'ผ่อน 60 งวด', remaining_balance: 60000,
+      interest_rate: 12, monthly_payment: 1000, total_months: 60, months_paid: 0,
+    };
+    const P = principalOf(fixed);
+    check('เงินต้นจริง = annuity PV ≈ 44,955 และ < ยอดค่างวดรวม 60,000',
+      Math.abs(P - 44955.04) < 1 && P < 60000, String(P));
+
+    const run = simulatePayoffMP([fixed], 0);
+    check('จำลองแล้วปลดใน ~60 เดือน (ไม่ใช่ 93) — ค่างวดตัดต้นได้ตามสัญญา',
+      run.monthsToAllClear != null && run.monthsToAllClear >= 59 && run.monthsToAllClear <= 61,
+      String(run.monthsToAllClear));
+    check('ดอกตลอดสัญญา ~15,045 << 32,087 ของบั๊กเดิม (ไม่คิดดอกซ้ำ)',
+      run.totalInterest < 16000 && run.totalInterest > 14000, String(run.totalInterest));
+
+    // A 0% fixed-term: payment-sum == principal, so fall back to remaining_balance.
+    check('ผ่อน 0% (fixed-term) → เงินต้น = remaining_balance (ยอดค่างวด = เงินต้น)',
+      principalOf({ remaining_balance: 12000, interest_rate: 0, monthly_payment: 1000, total_months: 12, months_paid: 0 }) === 12000);
+
+    // Revolving (no total_months) stores true principal already.
+    check('Revolving (ไม่มี total_months) → เงินต้น = remaining_balance',
+      principalOf({ remaining_balance: 50000, interest_rate: 16 }) === 50000);
+
+    // Fixed-term but payment missing → can't derive → fall back.
+    check('fixed-term แต่ไม่มีค่างวด → fall back = remaining_balance',
+      principalOf({ remaining_balance: 40000, interest_rate: 9, total_months: 24, months_paid: 0 }) === 40000);
+
+    // Non-finite / null → 0 (defensive, like the other libs).
+    check('ยอดที่อ่านไม่ได้ / null → 0',
+      principalOf(null) === 0
+      && principalOf({ remaining_balance: 'abc', interest_rate: 12, monthly_payment: 1000, total_months: 12 }) === 0);
+  }
+
+  section('v4.49 · monthlyInterest คิดบนเงินต้นจริง — บ้านผ่อนปกติไม่ติดธง (A9 · Major 1 + Minor 6)');
+
+  {
+    // A mortgage-shaped fixture: remaining_balance is the payment-sum
+    // 268 × 15,000 = 4,020,000; true principal ≈ 2,463,540, whose monthly
+    // interest ≈ ฿9,854 < the ฿15,000 payment — so it amortizes normally and
+    // paymentBelowInterest must NOT flag it (the old artifact disappears).
+    const mortgage = {
+      id: 'home', name: 'บ้าน', remaining_balance: 4020000,
+      interest_rate: 4.8, monthly_payment: 15000, total_months: 300, months_paid: 32,
+    };
+    const mi = monthlyInterest(mortgage);
+    check('ดอก/เดือน คิดบนเงินต้นจริง ≈ 9,854 (< ค่างวด 15,000)',
+      Math.abs(mi - 9854.16) < 5 && mi < 15000, String(mi));
+    check('บ้านผ่อนปกติ (ค่างวด > ดอกบนเงินต้นจริง) ไม่ถูกติดธง paymentBelowInterest',
+      paymentBelowInterest([mortgage]).length === 0);
+
+    // A9 · Minor 6 — the payment-vs-interest compare is on the RAW value, so the
+    // sub-฿1 boundary is classified honestly (no pre-rounding false positives).
+    // 49,960 @ 12% → raw 499.6; a ฿500 payment is ABOVE it → not flagged
+    // (the old Math.round(499.6)=500 would have wrongly flagged 500 ≤ 500).
+    check('Minor 6 · ขอบ ฿1 (raw 499.6 < ค่างวด 500) → ไม่ติดธง (เดิมปัดเป็น 500 แล้วติดผิด)',
+      paymentBelowInterest([{ id: 'e', name: 'edge', remaining_balance: 49960, interest_rate: 12, monthly_payment: 500 }]).length === 0);
+    check('Minor 6 · raw 500.4 > ค่างวด 500 → ติดธงจริง',
+      paymentBelowInterest([{ id: 'e', name: 'edge', remaining_balance: 50040, interest_rate: 12, monthly_payment: 500 }]).length === 1);
+  }
+
+  section('v4.49 · planDebts รวมหนี้ 0% + เงินงวดทบต่อหลังปลด (A9 · Major 4)');
+
+  {
+    const withZero = [
+      { id: 'card',  name: 'บัตร',         remaining_balance: 20000, interest_rate: 18, monthly_payment: 2000 },
+      { id: 'phone', name: 'ผ่อนมือถือ 0%', remaining_balance: 6000,  interest_rate: 0,  monthly_payment: 1000 },
+    ];
+    const kept = planDebts(withZero).map(d => d.id);
+    check('หนี้ 0% (rate เป็นเลข 0 จริง) ถูกรวมในแผน — ต่างจาก rate ที่หายไป',
+      kept.includes('card') && kept.includes('phone') && kept.length === 2, kept.join(','));
+    check('rate ที่ขาด (null/blank) เท่านั้นที่ถูกตัด — 0 ไม่ถูกตัด',
+      planDebts([{ id: 'm', remaining_balance: 5000, interest_rate: null, monthly_payment: 500 }]).length === 0
+      && planDebts([{ id: 'b', remaining_balance: 5000, interest_rate: '', monthly_payment: 500 }]).length === 0
+      && planDebts([{ id: 'z', remaining_balance: 5000, interest_rate: 0, monthly_payment: 500 }]).length === 1);
+
+    const run = simulatePayoffMP(withZero, 0);
+    const phone = run.perDebt.find(d => d.id === 'phone');
+    const card  = run.perDebt.find(d => d.id === 'card');
+    check('หนี้ 0% โผล่ใน perDebt/timeline และปลดจริง (~6 เดือน, ไม่มีดอก)',
+      phone && phone.clearedMonth != null && phone.clearedMonth <= 6, String(phone && phone.clearedMonth));
+
+    // The 0% debt's payment rolls over: once phone clears, its ฿1,000 joins the
+    // pool → the card clears SOONER than it would on its own ฿2,000.
+    const cardAlone = simulatePayoffMP([withZero[0]], 0).perDebt.find(d => d.id === 'card');
+    check('เงินงวดของหนี้ 0% ทบเข้ากอง — บัตรปลดเร็วกว่าตอนอยู่ลำพัง',
+      card.clearedMonth != null && cardAlone.clearedMonth != null
+      && card.clearedMonth < cardAlone.clearedMonth,
+      `รวม ${card.clearedMonth} < ลำพัง ${cardAlone.clearedMonth}`);
+  }
+
+  section('v4.49 · comparePayoff censored — ไม่จบใน cap = unknown ไม่ใช่เลขมั่ว (A9 · Major 3)');
+
+  {
+    // 1,000,000 @ 24% (2%/เดือน), ค่างวด 1,000: interest 20,000/เดือน >> ค่างวด →
+    // baseline โตจนชน cap ไม่มีวันจบ. Extra +20,000 ทำให้ plan จบได้ แต่ baseline
+    // ยัง censored → เทียบไม่ได้: interestSaved/monthsSaved = null (ไม่ใช่ 566 เดือน /
+    // ฿1.4e12 ตามบั๊กเดิม).
+    const heavy = [{ id: 'big', name: 'ก้อนโต', remaining_balance: 1000000, interest_rate: 24, monthly_payment: 1000 }];
+    const base = simulatePayoffMP(heavy, 0);
+    check('baseline ไม่จบใน cap → monthsToAllClear = null',
+      base.monthsToAllClear === null, String(base.monthsToAllClear));
+    check('ก้อนที่ยังไม่จบ → clearedMonth = null (ไม่ใช่ 720)',
+      base.perDebt[0].clearedMonth === null, String(base.perDebt[0].clearedMonth));
+
+    const cmp = comparePayoff(heavy, 20000);
+    check('censored = true เมื่อ baseline หรือ plan ไม่จบ',
+      cmp.censored === true);
+    check('interestSaved / monthsSaved = null (unknown) — ไม่แทนด้วย 720 แล้วลบ',
+      cmp.interestSaved === null && cmp.monthsSaved === null,
+      `saved=${cmp.interestSaved}/${cmp.monthsSaved}`);
+    check('plan (มี extra) จบได้จริง → monthsToAllClear finite',
+      cmp.plan.monthsToAllClear != null);
+
+    // Both runs clear → censored false, deltas are real numbers.
+    const clears = comparePayoff([{ id: 'c', name: 'c', remaining_balance: 50000, interest_rate: 16, monthly_payment: 4000 }], 3000);
+    check('ทั้งสอง run จบ → censored false, interestSaved/monthsSaved เป็นตัวเลขจริง',
+      clears.censored === false && clears.interestSaved != null && clears.monthsSaved != null);
   }
 }
 

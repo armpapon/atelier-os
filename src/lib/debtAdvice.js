@@ -51,15 +51,63 @@ function activeDebts(debts) {
 }
 
 /**
- * Monthly interest a single debt is burning right now.
- * remaining_balance × (interest_rate/100) / 12, rounded to the baht.
- * 0 when either input is null / non-numeric / ≤ 0.
+ * True principal outstanding for a debt — the number APR may honestly accrue on.
+ *
+ * ⚠️ The data model stores two DIFFERENT things in `remaining_balance`:
+ *   • Revolving debts (no `total_months`, e.g. credit cards) store the real
+ *     principal outstanding.
+ *   • Fixed-term debts (`total_months` set — mortgage / hire-purchase / lease)
+ *     store the SUM OF REMAINING PAYMENTS: (total_months − months_paid) ×
+ *     monthly_payment (see debt_mark_paid / debt_unmark_paid in
+ *     supabase/migration_add_debt_rpc.sql:74-80 and :132-137). That figure
+ *     ALREADY bakes in every future interest charge — accruing APR on it again
+ *     double-counts interest (the A9 · Major-1 root cause).
+ *
+ * So principalOf recovers the principal for a fixed-term debt via the annuity
+ * present-value of its remaining payments (r = rate/1200, n = remaining months):
+ *   principal = payment × (1 − (1+r)^(−n)) / r
+ * clamped to [0, remaining_balance] (it can never exceed the payment-sum).
+ *
+ * Fallbacks that return remaining_balance unchanged:
+ *   • no term → revolving row already holds true principal.
+ *   • rate 0 (a genuine 0% instalment: payment-sum == principal).
+ *   • no monthly_payment / unreadable term → can't derive, use the stored value.
+ * Non-finite inputs coerce to 0, like the other finance libs.
+ */
+export function principalOf(debt) {
+  const balance = pos(debt?.remaining_balance);
+  const tm = debt?.total_months;
+  const termBlank = tm == null || (typeof tm === 'string' && tm.trim() === '');
+  const totalMonths = Number(tm);
+  // Revolving (no term) or an unreadable term → remaining_balance IS principal.
+  if (termBlank || !Number.isFinite(totalMonths)) return balance;
+
+  const rate = pos(debt?.interest_rate);
+  const payment = pos(debt?.monthly_payment);
+  // 0% instalment (payment-sum == principal) or missing payment → fall back.
+  if (!rate || !payment) return balance;
+
+  const paidRaw = Number(debt?.months_paid);
+  const paid = Number.isFinite(paidRaw) ? paidRaw : 0;
+  const n = Math.max(1, totalMonths - paid);
+  const r = rate / 1200;
+  const pv = payment * (1 - Math.pow(1 + r, -n)) / r;
+  if (!Number.isFinite(pv) || pv <= 0) return balance; // defensive
+  return Math.min(balance, pv);                        // clamp to [0, remaining_balance]
+}
+
+/**
+ * Monthly interest a single debt is burning right now — on its TRUE principal
+ * (principalOf), never the payment-inclusive stored balance. Returns the RAW
+ * figure (principal × rate/1200); callers round only where they display it
+ * (A9 · Minor 6 wants the payment-vs-interest compare done on the raw value).
+ * 0 when principal or rate is null / non-numeric / ≤ 0.
  */
 export function monthlyInterest(debt) {
-  const bal  = pos(debt?.remaining_balance);
+  const principal = principalOf(debt);
   const rate = pos(debt?.interest_rate);
-  if (!bal || !rate) return 0;
-  return Math.round(bal * (rate / 100) / 12);
+  if (!principal || !rate) return 0;
+  return principal * rate / 1200;
 }
 
 /**

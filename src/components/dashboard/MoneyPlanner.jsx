@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import {
   planDebts, comparePayoff, paymentBelowInterest, MONTH_CAP,
 } from '../../lib/moneyPlanner.js';
-import { rolloverOpportunities } from '../../lib/debtAdvice.js';
 import { currentYearMonth } from '../../lib/api/finance.js';
 import { formatThaiMonth } from './MonthNav.jsx';
 
@@ -51,38 +50,34 @@ export function MoneyPlanner({ debts }) {
   const cmp = useMemo(() => comparePayoff(debts, extra), [debts, extra]);
   const belowInterest = useMemo(() => paymentBelowInterest(debts), [debts]);
 
-  // A rollover about to free a real monthly payment → offer it as a preset.
-  const rollover = useMemo(() => {
-    const [first] = rolloverOpportunities(debts);
-    return first && first.freesPerMonth > 0 ? first : null;
-  }, [debts]);
-
   if (plan.length < 1) return null;
 
   const poolFloor = plan.reduce((s, d) => s + (Number(d.monthly_payment) || 0), 0);
-  const { plan: planRun, baseline, interestSaved, monthsSaved } = cmp;
+  const { plan: planRun, baseline, interestSaved, monthsSaved, censored } = cmp;
 
-  // Presets: minimum, +5k, +10k, and (when available) the rollover money.
+  // Presets: minimum, +5k, +10k, +20k — every value ≤ SLIDER_MAX and equal to
+  // its own label (no rollover preset: the simulator's automatic rollover
+  // already frees a cleared debt's payment into the pool, so adding it again as
+  // "extra" double-counts and applies before the cash is free — A9 · Major 2).
   const presets = [
     { v: 0, label: 'จ่ายขั้นต่ำ' },
     { v: 5000, label: '+5,000' },
     { v: 10000, label: '+10,000' },
+    { v: 20000, label: '+20,000' },
   ];
-  if (rollover) {
-    presets.push({
-      v: Math.min(SLIDER_MAX, Math.round(rollover.freesPerMonth)),
-      label: `+${fmt(Math.round(rollover.freesPerMonth))} (เงินจาก ${rollover.debt.name})`,
-    });
-  }
 
   const freeLabel = monthOffsetLabel(planRun.monthsToAllClear) || 'นานเกิน 60 ปี';
   const baseLabel = monthOffsetLabel(baseline.monthsToAllClear) || 'นานเกิน 60 ปี';
 
-  const freeSub = monthsSaved > 0
-    ? `เร็วขึ้น ${monthsSaved} เดือน (จ่ายขั้นต่ำ = ${baseLabel})`
-    : planRun.monthsToAllClear != null
-      ? `ใน ${planRun.monthsToAllClear} เดือน`
-      : 'ยังไม่ปลดภายใน 60 ปี';
+  // When the comparison is censored (a run doesn't clear within 60 years) the
+  // true savings are UNKNOWN — never show a fabricated ฿/month figure.
+  const freeSub = censored
+    ? 'เทียบไม่ได้ · แผนนี้ใช้เวลานานเกิน 60 ปี'
+    : monthsSaved > 0
+      ? `เร็วขึ้น ${monthsSaved} เดือน (จ่ายขั้นต่ำ = ${baseLabel})`
+      : planRun.monthsToAllClear != null
+        ? `ใน ${planRun.monthsToAllClear} เดือน`
+        : 'ยังไม่ปลดภายใน 60 ปี';
 
   // Timeline scale — baseline months is the widest the bars ever need to span.
   const maxMonths = Math.max(baseline.monthsToAllClear ?? MONTH_CAP, 1);
@@ -114,14 +109,15 @@ export function MoneyPlanner({ debts }) {
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
         margin: '20px 0 8px',
       }}>
-        <span style={MONO_LBL}>เพิ่มเงินโปะต่อเดือน</span>
+        <label htmlFor="mp-extra-slider" style={MONO_LBL}>เพิ่มเงินโปะต่อเดือน</label>
         <span data-extra-value style={{
           fontFamily: 'var(--f-body)', fontSize: 17, fontWeight: 800,
           color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums',
         }}>{(extra > 0 ? '+' : '') + fmt(extra)}฿</span>
       </div>
       <input
-        type="range" data-extra-slider
+        id="mp-extra-slider" type="range" data-extra-slider
+        aria-label="เพิ่มเงินโปะต่อเดือน"
         min={0} max={SLIDER_MAX} step={SLIDER_STEP} value={extra}
         onChange={(e) => setExtra(Number(e.target.value))}
         style={{ width: '100%', accentColor: 'var(--accent)', height: 26 }}
@@ -170,21 +166,36 @@ export function MoneyPlanner({ debts }) {
           borderRadius: 14, padding: '15px 16px',
         }}>
           <div style={{ ...MONO_LBL, fontSize: 9.5, letterSpacing: '0.14em' }}>ประหยัดดอกเบี้ย</div>
-          <div data-interest-saved style={{
-            fontSize: 23, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
-            color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums',
-          }}>{baht(interestSaved)}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-            จ่ายดอกรวม {baht(planRun.totalInterest)} (ขั้นต่ำ {baht(baseline.totalInterest)})
-          </div>
+          {censored ? (
+            <>
+              <div data-interest-saved style={{
+                fontSize: 18, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
+                color: 'var(--text-muted)',
+              }}>เทียบไม่ได้</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                แผนนี้ใช้เวลานานเกิน 60 ปี
+              </div>
+            </>
+          ) : (
+            <>
+              <div data-interest-saved style={{
+                fontSize: 23, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
+                color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums',
+              }}>{baht(interestSaved)}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                จ่ายดอกรวม {baht(planRun.totalInterest)} (ขั้นต่ำ {baht(baseline.totalInterest)})
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Per-debt timeline */}
       <div style={{ marginTop: 20 }}>
         {planRun.perDebt.map((d) => {
-          const when = d.clearedMonth;
-          const pct = Math.max(6, 100 - (when / maxMonths * 100));
+          const when = d.clearedMonth;                 // null → not cleared within cap
+          const cleared = when != null;
+          const pct = cleared ? Math.max(6, 100 - (when / maxMonths * 100)) : 6;
           return (
             <div key={d.id} data-timeline-row style={{
               display: 'flex', alignItems: 'center', gap: 12,
@@ -206,8 +217,9 @@ export function MoneyPlanner({ debts }) {
               </div>
               <div data-timeline-when style={{
                 fontFamily: 'var(--f-mono)', fontSize: 12, fontWeight: 700,
-                color: 'var(--success)', whiteSpace: 'nowrap', width: 96, textAlign: 'right', flex: 'none',
-              }}>{monthOffsetLabel(when)}</div>
+                color: cleared ? 'var(--success)' : 'var(--text-muted)',
+                whiteSpace: 'nowrap', width: 96, textAlign: 'right', flex: 'none',
+              }}>{cleared ? monthOffsetLabel(when) : 'เกิน 60 ปี'}</div>
             </div>
           );
         })}

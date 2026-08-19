@@ -17,11 +17,12 @@
  * its own monthly payment as a floor, then the whole leftover pool (including
  * the extra, and any payment freed by a just-cleared debt) is thrown at the
  * highest-rate balance first. A debt whose floor is below its own monthly
- * interest grows (negative amortisation) until the rollover cascade reaches it
- * — the month cap prevents an infinite loop, and because the pool eventually
- * concentrates on the last debt, everything clears in practice.
+ * interest grows (negative amortisation) until the rollover cascade reaches it.
+ * The month cap (60 years) prevents an infinite loop: if the total pool can't
+ * out-run the combined interest, a run may NOT clear — that is reported as
+ * monthsToAllClear = null (censored), never silently as month 720.
  */
-import { monthlyInterest } from './debtAdvice.js';
+import { monthlyInterest, principalOf } from './debtAdvice.js';
 
 // Hard ceiling on the month loop (60 years). A payoff that hasn't finished by
 // here reports monthsToAllClear = null rather than looping forever.
@@ -42,14 +43,29 @@ function isActive(d) {
 }
 
 /**
- * The debts the planner simulates: ACTIVE debts with BOTH a positive
- * remaining_balance AND a positive interest_rate. This intentionally includes
- * the mortgage / hire-purchase too — the owner asked to plan over ALL filled-in
- * debts, not just the credit cards.
+ * A rate is KNOWN when it is a finite number ≥ 0 — a genuine 0% instalment
+ * counts as known data, only a null / blank / non-finite rate is missing. This
+ * is the distinction the debt-advice card (dataGaps) already draws: 0% is a
+ * fact, not a gap (A9 · Major 4).
+ */
+function rateKnown(d) {
+  const v = d?.interest_rate;
+  if (v == null) return false;
+  if (typeof v === 'string' && v.trim() === '') return false;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0;
+}
+
+/**
+ * The debts the planner simulates: ACTIVE debts with a positive remaining_balance
+ * AND a KNOWN rate (finite ≥ 0 — INCLUDING 0%; only a missing rate is excluded).
+ * This intentionally includes the mortgage / hire-purchase and any 0% instalment
+ * too — the owner asked to plan over ALL filled-in debts. A 0% debt appears in
+ * the plan and timeline, and its payment stays in the rollover pool.
  */
 export function planDebts(debts = []) {
   return (debts || []).filter(
-    d => isActive(d) && pos(d.remaining_balance) > 0 && pos(d.interest_rate) > 0,
+    d => isActive(d) && pos(d.remaining_balance) > 0 && rateKnown(d),
   );
 }
 
@@ -77,13 +93,16 @@ export function planDebts(debts = []) {
  */
 export function simulatePayoff(debts = [], extraPerMonth = 0) {
   const plan = planDebts(debts);
-  // Working copies — never mutate the caller's rows.
+  // Working copies — never mutate the caller's rows. The starting balance is the
+  // TRUE principal (principalOf), NOT the stored remaining_balance: for a
+  // fixed-term debt the latter is the payment-sum and already includes all
+  // future interest, so accruing APR on it would double-count (A9 · Major 1).
   const cs = plan.map(d => ({
     id: d.id,
     name: d.name,
     rate: pos(d.interest_rate),
     payment: pos(d.monthly_payment),
-    balance: pos(d.remaining_balance),
+    balance: principalOf(d),
   }));
 
   const monthlyPool = cs.reduce((s, c) => s + c.payment, 0) + pos(extraPerMonth);
@@ -143,13 +162,16 @@ export function simulatePayoff(debts = [], extraPerMonth = 0) {
     }
   }
 
+  // A debt not cleared within the cap has clearedMonth = null (censored /
+  // unknown) — NEVER MONTH_CAP, which the UI would render as an exact date at
+  // month 720 (A9 · Major 3). Nulls sort to the end.
   const perDebt = cs
     .map(c => ({
       id: c.id,
       name: c.name,
-      clearedMonth: clearedAtMonth[c.id] ?? monthsToAllClear ?? MONTH_CAP,
+      clearedMonth: clearedAtMonth[c.id] ?? null,
     }))
-    .sort((a, b) => a.clearedMonth - b.clearedMonth);
+    .sort((a, b) => (a.clearedMonth ?? Infinity) - (b.clearedMonth ?? Infinity));
 
   return {
     monthsToAllClear,
@@ -167,27 +189,36 @@ export function simulatePayoff(debts = [], extraPerMonth = 0) {
  * the extra money — so interestSaved / monthsSaved isolate the value of the
  * extra, not of switching strategy.
  *
- * Returns { plan, baseline, interestSaved, monthsSaved }. A null
- * monthsToAllClear (cap hit) is treated as the cap for the months-saved delta.
+ * Returns { plan, baseline, censored, interestSaved, monthsSaved }.
+ * If EITHER run fails to clear within the cap (monthsToAllClear == null), the
+ * comparison is CENSORED: the true lifetime interest / payoff month of the
+ * unfinished run is unknown, so interestSaved and monthsSaved are null (unknown)
+ * rather than a fabricated delta against the 720-month cap (A9 · Major 3).
  */
 export function comparePayoff(debts = [], extraPerMonth = 0) {
   const baseline = simulatePayoff(debts, 0);
   const plan = simulatePayoff(debts, extraPerMonth);
-  const baseMonths = baseline.monthsToAllClear ?? MONTH_CAP;
-  const planMonths = plan.monthsToAllClear ?? MONTH_CAP;
+  const censored = baseline.monthsToAllClear == null || plan.monthsToAllClear == null;
   return {
     plan,
     baseline,
-    interestSaved: Math.max(0, baseline.totalInterest - plan.totalInterest),
-    monthsSaved: Math.max(0, baseMonths - planMonths),
+    censored,
+    interestSaved: censored ? null : Math.max(0, baseline.totalInterest - plan.totalInterest),
+    monthsSaved: censored ? null : Math.max(0, baseline.monthsToAllClear - plan.monthsToAllClear),
   };
 }
 
 /**
  * Plan debts whose monthly payment is at/below the interest they burn each
  * month — the balance can't fall on its own payment (it only shrinks once the
- * rollover cascade reaches it). The owner's mortgage is the live example:
- * payment 15,000 < interest ~16,147/month.
+ * rollover cascade reaches it).
+ *
+ * The compare is on the RAW interest (principalOf × rate/1200, via monthlyInterest)
+ * vs. the raw payment — no pre-rounding, so the ฿1 boundary is classified honestly
+ * (A9 · Minor 6). Because the interest is now on the TRUE principal, a
+ * normally-amortizing mortgage (payment above interest on its real principal) is
+ * NOT flagged — the old "payment below interest" reading was an artifact of
+ * accruing APR on the payment-inclusive balance.
  *
  * Returns [{ id, name, monthlyPayment, monthlyInterest }].
  */
