@@ -3,12 +3,12 @@ import { Card, CardHeader, Badge, Button } from '../ui/index.js';
 
 // ─── HA-50 session window — Thai time (UTC+7), ไม่ต้องแปลง DST ────────────
 // ระบบเดียว: XAUUSD · TF 1h · EMA50 + Heikin Ashi flip
-// หน้าต่างเทรด = London ต่อ NY 14:00–23:00 ตามเวลาไทย
+// หน้าต่างเทรด = London ต่อ NY 08:00–23:00 ตามเวลาไทย (ขยายจาก 14:00 เมื่อ 12 ส.ค. — บอทคลาวด์เทรดช่วงนี้)
 const SESSIONS = [
   {
     id: 'HA50', label: '🕑 London–NY',
-    start: '14:00', end: '23:00',
-    startMin: 14 * 60, endMin: 23 * 60,
+    start: '08:00', end: '23:00',
+    startMin: 8 * 60, endMin: 23 * 60,
     setup: 'ราคาอยู่ฝั่งถูกของ EMA 50 · รอ HA เปลี่ยนสีและปิดแท่ง · ออกเมื่อ HA เปลี่ยนสีกลับ',
     color: 'var(--accent-strong)',
   },
@@ -21,15 +21,15 @@ const CHECKLIST = [
   { id: 'pullback',text: 'มีขาย่อสีตรงข้ามมาก่อนอย่างน้อย 2 แท่ง HA' },
   { id: 'closed',  text: 'แท่งสัญญาณเปลี่ยนสีแล้ว *ปิดแท่งแล้ว* — ไม่เข้าก่อนแท่งปิด' },
   { id: 'wick',    text: 'แท่งสัญญาณไส้ฝั่งสวนสั้น' },
-  { id: 'window',  text: 'อยู่ในช่วง 14:00–23:00 ไทย และวันนี้ไม่มีข่าวแดง (NFP / CPI / FOMC)' },
-  { id: 'risk',    text: 'ตั้ง SL ตามระบบจากกราฟแท่งเทียนจริง และขนาดไม้ = เสี่ยง 1% พอดี' },
+  { id: 'window',  text: 'อยู่ในช่วง 08:00–23:00 ไทย และวันนี้ไม่มีข่าวแดง (NFP / CPI / FOMC)' },
+  { id: 'risk',    text: 'ตั้ง SL ตามระบบจากกราฟแท่งเทียนจริง และขนาดไม้ = 0.01 lot พอดี' },
   { id: 'streak',  text: 'วันนี้ยังแพ้ไม่ถึง 3 ไม้' },
 ];
 
 const RULES = [
   { tone: 'success', icon: '✅', text: 'ออกเมื่อแท่ง HA เปลี่ยนสีกลับและปิดแล้วเท่านั้น — ห้ามปิดก่อนเพราะกลัวกำไรหาย' },
   { tone: 'danger',  icon: '🛑', text: 'แพ้ 3 ไม้ในวันเดียว = ปิดจอทันที ห้ามแก้มือ' },
-  { tone: 'danger',  icon: '🛑', text: 'ห้ามเพิ่ม lot เพราะอยากทวงทุนคืน — 1% ต่อไม้เสมอ' },
+  { tone: 'danger',  icon: '🛑', text: 'ห้ามเพิ่ม lot เพราะอยากทวงทุนคืน — 0.01 lot ต่อไม้เสมอ' },
   { tone: 'danger',  icon: '🛑', text: 'EMA แบน / ราคาถักเปีย EMA = ไม่มีเทรดวันนั้นก็คือไม่มี' },
   { tone: 'success', icon: '✅', text: 'จดทุกไม้ภายในวันเดียวกัน ห้ามค้าง — ไม้ที่ไม่ได้จด = แหกกติกา' },
 ];
@@ -92,7 +92,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
         meta={
           <span>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              XAUUSD · TF 1h · EMA50 + Heikin Ashi · เสี่ยง 1% ต่อไม้
+              XAUUSD · TF 1h · EMA50 + Heikin Ashi · 0.01 lot ต่อไม้
             </span>
           </span>
         }
@@ -129,7 +129,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
           ) : (
             <>
               <Badge tone="neutral" size="lg">ปิดจอวันนี้แล้ว</Badge>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>พรุ่งนี้เริ่ม 14:00 ตามเวลาไทย</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>พรุ่งนี้เริ่ม 08:00 ตามเวลาไทย</span>
             </>
           )}
         </div>

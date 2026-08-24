@@ -67,7 +67,7 @@ export function MissionDashboard({ trades = [] }) {
       <CardHeader
         eyebrow="🎯 HA-50 MISSION"
         title="ภารกิจ 30 ไม้ — วัดวินัย ไม่ใช่กำไร"
-        meta="XAUUSD · 1h · EMA50 + Heikin Ashi flip · เสี่ยง 1% ต่อไม้"
+        meta="XAUUSD · 1h · EMA50 + Heikin Ashi flip · 0.01 lot ต่อไม้"
       />
 
       {!m.schemaReady && (
