@@ -2,17 +2,18 @@ import { useMemo } from 'react';
 import { Card, CardHeader, Badge } from '../ui/index.js';
 
 /**
- * MissionDashboard — HA-50 demo mission tracker
+ * MissionDashboard — A3 mission tracker
  *
- * ระบบ HA-50 (XAUUSD · 1h · EMA50 + Heikin Ashi flip) backtest แล้ว expectancy ~0
- * ภารกิจนี้จึงวัด "วินัย" ไม่ใช่กำไร: 30 ไม้ demo · ทำตามกติกา ≥ 90% · Avg R > 0
+ * ระบบ A3 (XAUUSD · 1h · MACD(12,26,9) ตัด signal + EMA200 filter · SL 1.5×ATR14)
+ * ผู้รอดเดียวจากวิจัย 285 configs — เฉลยจาก backtest: WR ~36% · E +0.15..0.24R
+ * ภารกิจ 30 ไม้แรก: บอทเทรด คนมีหน้าที่ไม่แทรกแซง + จดครบ · ทำตามกติกา ≥ 90% · Avg R > 0
  *
- * Render ได้แม้ยังไม่ได้รัน migration_add_trades_ha50.sql — จะโชว์ hint แทน
+ * Render ได้แม้ยังไม่ได้รัน migration — จะโชว์ hint แทน
  */
 
 const TARGET_TRADES   = 30;
 const TARGET_RULE_PCT = 90;
-const MISSION_SYSTEM  = 'HA-50';
+const MISSION_SYSTEM  = 'A3';
 
 export function MissionDashboard({ trades = [] }) {
   const m = useMemo(() => {
@@ -65,9 +66,9 @@ export function MissionDashboard({ trades = [] }) {
   return (
     <Card>
       <CardHeader
-        eyebrow="🎯 HA-50 MISSION"
-        title="ภารกิจ 30 ไม้ — วัดวินัย ไม่ใช่กำไร"
-        meta="XAUUSD · 1h · EMA50 + Heikin Ashi flip · 0.01 lot ต่อไม้"
+        eyebrow="🎯 A3 MISSION"
+        title="ภารกิจ 30 ไม้แรกของ A3 — บอทเทรด คนคุมวินัย"
+        meta="XAUUSD · 1h · MACD(12,26,9) + EMA200 · SL 1.5×ATR14 · GoldMacdTrendBot"
       />
 
       {!m.schemaReady && (
@@ -130,7 +131,7 @@ export function MissionDashboard({ trades = [] }) {
         marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)',
         fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, fontStyle: 'italic',
       }}>
-        เป้าหมายของ 30 ไม้แรกคือวินัย ไม่ใช่กำไร — ผ่านเกณฑ์ครบก่อน แล้วค่อยคุยเรื่องขยับขนาด
+        เฉลยจากวิจัย: WR ~36% · AvgR +0.15..0.24R — 30 ไม้แรกมีไว้เทียบกับเฉลย ไม่ใช่ตัดสินระบบ (ต้องใช้ ~300 ไม้) · วินัยของคนคือไม่แทรกแซงบอทและจดครบทุกไม้
       </div>
     </Card>
   );

@@ -10,7 +10,9 @@ import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import { todayStr } from '../lib/dates.js';
 
 const SESSION_COLOR = {
-  // HA-50 (ปัจจุบัน)
+  // A3 (ปัจจุบัน — บอทเทรด 24/5)
+  'Bot 24/5':       'var(--accent-strong)',
+  // HA-50 เดิม
   'London–NY':      'var(--accent-strong)',
   // ICT เดิม — เก็บไว้ให้ trade ประวัติเก่ายังแสดงสีถูก
   'London KZ':      'var(--blue)',
@@ -34,8 +36,8 @@ export function Trading() {
   const [filtSession, setFiltSession] = useState('all');
   const [filtSetup,   setFiltSetup]   = useState('all');
   const [filtResult,  setFiltResult]  = useState('all');
-  // Legacy ICT trades (system = null) mix into every stat below unless scoped
-  // out. Default OFF — page is HA-50 by design, ICT is dead history.
+  // Legacy trades (ICT = system null, HA-50 = closed 28 Aug 2026) mix into every
+  // stat below unless scoped out. Default OFF — page is A3 by design.
   const [showLegacy,  setShowLegacy]  = useState(false);
 
   const refresh = useCallback(async () => {
@@ -57,9 +59,9 @@ export function Trading() {
   // scopedTrades feeds every downstream consumer on this page (KPI row, equity
   // curve, key metrics, PnLCalendar, trade log, filter-pill options). Only
   // MissionDashboard bypasses this and gets the raw `trades` array — it does
-  // its own HA-50 filtering.
+  // its own A3 filtering.
   const scopedTrades = useMemo(() =>
-    showLegacy ? trades : trades.filter(t => t.system === 'HA-50'),
+    showLegacy ? trades : trades.filter(t => t.system === 'A3'),
   [trades, showLegacy]);
 
   const sessions = useMemo(() => ['all', ...new Set(scopedTrades.map(t => t.session).filter(Boolean))], [scopedTrades]);
@@ -97,7 +99,7 @@ export function Trading() {
   const latestBalance = equityPoints.length > 0 ? equityPoints[equityPoints.length - 1].equity : 0;
 
   // Today's stats for Playbook — scoped the same way as the rest of the page,
-  // since this is about today's live HA-50 trading, not legacy ICT history.
+  // since this is about today's live A3 trading, not legacy history.
   const today = todayStr();
   const tradesToday  = scopedTrades.filter(t => t.trade_date === today).length;
   // Losing streak WITHIN TODAY only. Counting all-time meant the "แพ้ 3 ไม้ติด
@@ -117,7 +119,7 @@ export function Trading() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
         <div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>
-            📈 TRADING JOURNAL · HA-50 SYSTEM
+            📈 TRADING JOURNAL · A3 SYSTEM
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--text-primary)', lineHeight: 1.1 }}>
@@ -125,7 +127,7 @@ export function Trading() {
             </div>
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 5 }}>
-            XAUUSD · 1h · Mission 30 ไม้ · 08:00–23:00 น.
+            XAUUSD · 1h · MACD(12,26,9) + EMA200 · บอทเทรด 24/5
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -140,7 +142,7 @@ export function Trading() {
         </div>
       )}
 
-      {/* HA-50 demo mission — 30 ไม้ · วินัย ไม่ใช่กำไร */}
+      {/* A3 mission — 30 ไม้แรกของระบบใหม่ */}
       <MissionDashboard trades={trades} />
 
       {/* Playbook — session window + rules + checklist */}
@@ -179,7 +181,7 @@ export function Trading() {
               border: '1px solid ' + (showLegacy ? 'var(--accent-strong)' : 'var(--border-strong)'),
               background: showLegacy ? 'var(--accent-strong)' : 'transparent',
             }} />
-            แสดงไม้เก่า (ICT)
+            แสดงไม้เก่า (ICT + HA-50)
           </button>
           {(filtSession !== 'all' || filtSetup !== 'all' || filtResult !== 'all') && (
             <Button variant="ghost" size="sm" onClick={() => { setFiltSession('all'); setFiltSetup('all'); setFiltResult('all'); }}
