@@ -3,7 +3,7 @@ import { Icon } from './Icon.jsx';
 import { createTrade, updateTrade } from '../lib/api/trades.js';
 import { todayStr } from '../lib/dates.js';
 
-// HA-50 setups ขึ้นก่อน — ของเดิม (ICT) เก็บไว้ให้แก้ trade ประวัติเก่าได้
+// A3 เป็นระบบปัจจุบัน — ของเดิม (ICT/HA-50) เก็บไว้ให้แก้ trade ประวัติเก่าได้
 const SETUPS = [
   'HA Flip + EMA50', 'HA Flip · ย่อ 2 แท่ง', 'HA Flip · ไส้สั้น',
   'OB', 'FVG', 'BOS', 'CHoCH', 'Liquidity Sweep', 'OB + FVG', 'BOS + OB', 'Liq Grab + OB',
@@ -33,7 +33,7 @@ const emptyTrade = () => ({
   balance_after: '',
   status: 'WIN',
   session: 'London–NY',
-  system: 'HA-50',
+  system: 'A3',
   followed_rules: true,
   rule_broken: '',
   setup_detail: '',
@@ -125,8 +125,8 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
         pnl: num(form.pnl),
         status: form.status,
         session: form.session,
-        // trade เก่า (ICT) ที่ยังไม่มี system ให้คงค่าเดิมไว้ — ไม่ดึงเข้า mission เอง
-        system: isEdit ? (form.system.trim() || null) : (form.system.trim() || 'HA-50'),
+        // trade เก่า (ICT/HA-50) ให้คงค่าเดิมไว้ — ไม่ดึงเข้า mission เอง
+        system: isEdit ? (form.system.trim() || null) : (form.system.trim() || 'A3'),
         followed_rules: !!form.followed_rules,
         rule_broken: form.followed_rules ? null : (form.rule_broken.trim() || null),
         reason: form.reason.trim() || null,
@@ -148,7 +148,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
       <form style={s.drawer} onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
         <div style={s.header}>
           <div>
-            <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · HA-50'}</div>
+            <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · A3'}</div>
             <div style={s.title}>{isEdit ? 'แก้ไข Trade' : 'บันทึก Trade ใหม่'}</div>
           </div>
           <button type="button" onClick={onClose} style={s.close}>✕</button>
