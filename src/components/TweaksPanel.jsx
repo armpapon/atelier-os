@@ -1,7 +1,7 @@
 import { canSeePage } from './Sidebar.jsx';
-import { ACCENT_OPTIONS } from '../lib/accents.js';
+import { ACCENT_OPTIONS, variantsFor } from '../lib/accents.js';
 
-export function TweaksPanel({ open, onClose, accent, setAccent, density, setDensity, active, setActive, user }) {
+export function TweaksPanel({ open, onClose, accent, setAccent, density, setDensity, active, setActive, user, theme = 'light' }) {
   if (!open) return null;
   // Colour DATA the user picks an accent from — not tokens, keep literal.
   // Each option ships its own AA-safe text/fill variants; see src/lib/accents.js.
@@ -41,13 +41,21 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
           <div style={{ marginBottom: 10 }}>
             <div style={{ marginBottom: 6, color: 'var(--text-secondary)' }}>สีหลัก</div>
             <div style={{ display: 'flex', gap: 6 }}>
+              {/* The swatch shows the colour this option produces IN THE ACTIVE
+                  THEME, not its light value. A10-r3: picking the first option
+                  in dark cleared the overrides and left the espresso gold in
+                  place, while its swatch still showed blue and called itself
+                  "iOS Blue" — the one option whose swatch lied about what it
+                  did. The value PERSISTED is still `light.base`: that is the
+                  option's identity and what accentOption() looks up. */}
               {accentOptions.map(o => (
                 <button key={o.id} onClick={() => setAccent(o.light.base)}
                   title={o.label} aria-label={o.label}
                   data-accent={o.id}
                   aria-pressed={accent === o.light.base}
                   style={{
-                    flex: 1, height: 36, borderRadius: 6, background: o.light.base,
+                    flex: 1, height: 36, borderRadius: 6,
+                    background: variantsFor(o, theme).base,
                     border: accent === o.light.base ? '2px solid var(--text-primary)' : '.5px solid var(--hairline)',
                     cursor: 'pointer',
                   }}

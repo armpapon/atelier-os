@@ -50,7 +50,11 @@
 
 export const ACCENT_OPTIONS = [
   {
-    id: 'ios-blue', label: 'iOS Blue',
+    // 'ตามธีม' — "follows the theme". Not "iOS Blue": this option applies by
+    // CLEARING the overrides, so what the user gets is whatever the active
+    // stylesheet block declares — systemBlue in light, espresso gold in dark
+    // until phase 5. Labelling it by the light colour misdescribed it in dark.
+    id: 'ios-blue', label: 'ตามธีม',
     // Mirrors styles.css. Selecting this clears the overrides entirely.
     // The dark set is the espresso GOLD family, not blue: the default option
     // means "follow the theme's own accent", and dark's accent is still gold

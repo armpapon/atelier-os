@@ -333,7 +333,7 @@ export default function App() {
 
       <TweaksPanel
         open={tweaksOpen} onClose={() => setTweaksOpen(false)}
-        accent={accent} setAccent={setAccent}
+        accent={accent} setAccent={setAccent} theme={theme}
         density={density} setDensity={setDensity}
         active={active} setActive={setActive}
         user={user}
