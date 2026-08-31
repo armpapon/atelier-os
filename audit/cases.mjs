@@ -179,8 +179,16 @@ section('R1 · Blocker 4 · Bangkok date in transaction edit/display');
 
 section('R1 · Blocker 2 · getFinancePulse (Bangkok bounds + transfers excluded)');
 {
-  const now = new Date();
-  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // v4.56: this used to build `ym` from the DEVICE clock
+  //   const now = new Date();
+  //   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // …while getFinancePulse() filters by BANGKOK month bounds. The two agree for
+  // most of the year, so it looked fine — until 2026-09-01, when 00:00–07:00
+  // Bangkok is still the previous month in UTC and New York. The fixture then
+  // wrote August rows while the query asked for September and every figure read
+  // 0. A fixture must take its dates from the SAME clock as the code under
+  // test; currentYearMonth() is that clock.
+  const ym = currentYearMonth();
   const early = new Date(new Date(`${ym}-01T00:00:00+07:00`).getTime() + 30 * 60e3).toISOString();
   __tables.transactions.push(
     { id: 'p1', user_id: 'user-1', scope: 'personal', title: 'ตีหนึ่งวันแรกของเดือน', amount: -500, type: 'food', occurred_at: early },
@@ -192,6 +200,46 @@ section('R1 · Blocker 2 · getFinancePulse (Bangkok bounds + transfers excluded
   check('Pulse income excludes transfer leg', pulse.income === 10000, `income=${pulse.income}`);
   check('Pulse expense includes 00:30-Bangkok txn, excludes transfer', pulse.expense === 500, `expense=${pulse.expense}`);
   __tables.transactions = __tables.transactions.filter(t => !['p1','p2','p3','p4'].includes(t.id));
+}
+
+section('v4.56 · harness clock discipline — fixture ต้องใช้นาฬิกาเดียวกับโค้ด');
+{
+  // Why this section exists: on 2026-09-01 three cases failed under TZ=UTC and
+  // TZ=America/New_York and nothing in the suite explained why. The cause was
+  // never the app — it was a fixture that built its month from the DEVICE
+  // clock while the code under test filtered by the BANGKOK calendar. Between
+  // 00:00 and 07:00 Bangkok those are different months, so the harness's own
+  // "runs in any timezone" claim was false for a seven-hour window each day.
+  //
+  // These cases are the guard. They are deterministic in every zone because
+  // they pin the instant rather than reading the wall clock.
+
+  const TZ = process.env.TZ || '(unset)';
+  const bangkokNow = new Intl.DateTimeFormat('en-CA',
+    { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit' }).format(new Date());
+
+  check('currentYearMonth() คือเดือนตามปฏิทินกรุงเทพจริง (ไม่ใช่ของเครื่อง)',
+    currentYearMonth() === bangkokNow, `${currentYearMonth()} · TZ=${TZ}`);
+
+  // The seven-hour window, pinned: 2026-09-01 00:30 Bangkok is still
+  // 2026-08-31 in UTC and New York. Whatever zone this process runs in, the
+  // helper the fixtures must use has to answer September.
+  withFrozenNow('2026-08-31T17:30:00.000Z', () => {
+    const deviceYm = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    check('ณ 00:30 กรุงเทพของวันที่ 1 — currentYearMonth() ตอบเดือนใหม่เสมอ',
+      currentYearMonth() === '2026-09', currentYearMonth());
+    check('… และ todayStr() ตอบวันที่ตามกรุงเทพ ไม่ใช่ของเครื่อง',
+      todayStr() === '2026-09-01', todayStr());
+    // Not an assertion about the device — a record of WHY the rule exists.
+    // Under UTC/NY this prints a different month; that gap is the whole bug.
+    check(`นาฬิกาเครื่อง (TZ=${TZ}) ให้ ${deviceYm} — fixture ที่ใช้ค่านี้จะพังเมื่อไม่ตรงกับกรุงเทพ`,
+      /^\d{4}-\d{2}$/.test(deviceYm), `device ${deviceYm} vs bangkok 2026-09`);
+  });
+
+  // Month arithmetic must not drift across a year boundary either.
+  check('nextMonth / previousMonth ข้ามปีได้ถูกต้อง',
+    nextMonth('2026-12') === '2027-01' && previousMonth('2027-01') === '2026-12',
+    `${nextMonth('2026-12')} · ${previousMonth('2027-01')}`);
 }
 
 section('R1 · Blocker 7 · recurring header total monthlyized');
@@ -1940,8 +1988,49 @@ section('C · B8 · a debt has a life: upcoming → active → completed');
   const sum = summarizeDebts([done, future, running], [], THIS);
   check('a completed loan is out of the monthly burden — only the live one counts',
     sum.monthlyBurden === 8000 + 5000, `฿${sum.monthlyBurden}`);
-  check('a completed loan is out of the overdue total and its count',
-    sum.overdue === 8000 && sum.overdueCount === 1, `฿${sum.overdue} / ${sum.overdueCount}`);
+  // v4.56: this used to read
+  //   check('a completed loan is out of the overdue total and its count',
+  //     sum.overdue === 8000 && sum.overdueCount === 1);
+  // against the REAL clock. `running` is due on the 5th, so "overdue" only
+  // became true from the 6th onward — the case passed for 25 days a month and
+  // failed for 5. It failed on 2026-09-01 for the RIGHT reason: nothing due on
+  // the 5th is overdue on the 1st. The app was correct; the fixture was
+  // asserting the calendar. Both sides of the boundary are now pinned with
+  // withFrozenNow, so this holds on every day and in every timezone.
+  const SEPT = '2026-09';
+  const pinnedDone   = { ...done };                                  // ends 2026-07-05, 12/12 → completed
+  const pinnedFuture = { ...future, start_date: '2026-10-01' };      // starts next month → upcoming
+  const pinnedRun    = { ...running, start_date: '2026-08-01' };     // live, ฿8,000 due on the 5th
+
+  // 10:00 Bangkok on the 1st — before the due day.
+  withFrozenNow('2026-09-01T03:00:00.000Z', () => {
+    const s1 = summarizeDebts([pinnedDone, pinnedFuture, pinnedRun], [], SEPT);
+    check('วันที่ 1 ของเดือน: ยังไม่ถึงกำหนดชำระ (วันที่ 5) → ไม่มีอะไร overdue',
+      s1.overdue === 0 && s1.overdueCount === 0, `฿${s1.overdue} / ${s1.overdueCount}`);
+    check('… และก้อนที่ยังวิ่งอยู่ถูกนับเป็น pending ไม่ใช่ overdue',
+      getDebtStatus(pinnedRun, [], SEPT).status === 'pending',
+      getDebtStatus(pinnedRun, [], SEPT).status);
+  });
+
+  // The exact boundary: due day itself is not late, the day after is.
+  withFrozenNow('2026-09-05T03:00:00.000Z', () => {
+    check('วันครบกำหนดพอดี (วันที่ 5) ยังไม่ถือว่าเลยกำหนด',
+      getDebtStatus(pinnedRun, [], SEPT).status === 'pending',
+      getDebtStatus(pinnedRun, [], SEPT).status);
+  });
+  withFrozenNow('2026-09-06T03:00:00.000Z', () => {
+    check('วันถัดจากกำหนด (วันที่ 6) กลายเป็น overdue',
+      getDebtStatus(pinnedRun, [], SEPT).status === 'overdue',
+      getDebtStatus(pinnedRun, [], SEPT).status);
+  });
+
+  // 10:00 Bangkok on the 20th — well past the due day. THIS is what the old
+  // assertion meant to test: a completed loan stays out of the overdue total.
+  withFrozenNow('2026-09-20T03:00:00.000Z', () => {
+    const s20 = summarizeDebts([pinnedDone, pinnedFuture, pinnedRun], [], SEPT);
+    check('a completed loan is out of the overdue total and its count',
+      s20.overdue === 8000 && s20.overdueCount === 1, `฿${s20.overdue} / ${s20.overdueCount}`);
+  });
   check('the summary reports the completed and not-yet-started counts',
     sum.completedCount === 1 && sum.upcomingCount === 1,
     `${sum.completedCount} / ${sum.upcomingCount}`);
