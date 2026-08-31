@@ -169,7 +169,7 @@ const styles = {
     display: 'flex', flexDirection: 'column', gap: 14,
   },
   brand: {
-    fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--accent)',
+    fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--accent-strong)',
     fontWeight: 500,
     display: 'flex', alignItems: 'center', marginBottom: 8,
   },
@@ -191,7 +191,7 @@ const styles = {
   },
   submit: {
     marginTop: 6, padding: '12px 14px', borderRadius: 'var(--radius-btn)',
-    background: 'var(--accent)', color: 'var(--text-inverse)',
+    background: 'var(--accent-fill)', color: 'var(--text-inverse)',
     border: 0, fontWeight: 600, fontSize: 14, cursor: 'pointer',
     fontFamily: 'inherit',
   },
@@ -209,7 +209,7 @@ const styles = {
     border: 'none',
   },
   alertInfo: {
-    background: 'var(--accent-tint)', color: 'var(--accent)',
+    background: 'var(--accent-tint)', color: 'var(--accent-strong)',
     border: 'none',
   },
 };

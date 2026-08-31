@@ -397,7 +397,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {categories.map(c => (
               <button key={c.id} type="button" onClick={() => set('type', c.id)}
-                style={{ padding: '6px 12px', borderRadius: 'var(--radius-btn)', fontSize: 12.5, fontWeight: 500, background: form.type === c.id ? 'var(--accent)' : 'var(--fill)', color: form.type === c.id ? 'var(--text-inverse)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer' }}>
+                style={{ padding: '6px 12px', borderRadius: 'var(--radius-btn)', fontSize: 12.5, fontWeight: 500, background: form.type === c.id ? 'var(--accent-fill)' : 'var(--fill)', color: form.type === c.id ? 'var(--text-inverse)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer' }}>
                 {c.icon} {c.label}
               </button>
             ))}
@@ -674,7 +674,7 @@ function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
                 textAlign: 'left', padding: '11px 12px', borderRadius: 10, cursor: 'pointer', fontSize: 14,
                 border: 'none',
                 background: active ? 'var(--accent-tint)' : 'var(--fill)',
-                color: active ? 'var(--accent)' : 'var(--text-primary)',
+                color: active ? 'var(--accent-strong)' : 'var(--text-primary)',
               }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
               {active && <span style={{ flexShrink: 0 }}>✓ ผูกอยู่</span>}
@@ -1480,7 +1480,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                               setLinkingTxn({ txn: t, anchorRect: rect });
                             }} title={t.recurring_id ? 'ผูกกับบิลประจำแล้ว — คลิกเพื่อเปลี่ยน' : 'ผูกกับบิลประจำ'} aria-label="ผูกบิลประจำ"
                               style={{
-                                color: t.recurring_id ? 'var(--accent)' : 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
+                                color: t.recurring_id ? 'var(--accent-strong)' : 'var(--text-muted)', fontSize: 12, background: 'none', border: 0,
                                 cursor: 'pointer', width: isMobile ? 24 : 28, height: isMobile ? 24 : 28, borderRadius: '50%',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 transition: 'background 150ms, color 150ms', opacity: t.recurring_id ? 1 : 0.7,
@@ -1620,7 +1620,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                             <div style={{ fontSize: 12.5, fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                               ฿{Number(g.current_amount).toLocaleString('th')} / ฿{Number(g.target_amount).toLocaleString('th')}
                             </div>
-                            <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: pct >= 100 ? 'var(--success)' : 'var(--accent)', fontWeight: 600 }}>
+                            <div style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums', color: pct >= 100 ? 'var(--success)' : 'var(--accent-strong)', fontWeight: 600 }}>
                               {pct}%
                             </div>
                           </div>

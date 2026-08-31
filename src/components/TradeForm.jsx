@@ -13,7 +13,7 @@ const STATUSES = [
   { value: 'WIN', label: 'WIN', color: 'var(--profit)' },
   { value: 'LOSS', label: 'LOSS', color: 'var(--loss)' },
   { value: 'BREAKEVEN', label: 'BE', color: 'var(--ink-3)' },
-  { value: 'OPEN', label: 'OPEN', color: 'var(--amber)' },
+  { value: 'OPEN', label: 'OPEN', color: 'var(--amber-2)' },
 ];
 
 const emptyTrade = () => ({
@@ -254,7 +254,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
                   <button key={sess} type="button" onClick={() => update('session', sess)}
                     style={{
                       ...s.segBtn, flex: 1,
-                      ...(form.session === sess ? { borderColor: 'var(--amber)', color: 'var(--amber)' } : {})
+                      ...(form.session === sess ? { borderColor: 'var(--amber)', color: 'var(--amber-2)' } : {})
                     }}>{sess}</button>
                 ))}
               </div>
@@ -343,7 +343,7 @@ const s = {
   },
   eyebrow: {
     fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.22em',
-    textTransform: 'uppercase', color: 'var(--amber)', marginBottom: 6,
+    textTransform: 'uppercase', color: 'var(--amber-2)', marginBottom: 6,
   },
   title: { fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)' },
   close: {
@@ -383,7 +383,7 @@ const s = {
   },
   btnPrimary: {
     flex: 1, padding: '10px 18px', borderRadius: 'var(--radius-btn)',
-    background: 'var(--amber)', color: 'var(--text-inverse)',
+    background: 'var(--amber-deep)', color: 'var(--text-inverse)',
     border: 0, fontWeight: 600, cursor: 'pointer', fontSize: 13,
     fontFamily: 'inherit',
   },

@@ -4,7 +4,7 @@ import { createScopeTransfer, listAccounts } from '../../lib/api/finance.js';
 import { todayStr } from '../../lib/dates.js';
 
 const SCOPE_META = {
-  personal: { label: 'ส่วนตัว',  icon: '👤', color: 'var(--accent)' },
+  personal: { label: 'ส่วนตัว',  icon: '👤', color: 'var(--accent-strong)' },
   family:   { label: 'ครอบครัว', icon: '❤️', color: 'var(--violet)' },
 };
 

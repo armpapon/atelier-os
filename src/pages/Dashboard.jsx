@@ -208,7 +208,7 @@ function CompassStrip({ manifest, themes, isMobile }) {
           background: 'var(--surface)', border: '1px solid var(--line)',
           borderRadius: 'var(--r-md)', padding: '9px 14px',
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
             ✦ North Star
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.4 }}>{northStar}</div>
@@ -220,7 +220,7 @@ function CompassStrip({ manifest, themes, isMobile }) {
           background: 'var(--surface)', border: '1px solid var(--line)',
           borderRadius: 'var(--r-md)', padding: '9px 14px',
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
             ◷ ธีมสัปดาห์นี้
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.4 }}>{weekTheme}</div>

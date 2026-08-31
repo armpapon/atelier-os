@@ -1977,8 +1977,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     <ol style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12, color: 'var(--ink-3)', lineHeight: 2 }}>
                       <li>เปิด <strong style={{ color: 'var(--ink-2)' }}>Make by KBank</strong> → กด <strong style={{ color: 'var(--ink-2)' }}>บัญชีหลัก</strong></li>
                       <li>เลือก <strong style={{ color: 'var(--ink-2)' }}>Statement → ช่วงเวลา</strong></li>
-                      <li>กด <strong style={{ color: 'var(--amber)' }}>Download → CSV</strong></li>
-                      <li>ลากไฟล์ <code style={{ color: 'var(--amber)', fontSize: 10 }}>report_xxx-x-x147-8_…csv</code> มาวางที่นี่</li>
+                      <li>กด <strong style={{ color: 'var(--amber-2)' }}>Download → CSV</strong></li>
+                      <li>ลากไฟล์ <code style={{ color: 'var(--amber-2)', fontSize: 10 }}>report_xxx-x-x147-8_…csv</code> มาวางที่นี่</li>
                     </ol>
                   </div>
                 </>
@@ -2586,10 +2586,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     <StatChip label="กำกวม — เลือกนำเข้า" value={importStats.ambiguousImported} accent="var(--profit)" />
                   )}
                   {importStats?.accountsCreated > 0 && (
-                    <StatChip label="บัญชี" value={importStats.accountsCreated} accent="var(--amber)" />
+                    <StatChip label="บัญชี" value={importStats.accountsCreated} accent="var(--amber-2)" />
                   )}
                   {importStats?.debtLinked > 0 && (
-                    <StatChip label="🔗 จ่ายหนี้ที่ link" value={importStats.debtLinked} accent="var(--accent)" />
+                    <StatChip label="🔗 จ่ายหนี้ที่ link" value={importStats.debtLinked} accent="var(--accent-strong)" />
                   )}
                   {importStats?.wipedMonths > 0 && (
                     <StatChip label="เดือนที่ล้าง" value={importStats.wipedMonths} accent="var(--loss)" />
@@ -2606,7 +2606,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                       reactivates it — never a silent write into a hidden row. */}
                   {importStats?.reactivatedAccounts?.length > 0 && (
                     <StatChip label="🗂 บัญชีที่เก็บไว้ — เปิดใช้อีกครั้ง"
-                      value={importStats.reactivatedAccounts.length} accent="var(--amber)" />
+                      value={importStats.reactivatedAccounts.length} accent="var(--amber-2)" />
                   )}
                 </div>
                 {importStats?.reactivatedAccounts?.length > 0 && (

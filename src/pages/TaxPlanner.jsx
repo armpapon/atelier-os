@@ -547,7 +547,7 @@ function PersonTabs({
                 {p.person_name}
                 {p.is_self && <Badge tone="outline" size="sm">ฉัน</Badge>}
               </div>
-              <div style={{ ...mono, fontSize: 11.5, color: on ? 'var(--accent)' : 'var(--ink-3)', marginTop: 3 }}>
+              <div style={{ ...mono, fontSize: 11.5, color: on ? 'var(--accent-strong)' : 'var(--ink-3)', marginTop: 3 }}>
                 ภาษี {baht(r?.tax || 0)}
               </div>
             </button>
@@ -819,7 +819,7 @@ function LinkButton({ onClick, children, tone }) {
       type="button" onClick={onClick} className="focus-ring"
       style={{
         background: 'none', border: 0, padding: 0, cursor: 'pointer',
-        fontSize: 12, color: tone || 'var(--accent)', textDecoration: 'underline',
+        fontSize: 12, color: tone || 'var(--accent-strong)', textDecoration: 'underline',
         textUnderlineOffset: 2,
       }}>{children}</button>
   );
@@ -1345,7 +1345,7 @@ function ResultCard({ result }) {
               <span style={{ ...mono, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
                 {baht(b.from)}–{Number.isFinite(b.to) ? baht(b.to) : 'ขึ้นไป'}
               </span>
-              <span style={{ ...mono, fontSize: 11, color: b.rate ? 'var(--accent)' : 'var(--ink-4)' }}>
+              <span style={{ ...mono, fontSize: 11, color: b.rate ? 'var(--accent-strong)' : 'var(--ink-4)' }}>
                 {Math.round(b.rate * 100)}%
               </span>
               <span style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexShrink: 0 }}>

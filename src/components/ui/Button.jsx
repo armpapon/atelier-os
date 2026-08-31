@@ -17,7 +17,7 @@ function variantStyles(variant, disabled) {
   };
   switch (variant) {
     case 'primary':
-      return { ...base, background: 'var(--accent)', color: 'var(--text-inverse)',
+      return { ...base, background: 'var(--accent-fill)', color: 'var(--text-inverse)',
         fontWeight: 600, borderColor: 'transparent' };
     case 'secondary':
       return { ...base, background: 'var(--fill-2)', color: 'var(--text-primary)',

@@ -198,7 +198,7 @@ export function Sidebar({ active, onChange, user, financeTabs = {}, onToggleColl
           }}>
             <div style={{
               width: 30, height: 30, borderRadius: '50%',
-              background: 'var(--accent-tint)', color: 'var(--accent)',
+              background: 'var(--accent-tint)', color: 'var(--accent-strong)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, fontWeight: 700, flexShrink: 0,
             }}>{displayInitial}</div>
@@ -247,7 +247,7 @@ function NavItem({ item, active, onClick, expandable = false, expanded = false }
       <span style={{
         width: 17, height: 17, display: 'inline-flex',
         alignItems: 'center', justifyContent: 'center',
-        color: active ? 'var(--accent)' : 'var(--text-secondary)',
+        color: active ? 'var(--accent-strong)' : 'var(--text-secondary)',
         flexShrink: 0,
       }}>
         <Icon name={item.icon} size={17} />

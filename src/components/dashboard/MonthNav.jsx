@@ -73,7 +73,7 @@ export function MonthNav({ value, onChange }) {
                   onClick={() => onChange(`${yr}-${String(m).padStart(2, '0')}`)}
                   style={{
                     padding: '5px 10px', borderRadius: 'var(--radius-btn)',
-                    background: yr === y ? 'var(--accent)' : 'var(--fill)',
+                    background: yr === y ? 'var(--accent-fill)' : 'var(--fill)',
                     color: yr === y ? 'var(--text-inverse)' : 'var(--text-secondary)',
                     border: 'none', fontWeight: yr === y ? 600 : 500,
                     cursor: 'pointer', fontSize: 11, fontFamily: 'var(--f-mono)',
@@ -93,8 +93,8 @@ export function MonthNav({ value, onChange }) {
                     onClick={() => { onChange(ymStr); setOpen(false); }}
                     style={{
                       padding: '8px 0', borderRadius: 8,
-                      background: sel ? 'var(--accent)' : isToday ? 'var(--accent-tint)' : 'transparent',
-                      color: sel ? 'var(--text-inverse)' : isToday ? 'var(--accent)' : 'var(--text-secondary)',
+                      background: sel ? 'var(--accent-fill)' : isToday ? 'var(--accent-tint)' : 'transparent',
+                      color: sel ? 'var(--text-inverse)' : isToday ? 'var(--accent-strong)' : 'var(--text-secondary)',
                       border: 'none', fontWeight: sel ? 600 : 500,
                       cursor: 'pointer', fontSize: 12,
                     }}>{mn}</button>
@@ -126,7 +126,7 @@ export function MonthNav({ value, onChange }) {
           style={{
             padding: '6px 13px', borderRadius: 'var(--radius-btn)',
             background: 'var(--accent-tint)', border: 'none',
-            color: 'var(--accent)', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+            color: 'var(--accent-strong)', cursor: 'pointer', fontSize: 11, fontWeight: 600,
             fontFamily: 'var(--f-mono)', letterSpacing: '0.08em',
           }}>วันนี้</button>
       )}
