@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { TradeForm } from '../components/TradeForm.jsx';
 import { TradingPlaybook } from '../components/trading/TradingPlaybook.jsx';
 import { MissionDashboard } from '../components/trading/MissionDashboard.jsx';
+import { PlaybookA3Doc } from '../components/trading/PlaybookA3Doc.jsx';
 import { PnLCalendar } from '../components/trading/PnLCalendar.jsx';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../components/ui/index.js';
 import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/api/trades.js';
@@ -39,6 +40,7 @@ export function Trading() {
   // Legacy trades (ICT = system null, HA-50 = closed 28 Aug 2026) mix into every
   // stat below unless scoped out. Default OFF — page is A3 by design.
   const [showLegacy,  setShowLegacy]  = useState(false);
+  const [showDoc,     setShowDoc]     = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -131,6 +133,7 @@ export function Trading() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button variant="ghost"     onClick={() => setShowDoc(v => !v)}>{showDoc ? '📖 ซ่อน Playbook' : '📖 Playbook'}</Button>
           <Button variant="ghost"     onClick={refresh}>🔄 Refresh</Button>
           <Button variant="primary"   onClick={() => setFormOpen(true)}>+ Log Trade</Button>
         </div>
@@ -141,6 +144,9 @@ export function Trading() {
           ⚠️ {error}
         </div>
       )}
+
+      {/* A3 Playbook ฉบับเต็ม — เปิดอ่านได้จากปุ่ม 📖 */}
+      {showDoc && <PlaybookA3Doc />}
 
       {/* A3 mission — 30 ไม้แรกของระบบใหม่ */}
       <MissionDashboard trades={trades} />
