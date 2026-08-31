@@ -177,8 +177,16 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   Dark — espresso warm. Defined, not yet exposed: nothing sets data-theme
-   until the Phase 2 toggle ships, so production stays light.
+   Dark — espresso warm. LIVE IN PRODUCTION: App.jsx persists the choice at
+   localStorage 'loop:theme' and stamps data-theme on <html>, and the moon
+   toggle sits in both the Sidebar and the MobileNav. What is still outstanding
+   is the VISUAL retune (espresso → graphite), which is phase 5.
+
+   Treat this block as a real surface, not a draft. A10-r2: --accent-fill was
+   added to :root alone on the assumption that dark was unexposed; the light
+   value leaked in and paired with --text-inverse below at 3.62:1. Any new
+   token needs a value HERE too, and audit/cases.mjs now parses this block and
+   gates it on every run.
    ══════════════════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
   color-scheme: dark;

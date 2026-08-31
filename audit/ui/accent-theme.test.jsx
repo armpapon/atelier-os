@@ -51,6 +51,13 @@ const overridden = () => ACCENT_VAR_NAMES.filter(n => applied(n) !== '');
 /** The Tweaks panel's swatch for an option id (data-accent, set by the panel). */
 const swatch = (id) => document.querySelector(`[data-accent="${id}"]`);
 
+/** jsdom normalises an inline `background: #rrggbb` to `rgb(r, g, b)`. */
+const cssColor = (hex) => {
+  const h = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
 /**
  * Assert the inline override matches `option`'s variants for `theme` — every
  * member of the group, including the tint, which is derived per option+theme
@@ -188,6 +195,60 @@ describe('สีธีมที่ผู้ใช้เลือก · ต้อ
     await toggleTheme();
     expect(themeAttr()).toBe('dark');
     expect(overridden()).toEqual([]);
+  });
+
+  // ── The swatches themselves (A10-r3 Minor · UX) ──────────────────────────
+  // Every option's swatch must paint the colour that option produces IN THE
+  // ACTIVE THEME. The first one used to render its light blue in dark while
+  // selecting it actually left the espresso gold in place — the one swatch
+  // that lied about what it did.
+
+  it('paints every swatch with the LIGHT base in light mode', async () => {
+    await mountWithTweaks();
+    expect(themeAttr()).toBe('light');
+
+    for (const o of ACCENT_OPTIONS) {
+      expect(swatch(o.id).style.background).toBe(cssColor(o.light.base));
+    }
+  });
+
+  it('repaints every swatch with the DARK base when the theme is dark', async () => {
+    await mountWithTweaks();
+    await toggleTheme();
+    expect(themeAttr()).toBe('dark');
+
+    for (const o of ACCENT_OPTIONS) {
+      expect(swatch(o.id).style.background).toBe(cssColor(o.dark.base));
+    }
+    // The regression, named: the default option's two themes really do differ,
+    // so this assertion could not pass by accident.
+    const dflt = ACCENT_OPTIONS.find(o => o.light.base === DEFAULT_ACCENT);
+    expect(dflt.dark.base).not.toBe(dflt.light.base);
+    expect(swatch(dflt.id).style.background).not.toBe(cssColor(dflt.light.base));
+  });
+
+  it('labels the default option by what it does, not by one theme’s colour', async () => {
+    await mountWithTweaks();
+    const dflt = ACCENT_OPTIONS.find(o => o.light.base === DEFAULT_ACCENT);
+
+    // "ตามธีม" = follows the theme. It must not name a colour, because the
+    // colour changes with the theme.
+    expect(dflt.label).toBe('ตามธีม');
+    expect(swatch(dflt.id).getAttribute('aria-label')).toBe('ตามธีม');
+    expect(screen.getByRole('button', { name: 'ตามธีม' })).toBe(swatch(dflt.id));
+  });
+
+  it('keeps selection tied to the option identity, not the painted colour', async () => {
+    // The swatch repaints per theme, but what is stored and matched is always
+    // the option's light base — otherwise a theme switch would lose the pick.
+    await mountWithTweaks();
+    await act(async () => { fireEvent.click(swatch(CUSTOM.id)); });
+    expect(swatch(CUSTOM.id).getAttribute('aria-pressed')).toBe('true');
+
+    await toggleTheme();
+
+    expect(swatch(CUSTOM.id).getAttribute('aria-pressed')).toBe('true');
+    expect(window.localStorage.getItem('atelier:accent')).toBe(CUSTOM.light.base);
   });
 
   it('resets a legacy warm accent saved by an older build, in dark too', async () => {
