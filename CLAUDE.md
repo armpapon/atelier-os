@@ -42,7 +42,20 @@
 
 ### Design system — "True Cupertino" (phase 1 shipped v4.52)
 - Cool iOS light palette: `--background` #f2f2f7 (systemGray6) ground, white cards,
-  iOS system blue `--accent` #007aff (`--accent-strong` #0058cc for small text).
+  iOS system blue `--accent` #007aff.
+- **The accent is split by role — they are not interchangeable** (v4.53, audit A10):
+  `--accent` #007aff is **graphical only** (borders, focus rings, progress fills,
+  icon tints, text ≥24px) because it measures 4.02:1; `--accent-fill` #006ade is
+  for a filled control carrying `--text-inverse` text; `--accent-strong` #0058cc
+  is for **any normal-size accent text**. Same rule for the `--amber` aliases:
+  `--amber` = graphical, `--amber-2` / `--amber-deep` = text.
+- Colour claims are **computed, not guessed**: `audit/colorcheck.mjs` (WCAG +
+  Viénot/Brettel CVD + CIEDE2000, with reference self-tests) is the single source,
+  and `audit/cases.mjs` asserts the whole palette on every harness run. Regenerate
+  any ratio you write in a comment — a v4.52 comment claimed a CVD separation that
+  was off by 31 ΔE and no test caught it.
+- Custom theme accents live in `src/lib/accents.js`; each option ships derived
+  AA-safe `fill`/`strong`/`soft` variants and the harness asserts them.
   Replaced the "Cupertino Warm" ivory + clay palette in v4.52 — a **value-only**
   swap: every `:root` token name in `src/styles.css` is API consumed by inline
   styles across `src/`, so warm-sounding names (`--paper`, `--surface-warm`,
