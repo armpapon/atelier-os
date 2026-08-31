@@ -1,8 +1,11 @@
+// Account/alert tone swatches. `amber` tracks the palette's --amber alias, which
+// True Cupertino repointed from clay to iOS system blue; the rest stay as the
+// user-pickable tone data they always were.
 export function toneColor(tone) {
   return {
-    profit: '#6cbf83', loss: '#e07a6e', amber: '#d4a574',
+    profit: '#6cbf83', loss: '#e07a6e', amber: '#007aff',
     blue: '#7ba7d4', violet: '#a78fcc', rose: '#d49aa5',
-  }[tone] || '#d4a574';
+  }[tone] || '#007aff';
 }
 
 export function thumbBg(src) {
