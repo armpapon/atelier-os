@@ -1,9 +1,11 @@
 import { canSeePage } from './Sidebar.jsx';
+import { ACCENT_OPTIONS } from '../lib/accents.js';
 
 export function TweaksPanel({ open, onClose, accent, setAccent, density, setDensity, active, setActive, user }) {
   if (!open) return null;
-  // Colour DATA the user picks an accent from — not a token, keep literal.
-  const accentOptions = ['#d4a574', '#6cbf83', '#7ba7d4', '#a78fcc', '#d49aa5', '#e07a6e'];
+  // Colour DATA the user picks an accent from — not tokens, keep literal.
+  // Each option ships its own AA-safe text/fill variants; see src/lib/accents.js.
+  const accentOptions = ACCENT_OPTIONS;
   const densityOptions = [
     { value: 'cozy', label: 'แน่น' },
     { value: 'comfortable', label: 'พอดี' },
@@ -39,11 +41,13 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
           <div style={{ marginBottom: 10 }}>
             <div style={{ marginBottom: 6, color: 'var(--text-secondary)' }}>สีหลัก</div>
             <div style={{ display: 'flex', gap: 6 }}>
-              {accentOptions.map(c => (
-                <button key={c} onClick={() => setAccent(c)}
+              {accentOptions.map(o => (
+                <button key={o.base} onClick={() => setAccent(o.base)}
+                  title={o.label} aria-label={o.label}
+                  aria-pressed={accent === o.base}
                   style={{
-                    flex: 1, height: 36, borderRadius: 6, background: c,
-                    border: accent === c ? '2px solid var(--text-primary)' : '.5px solid var(--hairline)',
+                    flex: 1, height: 36, borderRadius: 6, background: o.base,
+                    border: accent === o.base ? '2px solid var(--text-primary)' : '.5px solid var(--hairline)',
                     cursor: 'pointer',
                   }}
                 />
@@ -73,7 +77,7 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
                 textAlign: 'left', padding: '7px 9px', borderRadius: 6, cursor: 'pointer',
                 background: active === m.id ? 'var(--accent-tint)' : 'transparent',
                 border: '1px solid ' + (active === m.id ? 'var(--accent)' : 'var(--hairline)'),
-                color: active === m.id ? 'var(--accent)' : 'inherit', fontSize: 12,
+                color: active === m.id ? 'var(--accent-strong)' : 'inherit', fontSize: 12,
               }}>{active === m.id ? '◉ ' : '○ '}{m.label}</button>
             ))}
           </div>
