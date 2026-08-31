@@ -1,18 +1,22 @@
-/* Loop — Cupertino Warm */
-/* Apple/Cupertino structure on Loop's original warm ivory + clay palette.
+/* Loop — True Cupertino (phase 1) */
+/* Apple/Cupertino structure on an iOS-native cool light palette: systemGray6
+   ground, white cards, iOS system blue accent. Phase 1 is a VALUE swap only —
+   the warm ivory + clay values were retuned in place.
    Fonts are the native system stack (no webfont download).
    Every token below is consumed by inline styles across src/ — renaming or
-   removing one silently breaks a component. Add, alias, retune: don't delete. */
+   removing one silently breaks a component. Add, alias, retune: don't delete.
+   Warm-sounding names (--paper, --surface-warm, --brass, --amber…) are kept
+   on purpose: they are API. They now carry cool values in the same ROLE. */
 
 :root {
   color-scheme: light;
 
-  /* ── Surfaces — warm ivory / cream ─────────────────────────────────────── */
-  --background:      #f5f0e7;
-  --background-soft: #fbf8f1;
-  --surface:         #fffdf7;
-  --surface-muted:   #f0eadf;
-  --surface-warm:    #efe3cf;
+  /* ── Surfaces — iOS cool light greys ───────────────────────────────────── */
+  --background:      #f2f2f7;   /* systemGray6 — the grouped-list ground */
+  --background-soft: #f7f7fa;
+  --surface:         #ffffff;   /* cards are true white */
+  --surface-muted:   #eeeef3;
+  --surface-warm:    #e9e9ee;   /* name kept; role = the third, deeper surface */
 
   /* Aliases (existing components) */
   --bg:        var(--background);
@@ -21,62 +25,72 @@
   --surface-3: var(--surface-warm);
   --card:      var(--surface);
   --paper:     var(--surface-warm);
-  --paper-2:   #dcc9a8;
-  --paper-ink: #4a3d2b;
+  --paper-2:   #c9c9d1;   /* was the deep tan swatch; same L* (81), cool grey */
+  --paper-ink: #3a3a41;   /* ink that sits on --paper: 9.3:1 on #e9e9ee */
 
-  /* ── Text — high contrast warm charcoal ────────────────────────────────── */
-  --text-primary:   #2f2923;
-  --text-secondary: #574a3c;   /* darkened for readability: 7.6:1 on --background */
-  --text-muted:     #6a5b46;   /* darkened from #9a8b7a: 5.8:1 on ivory, legible on tiny mono labels */
-  --text-inverse:   #fffaf0;
+  /* ── Text — cool neutral, iOS label ramp ───────────────────────────────── */
+  --text-primary:   #1c1c1e;   /* 15.3:1 on --background, 17.0:1 on --surface */
+  --text-secondary: #48484d;   /* 8.2:1 on --background, 9.1:1 on --surface */
+  --text-muted:     #66666d;   /* 5.1:1 on --background — legible on tiny mono labels */
+  --text-inverse:   #ffffff;
 
   --ink:   var(--text-primary);
   --ink-2: var(--text-secondary);
   --ink-3: var(--text-muted);
-  --ink-4: #bdb3a2;
+  --ink-4: #c7c7cc;   /* systemGray3 — placeholders, empty checkbox rings */
 
   /* ── Borders ───────────────────────────────────────────────────────────── */
-  --border:        #e3d8c8;
-  --border-strong: #cdbda9;
-  --hairline:      rgba(74, 61, 43, 0.13);
+  --border:        #e3e3e8;
+  --border-strong: #c7c7cc;
+  --hairline:      rgba(60, 60, 67, 0.12);   /* iOS separator */
   --line:   var(--border);
   --line-2: var(--border-strong);
 
-  /* ── Accent — clay/terracotta, used with discipline ───────────────────── */
-  --accent:        #a8752f;   /* deepened from #b98545 for contrast on ivory */
-  --accent-strong: #8a5a2b;
-  --accent-soft:   #ead6b8;
-  --accent-tint:   rgba(168, 117, 47, 0.11);
+  /* ── Accent — iOS system blue, used with discipline ───────────────────── */
+  --accent:        #007aff;   /* systemBlue — controls, selected states, large text
+                                 4.0:1 on --surface / 3.6:1 on --background (≥3:1 UI) */
+  --accent-strong: #0058cc;   /* small link + label text: 6.4:1 on --surface, 5.8:1 on --background */
+  --accent-soft:   #d6e6ff;   /* light blue chip fill — --accent-strong reads 5.1:1 on it */
+  --accent-tint:   rgba(0, 122, 255, 0.10);
   --amber:         var(--accent);
   --amber-2:       var(--accent-strong);
   --amber-deep:    var(--accent-strong);
-  --brass:         #9c7c4d;
+  --brass:         #5f6e85;   /* name kept; role = muted accent variant, now blue-grey (5.2:1 on white) */
 
   /* ── Neutral fills — Cupertino segmented/hover surfaces ────────────────── */
-  --fill:   rgba(122, 103, 79, 0.08);
-  --fill-2: rgba(122, 103, 79, 0.16);
+  --fill:   rgba(120, 120, 128, 0.10);
+  --fill-2: rgba(120, 120, 128, 0.18);
 
-  /* ── Semantic ──────────────────────────────────────────────────────────── */
-  --success:      #3e7d3a;   --success-soft: #dcebd8;
-  --danger:       #b3382a;   --danger-soft:  #efd7d1;
-  --warning:      #c99a42;   --warning-soft: #f1e2bd;
+  /* ── Semantic — money meaning in TEXT, so all pass AA on --surface ─────── */
+  --success:      #1c7c34;   --success-soft: #e2f5e6;   /* 5.3:1 white · 4.7:1 bg · 4.6:1 on soft */
+  --danger:       #d70015;   --danger-soft:  #fde8e7;   /* 5.4:1 white · 4.8:1 bg · 4.6:1 on soft */
+  --warning:      #a85800;   --warning-soft: #ffefd9;   /* 5.2:1 white · 4.6:1 bg · 4.6:1 on soft */
 
   --profit:    var(--success);   --profit-bg: var(--success-soft);
   --loss:      var(--danger);    --loss-bg:   var(--danger-soft);
   --profit-soft: var(--success-soft);
 
   /* ── Chart-only income/expense pair ────────────────────────────────────────
-     --profit/--loss (#3e7d3a vs #b3382a) collapse to a deutan ΔE of 2.6 — a
-     red-green colour-blind reader cannot tell two adjacent bars apart. This
-     pair is validated PASS on lightness band, chroma floor, CVD separation,
-     normal-vision floor and contrast against --surface.
+     --profit/--loss are a green/red pair: under a deutan simulation they
+     converge, so a red-green colour-blind reader cannot tell two adjacent bars
+     apart. The chart pair keeps a green-vs-ORANGE hue strategy instead, which
+     survives the simulation.
+     Re-validated for phase 1 against the new white --surface (Viénot 1999
+     linear-RGB CVD matrices, ΔE2000):
+       contrast   income #2f6b2c 6.4:1 on #ffffff, 5.8:1 on #f2f2f7
+                  expense #c9663a 3.9:1 on #ffffff, 3.5:1 on #f2f2f7   (≥3:1 graphical)
+       separation normal ΔE2000 49.1 · deutan 46.9 · protan 37.4 · tritan 39.5
+     --chart-expense moved #d07040 → #c9663a: on the old ivory surface it held
+     3.4:1, but white is brighter and it fell to 3.1:1 against --background.
      Used ONLY for chart marks. Do NOT repoint --profit/--loss to these: those
      carry money semantics in text all over the app. */
   --chart-income:  #2f6b2c;
-  --chart-expense: #d07040;
-  --blue:      #59799f;
-  --violet:    #7e6b9c;
-  --rose:      #a86d78;
+  --chart-expense: #c9663a;
+  /* Categorical chart hues — retuned cool at the same L* as the warm set
+     (blue 50.0 vs 49.9 · violet 48.4 vs 48.7 · rose 51.3 vs 52.5). */
+  --blue:      #3778c8;
+  --violet:    #7863c9;
+  --rose:      #bd5a7a;
 
   /* ── Type — native system stack, no webfont ────────────────────────────── */
   --f-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Sukhumvit Set", "Thonburi", "Helvetica Neue", sans-serif;
@@ -94,13 +108,14 @@
   --r-lg: var(--radius-card);
   --r-xl: 24px;
 
-  --shadow-card: 0 1px 1px rgba(74, 61, 43, 0.03), 0 4px 16px rgba(74, 61, 43, 0.06);
-  --shadow-pop:  0 2px 4px rgba(74, 61, 43, 0.04), 0 16px 40px rgba(74, 61, 43, 0.10);
+  /* Neutral ink, not warm — same strengths as the ivory build. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-pop:  0 2px 4px rgba(0, 0, 0, 0.05), 0 16px 40px rgba(0, 0, 0, 0.12);
   --shadow-soft: var(--shadow-card);
 
   /* Frosted chrome — sidebar + mobile tab bar */
-  --sidebar-bg: rgba(251, 248, 241, 0.86);
-  --dim:        rgba(47, 41, 35, 0.35);
+  --sidebar-bg: rgba(255, 255, 255, 0.85);
+  --dim:        rgba(0, 0, 0, 0.35);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -437,7 +452,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .dash-hero::before {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(600px 200px at 90% 0%, rgba(212,165,116,0.08), transparent 60%);
+  background: radial-gradient(600px 200px at 90% 0%, rgba(0,122,255,0.06), transparent 60%);
   pointer-events: none;
 }
 .dash-hero__greeting {
@@ -809,7 +824,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .family-avatar {
   width: 48px; height: 48px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--f-display); font-style: italic; font-size: 22px; color: #f5efe4;
+  font-family: var(--f-display); font-style: italic; font-size: 22px; color: var(--text-inverse);
 }
 
 /* ====== Tweaks Panel reset ====== */
