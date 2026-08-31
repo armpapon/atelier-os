@@ -54,16 +54,26 @@
   and `audit/cases.mjs` asserts the whole palette on every harness run. Regenerate
   any ratio you write in a comment — a v4.52 comment claimed a CVD separation that
   was off by 31 ΔE and no test caught it.
-- Custom theme accents live in `src/lib/accents.js`; each option ships derived
-  AA-safe `fill`/`strong`/`soft` variants and the harness asserts them.
   Replaced the "Cupertino Warm" ivory + clay palette in v4.52 — a **value-only**
   swap: every `:root` token name in `src/styles.css` is API consumed by inline
   styles across `src/`, so warm-sounding names (`--paper`, `--surface-warm`,
   `--brass`, `--amber`…) were kept and given cool values in the same role.
   **Never rename or delete a token — retune the value.**
-- The `[data-theme="dark"]` espresso block is still the old warm build and is
-  unexposed; it gets retuned in phase 5. Typography / uppercase-mono label
-  cleanup is phase 2.
+- Custom theme accents live in `src/lib/accents.js`. Each option carries an
+  explicit `light` AND `dark` set (`base`/`fill`/`fillHover`/`strong`/`soft`),
+  because an inline override on `<html>` beats both stylesheet blocks; `App.jsx`
+  applies the set for the active theme and re-applies on toggle. The first
+  option is **"ตามธีม"** — it applies by *clearing* the overrides, so it follows
+  whichever block is active (blue in light, gold in dark). The harness asserts
+  the whole 6 × 2 matrix, so adding an option fails until its numbers are real.
+- The `[data-theme="dark"]` espresso block is still the old warm build, but it
+  is **live and persisted** — `App.jsx` stores the choice at localStorage
+  `'loop:theme'` and sets `data-theme` on `<html>`, with a moon toggle in the
+  Sidebar and MobileNav. Only the VISUAL retune (espresso → graphite) is
+  phase 5. **Any token you add to `:root` needs a dark value too** — assuming
+  dark was unexposed is exactly how `--accent-fill` shipped broken in v4.53
+  (light blue on dark's `--text-inverse` at 3.62:1). Typography /
+  uppercase-mono label cleanup is phase 2.
 - Fonts: the native system stack (`--f-display` / `--f-body` / `--f-mono`), no webfont.
 - **Inline styles using CSS variables**. Avoid creating new utility classes — extend `src/styles.css` only when a pattern repeats 3+ times.
 - Mono-style small labels: `fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase'`.
