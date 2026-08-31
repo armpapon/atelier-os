@@ -77,6 +77,34 @@ import {
 } from '../src/lib/moneyPlanner.js';
 import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 
+// ── Palette acceptance (v4.53 · A10 finding 4) ────────────────────────────
+// Pure colour maths + a literal read of src/styles.css. No DOM, no network.
+import { readFileSync as paletteRead } from 'node:fs';
+import { join as paletteJoin, basename as paletteBase } from 'node:path';
+import { readdirSync as paletteReaddir } from 'node:fs';
+import {
+  contrast as paletteContrast,
+  separation as paletteSeparation,
+  composite as paletteComposite,
+  hexToRgb as paletteRgb,
+  selfTest as colorSelfTest,
+} from './colorcheck.mjs';
+import {
+  ACCENT_OPTIONS, DEFAULT_ACCENT, ACCENT_VAR_NAMES,
+  accentOption, accentVars, isKnownAccent,
+} from '../src/lib/accents.js';
+
+/** Every source file under src/, recursively. */
+function paletteSrcFiles(dir) {
+  const out = [];
+  for (const e of paletteReaddir(dir, { withFileTypes: true })) {
+    const p = paletteJoin(dir, e.name);
+    if (e.isDirectory()) out.push(...paletteSrcFiles(p));
+    else if (/\.(jsx?|css|html)$/.test(e.name)) out.push(p);
+  }
+  return out;
+}
+
 let pass = 0, fail = 0;
 function check(name, cond, detail = '') {
   if (cond) { pass++; console.log(`  PASS  ${name}${detail ? '  → ' + detail : ''}`); }
@@ -4469,6 +4497,245 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     const clears = comparePayoff([{ id: 'c', name: 'c', remaining_balance: 50000, interest_rate: 16, monthly_payment: 4000 }], 3000);
     check('ทั้งสอง run จบ → censored false, interestSaved/monthsSaved เป็นตัวเลขจริง',
       clears.censored === false && clears.interestSaved != null && clears.monthsSaved != null);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.53 · PALETTE ACCEPTANCE (A10 · finding 4)
+//
+// A10 shipped two colour defects that every existing test was blind to: an
+// accent used as normal-size text at 4.02:1, and a CVD claim off by 31 ΔE.
+// Nothing here touches the DOM or the network — it parses src/styles.css
+// literally and does the maths with audit/colorcheck.mjs, so it runs in the
+// same deterministic harness as everything above.
+//
+// The calculator is self-tested FIRST (reference case group below). If a
+// simulation matrix or a ΔE2000 term is ever broken, those fail loudly rather
+// than silently blessing whatever the palette happens to be.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  section('v4.53 · palette — colour calculator reference self-tests (A10 · Major 2)');
+
+  for (const r of colorSelfTest()) check(`colorcheck: ${r.name}`, r.ok, r.detail);
+
+  // ── Parse :root literally ────────────────────────────────────────────────
+  const cssPath = paletteJoin(__LOOP_ROOT__, 'src', 'styles.css');
+  const cssText = paletteRead(cssPath, 'utf8');
+  const rootBody = (cssText.match(/:root\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
+  const rootNoComments = rootBody.replace(/\/\*[\s\S]*?\*\//g, '');
+  const tokenNames = [...rootNoComments.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map(m => m[1]);
+  const T = Object.fromEntries(
+    [...rootNoComments.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)]
+      .map(m => [m[1], m[2].trim()]),
+  );
+
+  section('v4.53 · palette — token inventory pinned (A10 · finding 4)');
+
+  // 70 = the 64 line-start declarations the auditor counted, + the 5 declared
+  // on a shared line (--success-soft, --danger-soft, --warning-soft,
+  // --profit-bg, --loss-bg), + --accent-fill added by this PR. Renaming or
+  // deleting any of these silently breaks inline styles across src/.
+  const EXPECTED_TOKENS = [
+    '--background', '--background-soft', '--surface', '--surface-muted', '--surface-warm',
+    '--bg', '--bg-2', '--surface-2', '--surface-3', '--card', '--paper', '--paper-2', '--paper-ink',
+    '--text-primary', '--text-secondary', '--text-muted', '--text-inverse',
+    '--ink', '--ink-2', '--ink-3', '--ink-4',
+    '--border', '--border-strong', '--hairline', '--line', '--line-2',
+    '--accent', '--accent-fill', '--accent-strong', '--accent-soft', '--accent-tint',
+    '--amber', '--amber-2', '--amber-deep', '--brass',
+    '--fill', '--fill-2',
+    '--success', '--success-soft', '--danger', '--danger-soft', '--warning', '--warning-soft',
+    '--profit', '--profit-bg', '--loss', '--loss-bg', '--profit-soft',
+    '--chart-income', '--chart-expense', '--blue', '--violet', '--rose',
+    '--f-display', '--f-body', '--f-mono',
+    '--radius-card', '--radius-btn', '--radius-field', '--radius-control', '--radius-pill',
+    '--r-sm', '--r-md', '--r-lg', '--r-xl',
+    '--shadow-card', '--shadow-pop', '--shadow-soft', '--sidebar-bg', '--dim',
+  ];
+  check(`:root declares exactly ${EXPECTED_TOKENS.length} tokens`,
+    tokenNames.length === EXPECTED_TOKENS.length, `พบ ${tokenNames.length}`);
+  const missing = EXPECTED_TOKENS.filter(n => !tokenNames.includes(n));
+  const added   = tokenNames.filter(n => !EXPECTED_TOKENS.includes(n));
+  check('ไม่มี token ถูกลบ/rename (ชื่อ token = API ของ inline styles)',
+    missing.length === 0, missing.join(',') || 'ครบ');
+  check('ไม่มี token โผล่มาโดยไม่ได้ประกาศในลิสต์นี้',
+    added.length === 0, added.join(',') || 'ไม่มี');
+  check('--accent-fill ถูกเพิ่มจริง และ --accent / --accent-strong ยังอยู่',
+    tokenNames.includes('--accent-fill') && tokenNames.includes('--accent')
+    && tokenNames.includes('--accent-strong'));
+
+  section('v4.53 · palette — WCAG contrast ตาม ROLE (A10 · Major 1)');
+
+  const SURFACE = '#ffffff', GROUND = '#f2f2f7';
+  // The composites accent text actually lands on.
+  const TINT_ON_SURFACE = paletteComposite([0, 122, 255], 0.10, SURFACE);
+  const TINT_ON_GROUND  = paletteComposite([0, 122, 255], 0.10, GROUND);
+
+  const ratio = (fg, bg) => paletteContrast(fg, bg);
+  const atLeast = (label, fg, bg, min) => {
+    const r = ratio(fg, bg);
+    check(`${label} ≥ ${min}:1`, r >= min, `${r.toFixed(2)}:1`);
+  };
+
+  // Text tokens against the surfaces they are really used on.
+  atLeast('--text-primary บน --surface',   T['--text-primary'],   SURFACE, 4.5);
+  atLeast('--text-primary บน --background', T['--text-primary'],  GROUND,  4.5);
+  atLeast('--text-secondary บน --surface', T['--text-secondary'], SURFACE, 4.5);
+  atLeast('--text-secondary บน --background', T['--text-secondary'], GROUND, 4.5);
+  atLeast('--text-muted บน --surface',     T['--text-muted'],     SURFACE, 4.5);
+  atLeast('--text-muted บน --background',  T['--text-muted'],     GROUND,  4.5);
+  atLeast('--paper-ink บน --paper',        T['--paper-ink'],      T['--surface-warm'], 4.5);
+  atLeast('--brass บน --surface',          T['--brass'],          SURFACE, 4.5);
+
+  // The accent role split — this is the finding-1 regression guard.
+  atLeast('--accent เป็น graphical บน --surface (เกณฑ์ 3:1)',    T['--accent'], SURFACE, 3);
+  atLeast('--accent เป็น graphical บน --background (เกณฑ์ 3:1)', T['--accent'], GROUND,  3);
+  {
+    // Documents WHY --accent must never carry normal-size text.
+    const r = ratio(T['--accent'], SURFACE);
+    check('--accent ยัง "ตก" เกณฑ์ตัวอักษรปกติ 4.5:1 — จึงห้ามใช้กับข้อความ',
+      r < 4.5, `${r.toFixed(2)}:1 บนขาว → ใช้ --accent-strong แทน`);
+  }
+  atLeast('--accent-fill กับตัวอักษร --text-inverse (ขาว)', T['--accent-fill'], SURFACE, 4.5);
+  atLeast('--accent-strong บน --surface',      T['--accent-strong'], SURFACE, 4.5);
+  atLeast('--accent-strong บน --background',   T['--accent-strong'], GROUND,  4.5);
+  atLeast('--accent-strong บน --accent-soft',  T['--accent-strong'], T['--accent-soft'], 4.5);
+  atLeast('--accent-strong บน --accent-tint เหนือ --surface',    T['--accent-strong'], TINT_ON_SURFACE, 4.5);
+  atLeast('--accent-strong บน --accent-tint เหนือ --background', T['--accent-strong'], TINT_ON_GROUND,  4.5);
+
+  // Categorical hues are used as small text (.tag--blue/violet/rose, importer,
+  // cashbox), so they are gated at 4.5:1 on BOTH surfaces — not 3:1.
+  for (const name of ['--blue', '--violet', '--rose']) {
+    atLeast(`${name} เป็นข้อความบน --surface`,    T[name], SURFACE, 4.5);
+    atLeast(`${name} เป็นข้อความบน --background`, T[name], GROUND,  4.5);
+  }
+
+  // Semantic money colours carry meaning in text.
+  for (const [tok, soft] of [['--success', '--success-soft'], ['--danger', '--danger-soft'], ['--warning', '--warning-soft']]) {
+    atLeast(`${tok} บน --surface`,    T[tok], SURFACE, 4.5);
+    atLeast(`${tok} บน --background`, T[tok], GROUND,  4.5);
+    atLeast(`${tok} บน ${soft}`,      T[tok], T[soft], 4.5);
+  }
+
+  // Chart marks are graphical objects → 3:1.
+  atLeast('--chart-income บน --surface',    T['--chart-income'],  SURFACE, 3);
+  atLeast('--chart-income บน --background', T['--chart-income'],  GROUND,  3);
+  atLeast('--chart-expense บน --surface',   T['--chart-expense'], SURFACE, 3);
+  atLeast('--chart-expense บน --background', T['--chart-expense'], GROUND, 3);
+
+  section('v4.53 · palette — CVD ของคู่สีกราฟ (A10 · Major 2)');
+
+  {
+    const inc = T['--chart-income'], exp = T['--chart-expense'];
+    const sep = paletteSeparation(inc, exp);
+    check('คู่สีกราฟต่างกันชัดสำหรับสายตาปกติ (ΔE2000 ≥ 40)',
+      sep.normal >= 40, `ΔE ${sep.normal.toFixed(2)}`);
+    check('protanopia: ΔE2000 ≥ 20 (เกณฑ์บังคับ — ข้อที่ v4.52 ตกจริง)',
+      sep.protan >= 20, `ΔE ${sep.protan.toFixed(2)}`);
+    check('deuteranopia: ΔE2000 ≥ 20 (เกณฑ์บังคับ)',
+      sep.deutan >= 20, `ΔE ${sep.deutan.toFixed(2)}`);
+    check('ทั้ง protan และ deutan ผ่านพร้อมกัน',
+      Math.min(sep.protan, sep.deutan) >= 20,
+      `min ${Math.min(sep.protan, sep.deutan).toFixed(2)}`);
+
+    // The specific pair that shipped in v4.52 must not come back.
+    check('คู่สีเดิม #2f6b2c/#c9663a ถูกเลิกใช้แล้ว',
+      !(inc.toLowerCase() === '#2f6b2c' && exp.toLowerCase() === '#c9663a'),
+      `${inc}/${exp}`);
+    {
+      const old = paletteSeparation('#2f6b2c', '#c9663a');
+      check('…และเหตุผลยังพิสูจน์ได้: คู่เดิม protan ΔE < 10 (ไม่ใช่ 37.4 ที่เคยประกาศ)',
+        old.protan < 10, `protan ΔE ${old.protan.toFixed(2)}`);
+    }
+    // Income must stay the teal-leaning green, expense the orange — a swap
+    // would keep the ΔE gates but invert the money metaphor.
+    check('income ยังเป็นเขียวอมเทอร์ควอยซ์ (G และ B สูงกว่า R)',
+      (() => { const [r, g, b] = paletteRgb(inc); return g > r && b > r; })(), inc);
+    check('expense ยังเป็นส้ม (R สูงสุด, B ต่ำสุด)',
+      (() => { const [r, g, b] = paletteRgb(exp); return r > g && g > b; })(), exp);
+  }
+
+  section('v4.53 · palette — ชุดสีธีมที่ผู้ใช้เลือกได้ (A10 · finding 3)');
+
+  {
+    check('ค่า default ของ ACCENT_OPTIONS ตรงกับ --accent ใน styles.css',
+      ACCENT_OPTIONS[0].base === T['--accent'], `${ACCENT_OPTIONS[0].base} vs ${T['--accent']}`);
+    check('option แรกสะท้อน fill/strong/soft ของ styles.css เป๊ะ (เลือกแล้ว = คืนสิทธิ์ให้ stylesheet)',
+      ACCENT_OPTIONS[0].fill === T['--accent-fill']
+      && ACCENT_OPTIONS[0].strong === T['--accent-strong']
+      && ACCENT_OPTIONS[0].soft === T['--accent-soft']);
+    check('DEFAULT_ACCENT = option แรก', DEFAULT_ACCENT === ACCENT_OPTIONS[0].base);
+
+    for (const o of ACCENT_OPTIONS) {
+      atLeast(`accent "${o.id}" — fill กับตัวอักษรขาว`, o.fill, SURFACE, 4.5);
+      atLeast(`accent "${o.id}" — strong บน --surface`, o.strong, SURFACE, 4.5);
+      atLeast(`accent "${o.id}" — strong บน --background`, o.strong, GROUND, 4.5);
+      atLeast(`accent "${o.id}" — strong บน soft ของตัวเอง`, o.strong, o.soft, 4.5);
+    }
+
+    // Migration: legacy warm values must not survive.
+    const LEGACY_WARM = ['#d4a574', '#6cbf83', '#7ba7d4', '#a78fcc', '#d49aa5', '#e07a6e', '#b27a42'];
+    check('ไม่มีสีชุดเดิม (warm) หลงเหลือใน ACCENT_OPTIONS',
+      LEGACY_WARM.every(h => !isKnownAccent(h)));
+    check('ค่าที่เซฟไว้เป็นสีชุดเดิม → ถือว่าไม่รู้จัก (จะถูกรีเซ็ตเป็นน้ำเงิน)',
+      LEGACY_WARM.every(h => accentOption(h) === null));
+    check('ค่าที่เซฟไว้เป็นสีในชุดใหม่ → ใช้ได้',
+      ACCENT_OPTIONS.every(o => isKnownAccent(o.base)));
+    check('ค่าว่าง / null → ไม่รู้จัก (ใช้ default)',
+      accentOption(null) === null && accentOption('') === null);
+
+    // The override must set the whole alias group, never --amber alone.
+    const vars = accentVars(ACCENT_OPTIONS[1]);
+    const names = vars.map(([k]) => k);
+    check('accentVars ตั้งครบทั้งกลุ่ม accent (5 ตัว)',
+      names.length === 5
+      && ['--accent', '--accent-fill', '--accent-strong', '--accent-soft', '--accent-tint']
+        .every(n => names.includes(n)), names.join(' '));
+    check('accentVars ไม่ตั้ง --amber แยกต่างหาก (styles.css ให้ --amber = var(--accent) อยู่แล้ว)',
+      !names.some(n => n.startsWith('--amber')));
+    check('--accent-tint ถูกสร้างเป็น rgba จาก base ของ option นั้นจริง',
+      vars.find(([k]) => k === '--accent-tint')[1] === 'rgba(88, 86, 214, 0.10)');
+    check('ACCENT_VAR_NAMES ครอบคลุมทุก property ที่ accentVars ตั้ง (ใช้ล้างค่าได้ครบ)',
+      names.every(n => ACCENT_VAR_NAMES.includes(n))
+      && ACCENT_VAR_NAMES.length === names.length);
+  }
+
+  section('v4.53 · palette — warm-hex sweep (A10.2 ไม่ถอยหลัง)');
+
+  {
+    // The retired ivory/clay literals. Each is asserted absent from ALL of
+    // src/ — including the dark block, which never used these values.
+    const RETIRED_WARM = [
+      '#f5f0e7', '#fffaf0', '#fbf8f1', '#f0eadf',
+      '#e3d8c8', '#d07040', '#c99a42', '#b98545',
+    ];
+    const files = paletteSrcFiles(paletteJoin(__LOOP_ROOT__, 'src'));
+    check(`สแกนไฟล์ใน src/ ได้จริง (${files.length} ไฟล์)`, files.length > 40, `${files.length} ไฟล์`);
+
+    const contents = files.map(f => [f, paletteRead(f, 'utf8')]);
+    for (const hex of RETIRED_WARM) {
+      const hits = contents.filter(([, t]) => t.toLowerCase().includes(hex)).map(([f]) => paletteBase(f));
+      check(`warm hex ${hex} ไม่เหลือใน src/`, hits.length === 0, hits.join(',') || 'สะอาด');
+    }
+    {
+      const hits = contents.filter(([, t]) => /rgba\(\s*74\s*,\s*61\s*,\s*43/i.test(t)).map(([f]) => paletteBase(f));
+      check('เงาสีอุ่น rgba(74, 61, 43, …) ไม่เหลือใน src/', hits.length === 0, hits.join(',') || 'สะอาด');
+    }
+
+    // Values that are ALLOWED, but only where the audit accepted them. This is
+    // the half that keeps the sweep honest: they may exist, but they may not
+    // spread to new files.
+    const bounded = [
+      ['#a8752f', ['VersionHistory.jsx'],            'ข้อความ changelog ย้อนหลัง'],
+      ['#b27a42', ['App.jsx'],                       'sentinel ค่า accent เดิม'],
+      ['#d4a574', ['Family.jsx', 'styles.css'],      'สี avatar ที่ผู้ใช้เลือก + legacy chip ที่ตายแล้ว'],
+    ];
+    for (const [hex, allowed, why] of bounded) {
+      const hits = contents.filter(([, t]) => t.toLowerCase().includes(hex)).map(([f]) => paletteBase(f));
+      const stray = hits.filter(f => !allowed.includes(f));
+      check(`${hex} ปรากฏเฉพาะที่ audit ยอมรับ (${why})`,
+        stray.length === 0, stray.length ? `หลุดไปที่ ${stray.join(',')}` : hits.join(',') || 'ไม่มี');
+    }
   }
 }
 

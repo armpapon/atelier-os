@@ -25,7 +25,13 @@ await esbuild.build({
   format: 'esm',
   platform: 'node',
   outfile,
-  define: { 'import.meta.env': '{}' },
+  // __LOOP_ROOT__ lets the palette cases read src/styles.css literally. The
+  // bundle executes from a temp dir, so it cannot resolve the repo any other
+  // way, and process.cwd() would make the harness depend on where it was run.
+  define: {
+    'import.meta.env': '{}',
+    __LOOP_ROOT__: JSON.stringify(path.dirname(HERE)),
+  },
   plugins: [{
     name: 'mock-supabase-alias',
     setup(build) {
