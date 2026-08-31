@@ -50,7 +50,7 @@ const ISSUER_TONES = {
   cardx: '#5b4b8a', scb: '#5b4b8a', ไทยพาณิชย์: '#5b4b8a',
   ktc: '#00437a', กรุงไทย: '#00437a', krungthai: '#00437a',
   citi: '#1a63a8', uob: '#1a3c6e', bbl: '#00398d', กรุงเทพ: '#00398d',
-  ttb: '#2a5caa', krungsri: '#8a6a2b', กรุงศรี: '#8a6a2b', aeon: '#a8752f',
+  ttb: '#2a5caa', krungsri: '#8a6a2b', กรุงศรี: '#8a6a2b', aeon: '#6f2c91',
 };
 function chipTone(card) {
   const hay = `${card?.issuer || ''} ${card?.name || ''}`.toLowerCase();
@@ -65,12 +65,12 @@ function chipLabel(card) {
 /**
  * The real plastic, at the size the approved mockup drew it. Height is left to
  * the image so an issuer's odd aspect ratio is never squashed, and the two-layer
- * shadow is the same warm ink the rest of the page casts.
+ * shadow is the same neutral ink the rest of the page casts.
  */
 const CARD_FACE = {
   width: 104, height: 'auto', flex: 'none', borderRadius: 8,
   border: '1px solid var(--hairline)',
-  boxShadow: '0 1px 2px rgba(74, 61, 43, 0.10), 0 5px 14px rgba(74, 61, 43, 0.18)',
+  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.10), 0 5px 14px rgba(0, 0, 0, 0.18)',
 };
 
 /**

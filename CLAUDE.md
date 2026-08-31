@@ -40,8 +40,18 @@
 
 ## 3 · Conventions
 
-### Design system — "Editorial Minimal OS"
-- Warm ivory palette. Fonts: **Anuphan** (Thai display) + **JetBrains Mono** (numbers, labels).
+### Design system — "True Cupertino" (phase 1 shipped v4.52)
+- Cool iOS light palette: `--background` #f2f2f7 (systemGray6) ground, white cards,
+  iOS system blue `--accent` #007aff (`--accent-strong` #0058cc for small text).
+  Replaced the "Cupertino Warm" ivory + clay palette in v4.52 — a **value-only**
+  swap: every `:root` token name in `src/styles.css` is API consumed by inline
+  styles across `src/`, so warm-sounding names (`--paper`, `--surface-warm`,
+  `--brass`, `--amber`…) were kept and given cool values in the same role.
+  **Never rename or delete a token — retune the value.**
+- The `[data-theme="dark"]` espresso block is still the old warm build and is
+  unexposed; it gets retuned in phase 5. Typography / uppercase-mono label
+  cleanup is phase 2.
+- Fonts: the native system stack (`--f-display` / `--f-body` / `--f-mono`), no webfont.
 - **Inline styles using CSS variables**. Avoid creating new utility classes — extend `src/styles.css` only when a pattern repeats 3+ times.
 - Mono-style small labels: `fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase'`.
 - All copy is **Thai**. Commit messages and code comments stay English.
