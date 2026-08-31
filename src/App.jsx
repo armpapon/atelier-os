@@ -123,19 +123,25 @@ export default function App() {
     const opt = accentOption(accent);
     // The default option means "styles.css owns the palette": clear every
     // override rather than pinning the tokens to one hex, so the stylesheet —
-    // and, in phase 2, the dark theme — keeps control.
-    if (!opt || opt.base === DEFAULT_ACCENT) {
+    // including the dark block — keeps control in BOTH themes.
+    if (!opt || opt.light.base === DEFAULT_ACCENT) {
       for (const name of ACCENT_VAR_NAMES) root.style.removeProperty(name);
       // Retire the old lone --amber override left behind by earlier builds.
       root.style.removeProperty('--amber');
       return;
     }
+    // A10-r2: an inline override on <html> beats BOTH :root and
+    // [data-theme="dark"], so a single palette leaked light values into the
+    // dark theme — a filled control's dark --text-inverse sat on a light fill
+    // at 2.18–4.00:1. Apply the variant set for the theme that is actually on,
+    // and re-run when it toggles (hence `theme` in the dependency list).
+    //
     // Set the whole alias group, not just one member. --amber/--amber-2/
     // --amber-deep are declared as var(--accent)/var(--accent-strong) in
-    // styles.css, so they follow from these five automatically.
-    for (const [name, value] of accentVars(opt)) root.style.setProperty(name, value);
+    // styles.css, so they follow from these automatically.
+    for (const [name, value] of accentVars(opt, theme)) root.style.setProperty(name, value);
     root.style.removeProperty('--amber');
-  }, [accent]);
+  }, [accent, theme]);
   useEffect(() => { safeLS.set('atelier:density', density); }, [density]);
   useEffect(() => { safeLS.set('loop:sidebar-collapsed', sidebarCollapsed ? '1' : '0'); }, [sidebarCollapsed]);
   useEffect(() => {

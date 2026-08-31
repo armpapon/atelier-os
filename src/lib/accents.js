@@ -9,93 +9,145 @@
 // group. (Literal hexes deliberately not repeated here — the palette harness
 // sweeps src/ for the retired warm values and this file must stay clean.)
 //
-// The set below is a curated iOS system-tint palette, default systemBlue.
-// Every option carries its own derived variants so a custom accent obeys the
-// same role split as the built-in one (see the accent block in styles.css):
+// A10-r2 finding 1b/2: the replacement set was still not "AA-safe by role".
+// Three separate holes, all now closed:
 //
-//   base    graphical only — 3:1 class. The swatch the user actually sees.
-//   fill    a filled control carrying --text-inverse text; ≥4.5:1 vs #ffffff.
-//   strong  normal-size accent text; ≥4.5:1 on BOTH #ffffff and #f2f2f7,
-//           and ≥4.5:1 on its own `soft` chip fill.
-//   soft    light chip fill, `base` composited over white.
+//   · DARK MODE IS LIVE (localStorage 'loop:theme' → data-theme on <html>, moon
+//     toggle in the sidebar and mobile nav). The set carried ONE palette, so
+//     picking an accent applied LIGHT variants into the dark theme: a filled
+//     control's dark --text-inverse #171310 landed on a light fill at
+//     2.18–4.00:1. Every option now carries an explicit `dark` set and App
+//     re-applies on theme change.
+//   · `base` is a graphical value and must clear 3:1, but Green measured
+//     2.22:1 on white / 1.99:1 on the ground and Teal 3.08/2.76 — a white tick
+//     or icon on those was unreadable. Both are retuned.
+//   · `strong` was verified on `soft` but not on the GENERATED 10% tint, where
+//     Pink fell to 4.44:1 (white) / 4.00:1 (ground). It is now gated on both
+//     tint composites as well.
 //
-// fill/strong/soft were derived by darkening `base` in place (hue and
-// saturation held) until each threshold was met, using audit/colorcheck.mjs.
-// They are stored as literals rather than computed at runtime so the palette
-// harness in audit/cases.mjs can assert every one of them without a browser.
-// If you add an option, run `node audit/colorcheck.mjs` and add it to the
-// harness — the harness asserts this whole list, so an unverified option fails.
+// Roles (they mirror the accent block in styles.css exactly):
 //
-// ORDER MATTERS: ACCENT_OPTIONS[0] is the default and MUST mirror the values
-// in styles.css :root exactly, because selecting it clears the overrides and
-// hands the tokens back to the stylesheet.
+//   base        graphical only — 3:1 class. The swatch the user sees.
+//   fill        a filled control carrying --text-inverse; ≥4.5:1 against it.
+//   fillHover   that control's hover. ALWAYS moves away from --text-inverse
+//               (darker in light, brighter in dark), so hovering can only ever
+//               RAISE contrast — the old `filter: brightness(1.08)` lightened
+//               a light fill and pushed white text down to ~4.0:1.
+//   strong      normal-size accent text; ≥4.5:1 on the ground, the surface,
+//               its own `soft` chip AND its generated tint over both grounds.
+//   soft        chip fill, `base` composited over that theme's surface.
+//
+// Every value was derived by moving `base` in lightness (hue and saturation
+// held) until its threshold was met, using audit/colorcheck.mjs, and is stored
+// as a literal so the palette harness can assert the whole matrix — 6 options ×
+// 2 themes × every role pair — without a browser. If you add an option, the
+// harness will fail until its numbers are real.
+//
+// ORDER MATTERS: ACCENT_OPTIONS[0] is the default. Its `light` mirrors :root
+// and its `dark` mirrors [data-theme="dark"], because selecting it CLEARS the
+// overrides and hands both themes back to the stylesheet. The harness asserts
+// that mirror, so a future retune of either block cannot silently desync.
 
 export const ACCENT_OPTIONS = [
   {
     id: 'ios-blue', label: 'iOS Blue',
-    base: '#007aff', fill: '#006ade', strong: '#0058cc', soft: '#d6e6ff',
+    // Mirrors styles.css. Selecting this clears the overrides entirely.
+    // The dark set is the espresso GOLD family, not blue: the default option
+    // means "follow the theme's own accent", and dark's accent is still gold
+    // until the phase 5 retune. The five custom options below keep their own
+    // colour in dark, because there the user picked that colour on purpose.
+    light: { base: '#007aff', fill: '#006ade', fillHover: '#005dc2', strong: '#0058cc', soft: '#d6e6ff' },
+    dark:  { base: '#d9a45e', fill: '#d9a45e', fillHover: '#deb175', strong: '#e7bd83', soft: '#3a2c1c' },
   },
   {
     id: 'indigo', label: 'Indigo',
-    base: '#5856d6', fill: '#3432cd', strong: '#3432cd', soft: '#deddf7',
+    light: { base: '#5856d6', fill: '#5856d6', fillHover: '#423fd1', strong: '#5553d5', soft: '#e1e1f8' },
+    dark:  { base: '#5957d6', fill: '#7473dd', fillHover: '#8b89e2', strong: '#8583e1', soft: '#292431' },
   },
   {
     id: 'teal', label: 'Teal',
-    base: '#00a2b3', fill: '#00818f', strong: '#007a87', soft: '#e6f6f7',
+    // base retuned from #00a2b3 (3.08:1 white / 2.76:1 ground — under the 3:1
+    // graphical bar on the ground).
+    light: { base: '#0099a9', fill: '#00818e', fillHover: '#006772', strong: '#00727e', soft: '#cfecef' },
+    dark:  { base: '#00a2b3', fill: '#00a2b3', fillHover: '#00bbcf', strong: '#00a2b3', soft: '#1c2f2d' },
   },
   {
     id: 'violet', label: 'Violet',
-    base: '#af52de', fill: '#9c29d6', strong: '#9c29d6', soft: '#f1e1f9',
+    light: { base: '#af52de', fill: '#a944db', fillHover: '#9e2dd7', strong: '#9b29d5', soft: '#f1e0f9' },
+    dark:  { base: '#af52de', fill: '#b155df', fillHover: '#bb6de3', strong: '#bd70e4', soft: '#362333' },
   },
   {
     id: 'pink', label: 'Pink',
-    base: '#ff2d55', fill: '#ea002d', strong: '#dd002a', soft: '#ffeef1',
+    // strong darkened from #dd002a: it read 4.44:1 on its own 10% tint.
+    light: { base: '#ff2d55', fill: '#ea002d', fillHover: '#ce0027', strong: '#cc0027', soft: '#ffdae1' },
+    dark:  { base: '#ff2d55', fill: '#ff2d55', fillHover: '#ff496c', strong: '#ff4b6d', soft: '#401e1e' },
   },
   {
     id: 'green', label: 'Green',
-    base: '#34c759', fill: '#23863c', strong: '#217e39', soft: '#e2f7e7',
+    // base retuned from #34c759 (2.22:1 white / 1.99:1 ground — a white tick on
+    // it was unreadable).
+    light: { base: '#2a9f47', fill: '#23863c', fillHover: '#1d7032', strong: '#1f7635', soft: '#d5ecdb' },
+    dark:  { base: '#34c759', fill: '#34c759', fillHover: '#48cf6a', strong: '#34c759', soft: '#264927' },
   },
 ];
 
+export const THEMES = Object.freeze(['light', 'dark']);
+
 /** The default option — selecting it means "let styles.css own the tokens". */
-export const DEFAULT_ACCENT = ACCENT_OPTIONS[0].base;
+export const DEFAULT_ACCENT = ACCENT_OPTIONS[0].light.base;
 
 /**
- * Look up a saved accent. Anything not in the current option set — every
- * legacy warm value, not just the old LEGACY_ACCENT sentinel — resolves to
- * null so the caller can reset it to the default.
+ * Look up a saved accent by its LIGHT base (the value the panel persists).
+ * Anything not in the current option set — every legacy warm value, not just
+ * the old LEGACY_ACCENT sentinel — resolves to null so the caller can reset it.
  * @param {string|null} hex
- * @returns {{id:string,label:string,base:string,fill:string,strong:string,soft:string}|null}
  */
 export function accentOption(hex) {
   if (!hex) return null;
   const want = String(hex).trim().toLowerCase();
-  return ACCENT_OPTIONS.find(o => o.base === want) ?? null;
+  return ACCENT_OPTIONS.find(o => o.light.base === want) ?? null;
 }
 
 /** True when `hex` is a usable option (and therefore safe to persist). */
 export const isKnownAccent = hex => accentOption(hex) !== null;
 
+/** The variant set a given theme should apply. */
+export const variantsFor = (opt, theme) => (theme === 'dark' ? opt.dark : opt.light);
+
+/** `#rrggbb` → "r, g, b", for building an rgba() tint. */
+export function rgbChannels(hex) {
+  const h = String(hex).trim().replace(/^#/, '');
+  return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ');
+}
+
 /**
- * The full alias group a custom accent drives, as [cssProperty, value] pairs.
+ * The full alias group a custom accent drives, as [cssProperty, value] pairs,
+ * for ONE theme.
+ *
+ * The tint is derived from that theme's own `base` — it used to be hard-coded
+ * to the default blue's channels, so every non-blue accent got a blue tint.
+ * Alpha matches the stylesheet per theme (0.10 light / 0.14 dark).
  *
  * Deliberately does NOT include --amber / --amber-2 / --amber-deep: styles.css
  * declares those as var(--accent) / var(--accent-strong), so overriding the
- * accent trio here makes the amber aliases follow automatically. Setting them
+ * accent group here makes the amber aliases follow automatically. Setting them
  * separately is what let the two families drift apart in the first place.
  *
- * @param {{base:string,fill:string,strong:string,soft:string}} opt
+ * @param {object} opt   an ACCENT_OPTIONS entry
+ * @param {'light'|'dark'} theme
  */
-export function accentVars(opt) {
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(opt.base.slice(i, i + 2), 16));
+export function accentVars(opt, theme = 'light') {
+  const v = variantsFor(opt, theme);
+  const alpha = theme === 'dark' ? '0.14' : '0.10';
   return [
-    ['--accent',        opt.base],
-    ['--accent-fill',   opt.fill],
-    ['--accent-strong', opt.strong],
-    ['--accent-soft',   opt.soft],
-    ['--accent-tint',   `rgba(${r}, ${g}, ${b}, 0.10)`],
+    ['--accent',             v.base],
+    ['--accent-fill',        v.fill],
+    ['--accent-fill-hover',  v.fillHover],
+    ['--accent-strong',      v.strong],
+    ['--accent-soft',        v.soft],
+    ['--accent-tint',        `rgba(${rgbChannels(v.base)}, ${alpha})`],
   ];
 }
 
 /** Every CSS property accentVars can set — used to clear a custom accent. */
-export const ACCENT_VAR_NAMES = accentVars(ACCENT_OPTIONS[0]).map(([k]) => k);
+export const ACCENT_VAR_NAMES = accentVars(ACCENT_OPTIONS[0], 'light').map(([k]) => k);

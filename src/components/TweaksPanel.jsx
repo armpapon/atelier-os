@@ -42,12 +42,13 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
             <div style={{ marginBottom: 6, color: 'var(--text-secondary)' }}>สีหลัก</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {accentOptions.map(o => (
-                <button key={o.base} onClick={() => setAccent(o.base)}
+                <button key={o.id} onClick={() => setAccent(o.light.base)}
                   title={o.label} aria-label={o.label}
-                  aria-pressed={accent === o.base}
+                  data-accent={o.id}
+                  aria-pressed={accent === o.light.base}
                   style={{
-                    flex: 1, height: 36, borderRadius: 6, background: o.base,
-                    border: accent === o.base ? '2px solid var(--text-primary)' : '.5px solid var(--hairline)',
+                    flex: 1, height: 36, borderRadius: 6, background: o.light.base,
+                    border: accent === o.light.base ? '2px solid var(--text-primary)' : '.5px solid var(--hairline)',
                     cursor: 'pointer',
                   }}
                 />

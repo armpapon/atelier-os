@@ -70,6 +70,11 @@
                                  (≥3:1 graphical / large text only) */
   --accent-fill:   #006ade;   /* same hue, darkened until white text clears AA:
                                  5.10:1 vs #ffffff text (4.57:1 on --background) */
+  --accent-fill-hover: #005dc2; /* hover for a filled control. A10-r2: the old
+                                 `filter: brightness(1.08)` LIGHTENED the fill,
+                                 dropping white-text contrast (to 4.02–4.07:1 on
+                                 some custom accents). Hover now darkens instead,
+                                 which can only raise it: 6.28:1 vs white text. */
   --accent-strong: #0058cc;   /* text: 6.43:1 on --surface · 5.76:1 on --background
                                  · 5.09:1 on --accent-soft · 5.66:1 on --accent-tint
                                  over white · 5.10:1 on --accent-tint over --background */
@@ -115,8 +120,10 @@
 
        contrast   income  #0b7f74  4.88:1 on #ffffff · 4.37:1 on #f2f2f7
                   expense #c2410c  5.18:1 on #ffffff · 4.64:1 on #f2f2f7
-                  (both clear the 3:1 graphical bar with room to spare, and
-                   in fact clear 4.5:1 too, so labels in these colours are safe)
+                  (both clear the 3:1 graphical bar with room to spare. NOTE:
+                   only the WHITE surface clears 4.5:1 for both — income is
+                   4.37:1 on the ground, so on --background these stay graphical
+                   marks at ≥3:1 and must not be used as normal-size text)
        separation normal ΔE2000 51.6 · protan 22.9 · deutan 32.1 · tritan 35.6
                   (was normal 49.1 · protan 6.3 · deutan 19.2 · tritan 45.1)
 
@@ -199,6 +206,24 @@
   --hairline:      rgba(243, 236, 224, 0.10);
 
   --accent:        #d9a45e;
+  /* A10-r2 Major 1 — the ONE sanctioned edit to this block; the espresso→graphite
+     retune stays phase 5. --accent-fill is new in v4.53 and had no dark value, so
+     the light #006ade leaked in and paired with THIS block's --text-inverse
+     (#171310) at 3.62:1 — every primary button, selected day and segmented
+     control failed AA the moment the moon toggle was pressed.
+
+     These are GOLD, not the iOS dark-mode blue, and that is deliberate: this
+     block's --accent is still espresso gold, so a blue fill would read as a bug
+     rather than a design — one blue button in an otherwise gold theme. Dark
+     stays coherent until phase 5 brings the cool palette to every token at
+     once. Written as literal hex, not var(--accent), because the palette
+     harness parses literals and does the contrast maths on them.
+       --accent-fill        matches --accent  · 8.29:1 vs --text-inverse
+       --accent-fill-hover  a brighter gold   · 9.37:1 vs --text-inverse
+     Hover moves AWAY from --text-inverse (brighter in dark), so hovering can
+     only raise contrast — the same monotonicity rule the light block follows. */
+  --accent-fill:       #d9a45e;
+  --accent-fill-hover: #deb175;
   --accent-strong: #e7bd83;
   --accent-soft:   #3a2c1c;
   --accent-tint:   rgba(217, 164, 94, 0.14);
@@ -430,7 +455,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .btn--ghost { background: transparent; border-color: var(--hairline); color: var(--ink-2); }
 .btn--ghost:hover { color: var(--ink); background: var(--fill); filter: none; }
 .btn--primary { background: var(--accent-fill); color: var(--text-inverse); border-color: transparent; font-weight: 600; }
-.btn--primary:hover { background: var(--accent-fill); filter: brightness(1.08); }
+.btn--primary:hover { background: var(--accent-fill-hover); }
 .btn--sm { padding: 5px 12px; font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
 

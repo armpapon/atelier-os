@@ -54,7 +54,10 @@ export function Button({
       onMouseEnter={(e) => {
         if (disabled) return;
         const el = e.currentTarget;
-        if (variant === 'primary')        el.style.filter = 'brightness(1.08)';
+        // A10-r2: brightness(1.08) LIGHTENED the fill, so white text lost
+        // contrast on hover (4.02–4.07:1 on some accents). Darken instead —
+        // an explicit token, so a custom accent supplies its own hover fill.
+        if (variant === 'primary')        el.style.background = 'var(--accent-fill-hover)';
         else if (variant === 'secondary') el.style.background = 'var(--fill-2)';
         else if (variant === 'outline')   el.style.background = 'var(--fill)';
         else if (variant === 'ghost')     { el.style.background = 'var(--fill)'; el.style.color = 'var(--text-primary)'; }

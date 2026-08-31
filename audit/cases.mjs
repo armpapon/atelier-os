@@ -90,8 +90,8 @@ import {
   selfTest as colorSelfTest,
 } from './colorcheck.mjs';
 import {
-  ACCENT_OPTIONS, DEFAULT_ACCENT, ACCENT_VAR_NAMES,
-  accentOption, accentVars, isKnownAccent,
+  ACCENT_OPTIONS, DEFAULT_ACCENT, ACCENT_VAR_NAMES, THEMES,
+  accentOption, accentVars, isKnownAccent, variantsFor, rgbChannels,
 } from '../src/lib/accents.js';
 
 /** Every source file under src/, recursively. */
@@ -4531,17 +4531,17 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
 
   section('v4.53 · palette — token inventory pinned (A10 · finding 4)');
 
-  // 70 = the 64 line-start declarations the auditor counted, + the 5 declared
-  // on a shared line (--success-soft, --danger-soft, --warning-soft,
-  // --profit-bg, --loss-bg), + --accent-fill added by this PR. Renaming or
-  // deleting any of these silently breaks inline styles across src/.
+  // 71 = the 64 line-start declarations the A10 auditor counted, + the 5
+  // declared on a shared line (--success-soft, --danger-soft, --warning-soft,
+  // --profit-bg, --loss-bg), + --accent-fill (v4.53) + --accent-fill-hover
+  // (v4.54). Renaming or deleting any silently breaks inline styles in src/.
   const EXPECTED_TOKENS = [
     '--background', '--background-soft', '--surface', '--surface-muted', '--surface-warm',
     '--bg', '--bg-2', '--surface-2', '--surface-3', '--card', '--paper', '--paper-2', '--paper-ink',
     '--text-primary', '--text-secondary', '--text-muted', '--text-inverse',
     '--ink', '--ink-2', '--ink-3', '--ink-4',
     '--border', '--border-strong', '--hairline', '--line', '--line-2',
-    '--accent', '--accent-fill', '--accent-strong', '--accent-soft', '--accent-tint',
+    '--accent', '--accent-fill', '--accent-fill-hover', '--accent-strong', '--accent-soft', '--accent-tint',
     '--amber', '--amber-2', '--amber-deep', '--brass',
     '--fill', '--fill-2',
     '--success', '--success-soft', '--danger', '--danger-soft', '--warning', '--warning-soft',
@@ -4655,23 +4655,139 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       (() => { const [r, g, b] = paletteRgb(exp); return r > g && g > b; })(), exp);
   }
 
-  section('v4.53 · palette — ชุดสีธีมที่ผู้ใช้เลือกได้ (A10 · finding 3)');
+  section('v4.54 · palette — dark block parsed + accent roles ใน dark (A10-r2 · Major 1)');
+
+  // A10-r2: dark mode is LIVE (localStorage 'loop:theme' → data-theme on
+  // <html>). The v4.53 suite only ever read :root, so a token with no dark
+  // value — --accent-fill — leaked its light value into the dark theme and
+  // nothing failed. Parse the dark block too and gate the same roles against
+  // the surfaces that block actually defines.
+  const darkBody = (cssText.match(/\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
+  const darkNoComments = darkBody.replace(/\/\*[\s\S]*?\*\//g, '');
+  const D = Object.fromEntries(
+    [...darkNoComments.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)].map(m => [m[1], m[2].trim()]),
+  );
+
+  check('อ่าน [data-theme="dark"] ได้จริง (ไม่ใช่บล็อกว่าง)',
+    Object.keys(D).length > 30, `${Object.keys(D).length} tokens`);
+  check('dark block ประกาศ --accent-fill (ไม่ปล่อยให้ค่า light รั่วเข้ามา)',
+    typeof D['--accent-fill'] === 'string' && /^#/.test(D['--accent-fill']), D['--accent-fill']);
+  check('dark block ประกาศ --accent-fill-hover',
+    typeof D['--accent-fill-hover'] === 'string' && /^#/.test(D['--accent-fill-hover']), D['--accent-fill-hover']);
+
+  const DSUR = D['--surface'], DBG = D['--background'], DINV = D['--text-inverse'];
+  const DTINT_SUR = paletteComposite(paletteRgb(D['--accent']), 0.14, DSUR);
+  const DTINT_BG  = paletteComposite(paletteRgb(D['--accent']), 0.14, DBG);
+
+  // The exact pairing the auditor proved broken: root #006ade × dark inverse.
+  {
+    const leaked = paletteContrast(T['--accent-fill'], DINV);
+    check('พิสูจน์บั๊กเดิม: ค่า --accent-fill ของ :root คู่กับ --text-inverse ของ dark ตกจริง',
+      leaked < 4.5, `${leaked.toFixed(2)}:1 (< 4.5) — จึงต้องมีค่า dark แยก`);
+  }
+  atLeast('dark --accent-fill × dark --text-inverse',        D['--accent-fill'], DINV, 4.5);
+  atLeast('dark --accent-fill-hover × dark --text-inverse',  D['--accent-fill-hover'], DINV, 4.5);
+  check('hover ของ dark ไม่ทำให้คอนทราสต์ลดลง (สว่างขึ้น = ห่างจาก text-inverse มากขึ้น)',
+    paletteContrast(D['--accent-fill-hover'], DINV) >= paletteContrast(D['--accent-fill'], DINV),
+    `${paletteContrast(D['--accent-fill-hover'], DINV).toFixed(2)} ≥ ${paletteContrast(D['--accent-fill'], DINV).toFixed(2)}`);
+  atLeast('light --accent-fill-hover × ตัวอักษรขาว', T['--accent-fill-hover'], SURFACE, 4.5);
+  check('hover ของ light ไม่ทำให้คอนทราสต์ลดลง (เข้มขึ้น ไม่ใช่ brightness(1.08) ที่ทำให้สว่าง)',
+    paletteContrast(T['--accent-fill-hover'], SURFACE) >= paletteContrast(T['--accent-fill'], SURFACE),
+    `${paletteContrast(T['--accent-fill-hover'], SURFACE).toFixed(2)} ≥ ${paletteContrast(T['--accent-fill'], SURFACE).toFixed(2)}`);
+
+  // The other roles the v4.53 reroute introduced, now checked in dark too.
+  atLeast('dark --accent เป็น graphical บน --surface',    D['--accent'], DSUR, 3);
+  atLeast('dark --accent เป็น graphical บน --background', D['--accent'], DBG, 3);
+  atLeast('dark --accent-strong เป็นข้อความบน --surface',      D['--accent-strong'], DSUR, 4.5);
+  atLeast('dark --accent-strong เป็นข้อความบน --background',   D['--accent-strong'], DBG, 4.5);
+  atLeast('dark --accent-strong บน --accent-soft',             D['--accent-strong'], D['--accent-soft'], 4.5);
+  atLeast('dark --accent-strong บน accent-tint เหนือ surface', D['--accent-strong'], DTINT_SUR, 4.5);
+  atLeast('dark --accent-strong บน accent-tint เหนือ ground',  D['--accent-strong'], DTINT_BG, 4.5);
+  for (const name of ['--blue', '--violet', '--rose']) {
+    atLeast(`dark ${name} เป็นข้อความบน --surface`,    D[name], DSUR, 4.5);
+    atLeast(`dark ${name} เป็นข้อความบน --background`, D[name], DBG, 4.5);
+  }
+  atLeast('dark --chart-income บน --surface',  D['--chart-income'],  DSUR, 3);
+  atLeast('dark --chart-expense บน --surface', D['--chart-expense'], DSUR, 3);
+
+  section('v4.54 · palette — matrix เต็ม: ทุก option × ทุกธีม × ทุก role (A10-r2 · Major 2 + Minor)');
 
   {
-    check('ค่า default ของ ACCENT_OPTIONS ตรงกับ --accent ใน styles.css',
-      ACCENT_OPTIONS[0].base === T['--accent'], `${ACCENT_OPTIONS[0].base} vs ${T['--accent']}`);
-    check('option แรกสะท้อน fill/strong/soft ของ styles.css เป๊ะ (เลือกแล้ว = คืนสิทธิ์ให้ stylesheet)',
-      ACCENT_OPTIONS[0].fill === T['--accent-fill']
-      && ACCENT_OPTIONS[0].strong === T['--accent-strong']
-      && ACCENT_OPTIONS[0].soft === T['--accent-soft']);
-    check('DEFAULT_ACCENT = option แรก', DEFAULT_ACCENT === ACCENT_OPTIONS[0].base);
+    // Mirrors: the default option applies by CLEARING the overrides, so its
+    // stored variants must equal what each stylesheet block declares. If phase
+    // 5 retunes dark, this fails until accents.js is updated too.
+    const d0 = ACCENT_OPTIONS[0];
+    check('option แรก (light) สะท้อน :root เป๊ะ — เลือกแล้ว = คืนสิทธิ์ให้ stylesheet',
+      d0.light.base === T['--accent'] && d0.light.fill === T['--accent-fill']
+      && d0.light.fillHover === T['--accent-fill-hover']
+      && d0.light.strong === T['--accent-strong'] && d0.light.soft === T['--accent-soft'],
+      `${d0.light.base}/${d0.light.fill}/${d0.light.fillHover}/${d0.light.strong}/${d0.light.soft}`);
+    check('option แรก (dark) สะท้อน [data-theme="dark"] เป๊ะ',
+      d0.dark.base === D['--accent'] && d0.dark.fill === D['--accent-fill']
+      && d0.dark.fillHover === D['--accent-fill-hover']
+      && d0.dark.strong === D['--accent-strong'] && d0.dark.soft === D['--accent-soft'],
+      `${d0.dark.base}/${d0.dark.fill}/${d0.dark.fillHover}/${d0.dark.strong}/${d0.dark.soft}`);
+    check('DEFAULT_ACCENT = light base ของ option แรก', DEFAULT_ACCENT === d0.light.base);
+    check('ทุก option มีครบทั้งชุด light และ dark',
+      ACCENT_OPTIONS.every(o => THEMES.every(t =>
+        ['base', 'fill', 'fillHover', 'strong', 'soft'].every(k => /^#[0-9a-f]{6}$/i.test(variantsFor(o, t)[k])))));
 
+    // THE MATRIX. For every option × theme, gate each role against the surfaces
+    // that theme actually paints — this is the runtime combination the v4.53
+    // suite never covered, which is why 826/826 passed with two live defects.
+    const THEME_SURFACES = {
+      light: { ground: GROUND, surface: SURFACE, inverse: '#ffffff', tintAlpha: 0.10 },
+      dark:  { ground: DBG,    surface: DSUR,    inverse: DINV,      tintAlpha: 0.14 },
+    };
     for (const o of ACCENT_OPTIONS) {
-      atLeast(`accent "${o.id}" — fill กับตัวอักษรขาว`, o.fill, SURFACE, 4.5);
-      atLeast(`accent "${o.id}" — strong บน --surface`, o.strong, SURFACE, 4.5);
-      atLeast(`accent "${o.id}" — strong บน --background`, o.strong, GROUND, 4.5);
-      atLeast(`accent "${o.id}" — strong บน soft ของตัวเอง`, o.strong, o.soft, 4.5);
+      for (const theme of THEMES) {
+        const v = variantsFor(o, theme);
+        const S = THEME_SURFACES[theme];
+        const tag = `${o.id}/${theme}`;
+        // base is graphical (a tick, an icon, a rail) → 3:1 on both grounds.
+        atLeast(`${tag} — base เป็น graphical บน surface`, v.base, S.surface, 3);
+        atLeast(`${tag} — base เป็น graphical บน ground`,  v.base, S.ground, 3);
+        // fill + its hover carry --text-inverse for that theme.
+        atLeast(`${tag} — fill × text-inverse`,       v.fill, S.inverse, 4.5);
+        atLeast(`${tag} — fillHover × text-inverse`,  v.fillHover, S.inverse, 4.5);
+        check(`${tag} — hover ไม่ลดคอนทราสต์ (ยิ่ง hover ยิ่งอ่านชัด)`,
+          paletteContrast(v.fillHover, S.inverse) >= paletteContrast(v.fill, S.inverse),
+          `${paletteContrast(v.fillHover, S.inverse).toFixed(2)} ≥ ${paletteContrast(v.fill, S.inverse).toFixed(2)}`);
+        check(`${tag} — hover ต่างจาก fill จริง (มองเห็นว่า hover)`, v.fillHover !== v.fill, v.fillHover);
+        // strong is text: ground, surface, its own soft, AND the tint it
+        // generates over both grounds (the composite Pink used to fail).
+        atLeast(`${tag} — strong บน surface`, v.strong, S.surface, 4.5);
+        atLeast(`${tag} — strong บน ground`,  v.strong, S.ground, 4.5);
+        atLeast(`${tag} — strong บน soft`,    v.strong, v.soft, 4.5);
+        atLeast(`${tag} — strong บน tint เหนือ surface`,
+          v.strong, paletteComposite(paletteRgb(v.base), S.tintAlpha, S.surface), 4.5);
+        atLeast(`${tag} — strong บน tint เหนือ ground`,
+          v.strong, paletteComposite(paletteRgb(v.base), S.tintAlpha, S.ground), 4.5);
+      }
     }
+
+    // The override group, per theme.
+    for (const theme of THEMES) {
+      const vars = accentVars(ACCENT_OPTIONS[1], theme);
+      const names = vars.map(([k]) => k);
+      check(`accentVars(${theme}) ตั้งครบทั้งกลุ่ม accent (6 ตัว)`,
+        names.length === 6 && ['--accent', '--accent-fill', '--accent-fill-hover',
+          '--accent-strong', '--accent-soft', '--accent-tint'].every(n => names.includes(n)),
+        names.join(' '));
+      check(`accentVars(${theme}) ไม่ตั้ง --amber แยก (styles.css ให้ --amber = var(--accent))`,
+        !names.some(n => n.startsWith('--amber')));
+      const v = variantsFor(ACCENT_OPTIONS[1], theme);
+      const alpha = theme === 'dark' ? '0.14' : '0.10';
+      check(`accentVars(${theme}) สร้าง --accent-tint จาก base ของ option+ธีมนั้นจริง (ไม่ hard-code น้ำเงิน)`,
+        vars.find(([k]) => k === '--accent-tint')[1] === `rgba(${rgbChannels(v.base)}, ${alpha})`,
+        vars.find(([k]) => k === '--accent-tint')[1]);
+      check(`accentVars(${theme}) ใช้ค่าของธีมนั้น ไม่ใช่ของอีกธีม`,
+        vars.find(([k]) => k === '--accent-fill')[1] === v.fill
+        && v.fill !== variantsFor(ACCENT_OPTIONS[1], theme === 'dark' ? 'light' : 'dark').fill);
+    }
+    check('ACCENT_VAR_NAMES ครอบคลุมทุก property ที่ accentVars ตั้ง (ใช้ล้างค่าได้ครบ)',
+      accentVars(ACCENT_OPTIONS[0], 'light').every(([n]) => ACCENT_VAR_NAMES.includes(n))
+      && ACCENT_VAR_NAMES.length === 6);
 
     // Migration: legacy warm values must not survive.
     const LEGACY_WARM = ['#d4a574', '#6cbf83', '#7ba7d4', '#a78fcc', '#d49aa5', '#e07a6e', '#b27a42'];
@@ -4680,24 +4796,11 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     check('ค่าที่เซฟไว้เป็นสีชุดเดิม → ถือว่าไม่รู้จัก (จะถูกรีเซ็ตเป็นน้ำเงิน)',
       LEGACY_WARM.every(h => accentOption(h) === null));
     check('ค่าที่เซฟไว้เป็นสีในชุดใหม่ → ใช้ได้',
-      ACCENT_OPTIONS.every(o => isKnownAccent(o.base)));
+      ACCENT_OPTIONS.every(o => isKnownAccent(o.light.base)));
     check('ค่าว่าง / null → ไม่รู้จัก (ใช้ default)',
       accentOption(null) === null && accentOption('') === null);
-
-    // The override must set the whole alias group, never --amber alone.
-    const vars = accentVars(ACCENT_OPTIONS[1]);
-    const names = vars.map(([k]) => k);
-    check('accentVars ตั้งครบทั้งกลุ่ม accent (5 ตัว)',
-      names.length === 5
-      && ['--accent', '--accent-fill', '--accent-strong', '--accent-soft', '--accent-tint']
-        .every(n => names.includes(n)), names.join(' '));
-    check('accentVars ไม่ตั้ง --amber แยกต่างหาก (styles.css ให้ --amber = var(--accent) อยู่แล้ว)',
-      !names.some(n => n.startsWith('--amber')));
-    check('--accent-tint ถูกสร้างเป็น rgba จาก base ของ option นั้นจริง',
-      vars.find(([k]) => k === '--accent-tint')[1] === 'rgba(88, 86, 214, 0.10)');
-    check('ACCENT_VAR_NAMES ครอบคลุมทุก property ที่ accentVars ตั้ง (ใช้ล้างค่าได้ครบ)',
-      names.every(n => ACCENT_VAR_NAMES.includes(n))
-      && ACCENT_VAR_NAMES.length === names.length);
+    check('สีที่ถูก retune (teal/green base เดิม) ไม่ถูกจดจำเป็น option อีก',
+      accentOption('#00a2b3') === null && accentOption('#34c759') === null);
   }
 
   section('v4.53 · palette — warm-hex sweep (A10.2 ไม่ถอยหลัง)');
