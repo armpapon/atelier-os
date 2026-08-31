@@ -136,7 +136,7 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
                 fill="var(--chart-expense)" opacity={op} />
 
               <text x={b.cx} y={g.labelY} textAnchor="middle" fontSize="10.5"
-                fill={isSel ? 'var(--accent)' : 'var(--text-secondary)'}
+                fill={isSel ? 'var(--accent-strong)' : 'var(--text-secondary)'}
                 fontFamily="var(--f-mono)" fontWeight={isSel ? 700 : 400}>
                 {fmtYM(b.ym)}
               </text>
@@ -186,7 +186,7 @@ function SummaryStrip({ sel, todayYm, data, pick, onMonthClick }) {
           onClick={() => onMonthClick?.(todayYm)}
           style={{
             marginLeft: 'auto', border: 0, cursor: 'pointer',
-            background: 'var(--accent-tint)', color: 'var(--accent)',
+            background: 'var(--accent-tint)', color: 'var(--accent-strong)',
             font: 'inherit', fontSize: 12, fontWeight: 600,
             padding: '6px 14px', borderRadius: 99,
           }}>↩ เดือนนี้</button>
@@ -204,7 +204,7 @@ function StepBtn({ children, label, onClick, disabled }) {
       onClick={onClick}
       style={{
         width: 24, height: 24, border: 0, borderRadius: '50%',
-        background: 'var(--surface)', color: disabled ? 'var(--text-muted)' : 'var(--accent)',
+        background: 'var(--surface)', color: disabled ? 'var(--text-muted)' : 'var(--accent-strong)',
         cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
         fontSize: 13, lineHeight: 1, padding: 0,
         boxShadow: 'var(--shadow-soft, 0 1px 2px rgba(0,0,0,0.08))',

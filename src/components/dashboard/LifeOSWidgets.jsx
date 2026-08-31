@@ -8,7 +8,7 @@ const CATEGORY_META = {
   learning: { color: 'var(--blue)',     icon: '📚', label: 'การเรียน' },
   family:   { color: 'var(--violet)',   icon: '❤️', label: 'ครอบครัว' },
   trading:  { color: 'var(--warning)',  icon: '📈', label: 'Trading'  },
-  general:  { color: 'var(--accent)',   icon: '◎',  label: 'ทั่วไป'   },
+  general:  { color: 'var(--accent-strong)',   icon: '◎',  label: 'ทั่วไป'   },
 };
 
 // ════════════════════════════════════════════════════════════════════════════

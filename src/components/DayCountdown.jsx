@@ -44,7 +44,7 @@ export function DayCountdown() {
           strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - remainFrac)}
           transform="rotate(-90 33 33)"
           style={{ transition: 'stroke-dashoffset 950ms linear' }} />
-        <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--accent)' }}>{minLeft}</text>
+        <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--accent-strong)' }}>{minLeft}</text>
         <text x="33" y="44" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-3)', letterSpacing: '0.1em' }}>นาที</text>
       </svg>
 

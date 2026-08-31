@@ -914,7 +914,7 @@ export function Family() {
                         <div style={{ fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)', letterSpacing: '0.1em' }}>
                           {days === 0 ? 'วันนี้' : days === 1 ? 'พรุ่งนี้' : days < 0 ? 'ผ่านมา' : 'อีก'}
                         </div>
-                        {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}
+                        {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber-2)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}
                         {days > 1 && <div style={{ fontSize: 8, color: 'var(--ink-3)' }}>วัน</div>}
                         {/* Defensive: a past date reaching this list should read
                             "ผ่านมา N วัน", never a negative countdown. */}
@@ -1000,7 +1000,7 @@ export function Family() {
                   position: 'relative',
                 }}>
                   {note.title && (
-                    <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 15, color: 'var(--amber)', marginBottom: 8 }}>
+                    <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 15, color: 'var(--amber-2)', marginBottom: 8 }}>
                       {note.title}
                     </div>
                   )}

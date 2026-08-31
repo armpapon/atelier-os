@@ -30,7 +30,7 @@ export function EmptyState({
       <div style={{
         width: compact ? 40 : 48, height: compact ? 40 : 48,
         borderRadius: '50%',
-        background: 'var(--accent-tint)', color: 'var(--accent)',
+        background: 'var(--accent-tint)', color: 'var(--accent-strong)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: compact ? 18 : 22,
 

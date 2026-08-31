@@ -190,7 +190,7 @@ export function MoneyLeaks({
     );
   }
 
-  const srColor = thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--accent)' : 'var(--danger)';
+  const srColor = thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--accent-strong)' : 'var(--danger)';
   const nothingFlagged = creep.length === 0 && frequent.length === 0
     && recurring.length === 0 && remainingInterest === 0;
 

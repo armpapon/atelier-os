@@ -3,6 +3,9 @@ import { Sidebar, canSeePage } from './components/Sidebar.jsx';
 import { MobileNav } from './components/MobileNav.jsx';
 import { Icon, IconButton } from './components/Icon.jsx';
 import { TweaksPanel } from './components/TweaksPanel.jsx';
+import {
+  DEFAULT_ACCENT, ACCENT_VAR_NAMES, accentOption, accentVars, isKnownAccent,
+} from './lib/accents.js';
 import { ComingSoon } from './components/ComingSoon.jsx';
 import { LoginScreen } from './components/LoginScreen.jsx';
 import { ResetPasswordScreen } from './components/ResetPasswordScreen.jsx';
@@ -45,6 +48,13 @@ function isPreviewMode() {
 // The accent Tweak used to write --amber unconditionally, which meant this
 // legacy default silently overrode the palette token for every var(--amber)
 // consumer — including the dark theme's gold. Treat it as "not customised".
+//
+// A10 finding 3: treating ONLY this hex as legacy was too narrow. Every other
+// value the old panel offered was a warm ivory swatch too, so a user who had
+// actually picked one kept a tan accent painted over the True Cupertino
+// palette. The migration is now "is this value in the CURRENT option set?" —
+// see isKnownAccent — which retires the whole warm set at once. LEGACY_ACCENT
+// is kept only so the sentinel remains greppable next to that history.
 const LEGACY_ACCENT = '#b27a42';
 
 // localStorage throws in private-browsing / storage-blocked contexts, and a
@@ -63,7 +73,13 @@ const safeLS = {
 export default function App() {
   const { user, loading, passwordRecovery, clearPasswordRecovery } = useAuth();
   const [active, setActive]   = useState(() => safeLS.get('atelier:active', 'dashboard'));
-  const [accent, setAccent]   = useState(() => safeLS.get('atelier:accent', '#b27a42'));
+  // A saved value that is not one of the current options (every legacy warm
+  // swatch, plus the LEGACY_ACCENT sentinel) collapses to the default here, so
+  // the warm palette cannot survive a reload.
+  const [accent, setAccent]   = useState(() => {
+    const saved = safeLS.get('atelier:accent', DEFAULT_ACCENT);
+    return isKnownAccent(saved) ? saved : DEFAULT_ACCENT;
+  });
   const [density, setDensity] = useState(() => safeLS.get('atelier:density', 'comfortable'));
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -99,15 +115,26 @@ export default function App() {
     if (user && !canSeePage(user, active)) setActive('dashboard');
   }, [user, active]);
   useEffect(() => {
+    // Overwrite the stored key, so a legacy warm value is not just ignored at
+    // runtime but actually retired from localStorage on the next load.
     safeLS.set('atelier:accent', accent);
-    // Only override the palette token when the user actually picked a colour —
-    // otherwise styles.css owns --amber, so the warm accent and the dark
-    // theme's gold both apply instead of being pinned to one hex.
-    if (accent && accent !== LEGACY_ACCENT) {
-      document.documentElement.style.setProperty('--amber', accent);
-    } else {
-      document.documentElement.style.removeProperty('--amber');
+
+    const root = document.documentElement;
+    const opt = accentOption(accent);
+    // The default option means "styles.css owns the palette": clear every
+    // override rather than pinning the tokens to one hex, so the stylesheet —
+    // and, in phase 2, the dark theme — keeps control.
+    if (!opt || opt.base === DEFAULT_ACCENT) {
+      for (const name of ACCENT_VAR_NAMES) root.style.removeProperty(name);
+      // Retire the old lone --amber override left behind by earlier builds.
+      root.style.removeProperty('--amber');
+      return;
     }
+    // Set the whole alias group, not just one member. --amber/--amber-2/
+    // --amber-deep are declared as var(--accent)/var(--accent-strong) in
+    // styles.css, so they follow from these five automatically.
+    for (const [name, value] of accentVars(opt)) root.style.setProperty(name, value);
+    root.style.removeProperty('--amber');
   }, [accent]);
   useEffect(() => { safeLS.set('atelier:density', density); }, [density]);
   useEffect(() => { safeLS.set('loop:sidebar-collapsed', sidebarCollapsed ? '1' : '0'); }, [sidebarCollapsed]);

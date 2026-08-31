@@ -605,7 +605,7 @@ function ShopeeOrders() {
         <div className="card__title">📦 Shopee รอจัดส่ง ({queue.length})</div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <a href="https://seller.shopee.co.th/portal/sale/order?type=toship" target="_blank" rel="noopener noreferrer"
-            style={{ fontSize: 11, color: 'var(--accent)', textDecoration: 'none' }}>เปิด Seller Centre ↗</a>
+            style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>เปิด Seller Centre ↗</a>
           {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>
             {mode === 'shared' ? 'คิวร่วม · ' : ''}ซิงก์ {fmtSyncClock(lastSync)}</span>}
           <button onClick={() => refresh(true)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
@@ -905,7 +905,7 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
           <button key={b.id} type="button" onClick={() => setType(b.id)}
             style={{
               padding: '4px 11px', borderRadius: 'var(--radius-btn)', fontSize: 11.5, fontWeight: 500,
-              background: type === b.id ? 'var(--accent)' : 'var(--fill-2)',
+              background: type === b.id ? 'var(--accent-fill)' : 'var(--fill-2)',
               color: type === b.id ? 'var(--text-inverse)' : 'var(--ink-2)',
               border: 'none', cursor: 'pointer',
             }}>
@@ -974,7 +974,7 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
         {onClose && <button type="button" onClick={onClose}
           style={{ fontSize: 12.5, color: 'var(--ink-2)', padding: '4px 10px', background: 'none', border: 0, cursor: 'pointer' }}>ยกเลิก</button>}
         <button type="submit" disabled={saving || !text.trim()}
-          style={{ background: 'var(--accent)', color: 'var(--text-inverse)', border: 'none', borderRadius: 'var(--radius-btn)', padding: '6px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+          style={{ background: 'var(--accent-fill)', color: 'var(--text-inverse)', border: 'none', borderRadius: 'var(--radius-btn)', padding: '6px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
           {saving ? '...' : '+ เพิ่ม'}
         </button>
       </div>
@@ -1107,7 +1107,7 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
             fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
-            color: 'var(--accent)', textDecoration: 'none', fontWeight: 600,
+            color: 'var(--accent-strong)', textDecoration: 'none', fontWeight: 600,
             border: 'none', borderRadius: 'var(--radius-btn)',
             padding: '6px 12px', background: 'var(--accent-tint)',
           }}>
@@ -1292,7 +1292,7 @@ export function Journal() {
           <button onClick={() => setDate(today)}
             style={{
               flexShrink: 0, padding: '7px 14px', borderRadius: 'var(--radius-btn)',
-              background: date === today ? 'var(--accent)' : 'var(--fill-2)',
+              background: date === today ? 'var(--accent-fill)' : 'var(--fill-2)',
               color: date === today ? 'var(--text-inverse)' : 'var(--ink)',
               border: 'none', fontWeight: 500,
               fontSize: 12.5, whiteSpace: 'nowrap', cursor: 'pointer',
@@ -1364,7 +1364,7 @@ export function Journal() {
                 {isToday ? 'วันนี้ยังว่างอยู่ — เริ่มบันทึกได้เลย' : 'ไม่มีรายการในวันนี้'}
                 <br />
                 <button onClick={() => setShowAddEntry(true)}
-                  style={{ marginTop: 12, background: 'var(--accent-tint)', border: 'none', borderRadius: 'var(--radius-btn)', padding: '8px 18px', color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                  style={{ marginTop: 12, background: 'var(--accent-tint)', border: 'none', borderRadius: 'var(--radius-btn)', padding: '8px 18px', color: 'var(--accent-strong)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
                   + เพิ่มรายการ
                 </button>
               </div>

@@ -210,7 +210,7 @@ function BarButton({ icon, label, active, onClick }) {
         flex: 1, border: 0, background: 'transparent',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         gap: 4, cursor: 'pointer', padding: 0,
-        color: active ? 'var(--accent)' : 'var(--text-secondary)',
+        color: active ? 'var(--accent-strong)' : 'var(--text-secondary)',
       }}>
       {icon}
       <span style={{

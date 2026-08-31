@@ -392,7 +392,7 @@ function BookStudy({ source, onSaved }) {
 //  InsightsBank — takeaways / quotes / action items
 // ════════════════════════════════════════════════════════════════════════════
 const KINDS = {
-  takeaway: { label: 'ข้อคิด',    icon: '💡', color: 'var(--accent)',  soft: 'var(--accent-soft)' },
+  takeaway: { label: 'ข้อคิด',    icon: '💡', color: 'var(--accent-strong)',  soft: 'var(--accent-soft)' },
   quote:    { label: 'Quote',     icon: '❝',  color: 'var(--violet)', soft: 'var(--background-soft)' },
   action:   { label: 'ลงมือทำ',   icon: '✅', color: 'var(--success)', soft: 'var(--success-soft)' },
 };
@@ -858,7 +858,7 @@ function ScorePicker({ value, onChange }) {
           <button key={n} type="button" onClick={() => onChange(n)} className="focus-ring"
             style={{
               padding: '8px 0', flex: 1, borderRadius: 'var(--radius-control)',
-              background: value === n ? 'var(--accent)' : 'var(--surface)',
+              background: value === n ? 'var(--accent-fill)' : 'var(--surface)',
               color: value === n ? 'var(--text-inverse)' : 'var(--text-secondary)',
               border: '1px solid ' + (value === n ? 'var(--accent)' : 'var(--border)'),
               fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--f-mono)',

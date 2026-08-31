@@ -265,7 +265,7 @@ function NoteCard({ note, onDelete }) {
       borderRadius: 'var(--r-md)', padding: '12px 14px',
     }}>
       {note.title && (
-        <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--amber)', marginBottom: 6 }}>
+        <div style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'var(--amber-2)', marginBottom: 6 }}>
           {note.title}
         </div>
       )}
@@ -280,7 +280,7 @@ function NoteCard({ note, onDelete }) {
           background: 'var(--accent-soft)', border: 'none',
           borderRadius: 'var(--r-sm)', fontSize: 13, lineHeight: 1.6,
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--amber)', marginBottom: 4, letterSpacing: '0.12em' }}>
+          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--amber-2)', marginBottom: 4, letterSpacing: '0.12em' }}>
             🌐 แปล → {TARGET_LANGS.find(l => l.code === translation.lang)?.label || translation.lang}
           </div>
           <div style={{ color: 'var(--ink-2)' }}>{translation.text}</div>
@@ -410,19 +410,19 @@ function StudyMode({ source, onBack, onUpdate }) {
         <div style={{ marginTop: 20, padding: '16px 18px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.12em' }}>PROGRESS</div>
-            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: progress >= 100 ? 'var(--profit)' : 'var(--amber)', fontVariantNumeric: 'tabular-nums' }}>{progress}%</div>
+            <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: progress >= 100 ? 'var(--profit)' : 'var(--amber-2)', fontVariantNumeric: 'tabular-nums' }}>{progress}%</div>
           </div>
           <input type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))}
             style={{ width: '100%', accentColor: 'var(--amber)', cursor: 'pointer' }} />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>
             <span>0%</span>
-            <span style={{ color: 'var(--amber)' }}>{source.duration_min ? `${source.duration_min} นาที` : ''}</span>
+            <span style={{ color: 'var(--amber-2)' }}>{source.duration_min ? `${source.duration_min} นาที` : ''}</span>
             <span>100%</span>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             {[25, 50, 75, 100].map(v => (
               <button key={v} onClick={() => setProgress(v)}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, fontFamily: 'var(--f-mono)', background: progress === v ? 'var(--amber)' : 'var(--surface-2)', color: progress === v ? 'var(--text-inverse)' : 'var(--ink-3)', border: '1px solid var(--line)', cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '4px 0', fontSize: 11, borderRadius: 4, fontFamily: 'var(--f-mono)', background: progress === v ? 'var(--amber-deep)' : 'var(--surface-2)', color: progress === v ? 'var(--text-inverse)' : 'var(--ink-3)', border: '1px solid var(--line)', cursor: 'pointer' }}>
                 {v}%
               </button>
             ))}
