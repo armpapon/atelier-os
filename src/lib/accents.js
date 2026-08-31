@@ -52,8 +52,12 @@ export const ACCENT_OPTIONS = [
   {
     id: 'ios-blue', label: 'iOS Blue',
     // Mirrors styles.css. Selecting this clears the overrides entirely.
+    // The dark set is the espresso GOLD family, not blue: the default option
+    // means "follow the theme's own accent", and dark's accent is still gold
+    // until the phase 5 retune. The five custom options below keep their own
+    // colour in dark, because there the user picked that colour on purpose.
     light: { base: '#007aff', fill: '#006ade', fillHover: '#005dc2', strong: '#0058cc', soft: '#d6e6ff' },
-    dark:  { base: '#d9a45e', fill: '#0a84ff', fillHover: '#2692ff', strong: '#e7bd83', soft: '#3a2c1c' },
+    dark:  { base: '#d9a45e', fill: '#d9a45e', fillHover: '#deb175', strong: '#e7bd83', soft: '#3a2c1c' },
   },
   {
     id: 'indigo', label: 'Indigo',

@@ -210,14 +210,20 @@
      retune stays phase 5. --accent-fill is new in v4.53 and had no dark value, so
      the light #006ade leaked in and paired with THIS block's --text-inverse
      (#171310) at 3.62:1 — every primary button, selected day and segmented
-     control failed AA the moment the moon toggle was pressed. These are iOS
-     dark-mode systemBlue: 5.06:1 and 5.84:1 against --text-inverse.
-     NOTE: this block's --accent is still espresso gold, so a filled control now
-     reads blue inside an otherwise gold dark theme. That is deliberate — it is
-     forward-compatible with the phase 5 cool retune — but if the interim mix is
-     unwanted, `var(--accent)` is the zero-visual-change swap (gold, 8.29:1). */
-  --accent-fill:       #0a84ff;
-  --accent-fill-hover: #2692ff;
+     control failed AA the moment the moon toggle was pressed.
+
+     These are GOLD, not the iOS dark-mode blue, and that is deliberate: this
+     block's --accent is still espresso gold, so a blue fill would read as a bug
+     rather than a design — one blue button in an otherwise gold theme. Dark
+     stays coherent until phase 5 brings the cool palette to every token at
+     once. Written as literal hex, not var(--accent), because the palette
+     harness parses literals and does the contrast maths on them.
+       --accent-fill        matches --accent  · 8.29:1 vs --text-inverse
+       --accent-fill-hover  a brighter gold   · 9.37:1 vs --text-inverse
+     Hover moves AWAY from --text-inverse (brighter in dark), so hovering can
+     only raise contrast — the same monotonicity rule the light block follows. */
+  --accent-fill:       #d9a45e;
+  --accent-fill-hover: #deb175;
   --accent-strong: #e7bd83;
   --accent-soft:   #3a2c1c;
   --accent-tint:   rgba(217, 164, 94, 0.14);
