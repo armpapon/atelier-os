@@ -430,7 +430,7 @@ function SaveIndicator({ state, error, onRetry }) {
       </span>
     );
   }
-  const text = state === 'saved' ? 'บันทึกแล้ว ✓' : state === 'saving' ? 'กำลังบันทึก…' : 'ยังไม่ได้บันทึก';
+  const text = state === 'saved' ? 'บันทึกแล้ว' : state === 'saving' ? 'กำลังบันทึก…' : 'ยังไม่ได้บันทึก';
   return (
     <span style={{
       ...mono, fontSize: 10.5,

@@ -519,7 +519,7 @@ function EventDetail({ event, members, onChange, onClose }) {
               onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
               style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none',
                 fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 500, color: 'var(--ink)' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 13, color: 'var(--ink-3)' }}>
               <span>{formatEventDate(ev.event_date)} · {new Date(ev.event_date + 'T00:00:00').getFullYear() + 543}</span>
               {member?.name && <span>· {member.name}</span>}
             </div>
@@ -579,7 +579,7 @@ function EventDetail({ event, members, onChange, onClose }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={labelStyle}>รูปภาพ {photos.length > 0 && `(${photos.length})`}</span>
             <button onClick={() => fileRef.current?.click()} disabled={uploading}
-              style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', cursor: 'pointer',
+              style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--accent-strong)', cursor: 'pointer',
                 border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 10px' }}>
               {uploading ? 'กำลังอัปโหลด...' : 'เพิ่มรูป'}
             </button>
@@ -709,7 +709,7 @@ function KidQuotesCard({ quotes, members, onChange }) {
                 “{q.quote}”
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>
                   {q.member?.name ? `— ${q.member.name} · ` : ''}{new Date(q.said_on + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
                 <button onClick={() => { if (confirm('ลบคำพูดนี้?')) deleteQuote(q.id).then(onChange); }}
@@ -856,9 +856,9 @@ export function Family() {
                     <Avatar member={m} size={48} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--text-primary)' }}>
-                        {m.name} {isBirthdayMonth && <Icon name="gift" size={12} />}
+                        {m.name} {isBirthdayMonth && <Icon name="gift" size={12} label="วันเกิดเดือนนี้" />}
                       </div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {m.role}{age != null ? ` · ${age} ปี` : ''}{m.note ? ` · ${m.note}` : ''}
                       </div>
                     </div>
@@ -904,12 +904,11 @@ export function Family() {
                     <div key={ev.id} onClick={() => setViewingEvent(ev)}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--hairline)', cursor: 'pointer' }}>
                       {/* Day countdown badge */}
-                      <div style={{
+                      <div style={{ fontVariantNumeric: 'tabular-nums',
                         minWidth: 44, height: 44, borderRadius: 'var(--r-md)',
                         background: days === 0 ? 'var(--amber)' : days <= 3 ? 'var(--warning-soft)' : 'var(--surface-2)',
                         border: `1px solid ${days === 0 ? 'var(--amber)' : 'var(--line)'}`,
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                        fontFamily: 'var(--f-mono)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
                       }}>
                         {/* text-inverse flips correctly here since the badge bg is the accent/amber surface */}
                         <div style={{ fontWeight: 500, fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)'}}>
@@ -927,13 +926,13 @@ export function Family() {
                           <img src={pics[0]} alt="" loading="lazy"
                             style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', objectFit: 'cover', border: '1px solid var(--line)', display: 'block' }} />
                           {pics.length > 1 && (
-                            <span style={{ position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-mono)', fontSize: 8.5, padding: '1px 5px' }}><Icon name="camera" size={9} />{pics.length}</span>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontSize: 8.5, padding: '1px 5px' }}><Icon name="camera" size={9} label="รูปภาพ" />{pics.length}</span>
                           )}
                         </div>
                       )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13.5, color: 'var(--ink)', fontWeight: 500 }}>{ev.title}</div>
-                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 2 }}>
+                        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>
                           {formatEventDate(ev.event_date)}
                           {member?.name ? ` · ${member.name}` : ''}
                           {ev.note ? ` · ${ev.note}` : ''}
@@ -947,7 +946,7 @@ export function Family() {
 
                 {pastEvents.length > 0 && (
                   <details style={{ marginTop: 12 }}>
-                    <summary style={{ fontSize: 12, color: 'var(--ink-4)', cursor: 'pointer', fontFamily: 'var(--f-mono)' }}>
+                    <summary style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)', cursor: 'pointer' }}>
                       เหตุการณ์ที่ผ่านมา ({pastEvents.length})
                     </summary>
                     {pastEvents.slice(0, 8).map(ev => {
@@ -961,7 +960,7 @@ export function Family() {
                           )}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 12.5 }}>{ev.title}{pics.length > 1 ? ` · ${pics.length} รูป` : ''}</div>
-                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{formatEventDate(ev.event_date)}</div>
+                            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>{formatEventDate(ev.event_date)}</div>
                           </div>
                           <button onClick={(e) => { e.stopPropagation(); if (confirm('ลบ?')) { eventPhotos(ev).forEach(deleteEventPhotoByUrl); deleteEvent(ev.id).then(refresh); } }}
                             style={{ color: 'var(--ink-4)', fontSize: 13, padding: '2px 6px' }}>×</button>
@@ -1009,7 +1008,7 @@ export function Family() {
                     {note.body}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                    <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>
                       {note.author ? `${note.author} · ` : ''}{new Date(note.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </div>
                     <button onClick={() => { if (confirm('ลบโน้ตนี้?')) { deleteFamilyNote(note.id).then(refresh); } }}

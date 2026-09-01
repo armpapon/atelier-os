@@ -177,9 +177,8 @@ export function MobileNav({ active, onChange, user, theme = 'light', onToggleThe
                   fontSize: 14, color: 'var(--text-primary)', fontWeight: 500,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>{displayName}</div>
-                <div style={{
-                  fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                 }}>{subText}</div>
               </div>
               {user && (

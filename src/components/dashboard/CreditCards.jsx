@@ -195,7 +195,7 @@ function SummaryStrip({ summary, isMobile }) {
         tone={revolvingBalance > 0 ? 'var(--danger)' : 'var(--success)'}
         sub={revolvingCount > 0
           ? <>{revolvingCount} ใบ · ดอก ~<b style={{ color: 'var(--danger)' }}>{baht(monthlyInterest)}/เดือน</b> @{Math.round(DEFAULT_INTEREST_RATE * 100)}%</>
-          : 'ทุกใบจ่ายเต็ม ไม่มีดอกเบี้ยเดินอยู่ ✓'}
+          : 'ทุกใบจ่ายเต็ม ไม่มีดอกเบี้ยเดินอยู่'}
       />
 
       <Stat
@@ -216,7 +216,7 @@ function SummaryStrip({ summary, isMobile }) {
               </span>
             );
           })}</>
-          : 'ไม่มีใบไหนติดเงื่อนไขค้างอยู่ ✓'}
+          : 'ไม่มีใบไหนติดเงื่อนไขค้างอยู่'}
       />
 
       <Stat
@@ -314,9 +314,8 @@ function CreditCardBlock({ card, cards = [], debts, today, onEdit, onDelete }) {
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '2px 10px' }}>
           <span style={MONO_LABEL}>{shared ? 'ใช้วงเงิน (วงเงินร่วม)' : 'ใช้วงเงิน'}</span>
-          <span style={{
-            fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 700,
-            fontVariantNumeric: 'tabular-nums', color: utilTone(pct),
+          <span style={{ fontSize: 13, fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums', color: utilTone(pct)
           }}>
             {pct == null
               ? `${Math.round(shownBal).toLocaleString('en-US')}฿ · ยังไม่ได้ใส่วงเงิน`
@@ -388,9 +387,8 @@ function CreditCardBlock({ card, cards = [], debts, today, onEdit, onDelete }) {
                   </div>
                 </div>
                 {row.total > 0 && (
-                  <div style={{
-                    fontFamily: 'var(--f-mono)', fontSize: 12, fontWeight: 700,
-                    color: 'var(--blue)', whiteSpace: 'nowrap',
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12, fontWeight: 700,
+                    color: 'var(--blue)', whiteSpace: 'nowrap'
                   }}>เหลือ {Math.max(0, row.total - row.paid)}/{row.total} งวด</div>
                 )}
               </div>
@@ -432,7 +430,7 @@ function CreditCardBlock({ card, cards = [], debts, today, onEdit, onDelete }) {
                 ตารางเปรียบเทียบ ธปท. ↗
               </a>
               : <span />}
-            {card.fee_profile?.bot_checked && <span>✓ ตรวจกับ ธปท. แล้ว {card.fee_profile.bot_checked}</span>}
+            {card.fee_profile?.bot_checked && <span><Icon name="check" size={11} /> ตรวจกับ ธปท. แล้ว {card.fee_profile.bot_checked}</span>}
           </div>
         </details>
       )}
@@ -467,8 +465,8 @@ function WaiverBox({ card, waiver }) {
       <div style={{ ...FACT_BOX, background: 'var(--success-soft)', borderColor: 'transparent' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
           <span style={{ ...MONO_LABEL, color: 'var(--success)' }}>ค่าธรรมเนียมรายปี</span>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, fontWeight: 700, color: 'var(--success)' }}>
-            ฟรี ไม่มีเงื่อนไข ✓
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, fontWeight: 700, color: 'var(--success)' }}>
+            ฟรี ไม่มีเงื่อนไข
           </span>
         </div>
       </div>
@@ -484,7 +482,7 @@ function WaiverBox({ card, waiver }) {
         <span style={MONO_LABEL}>
           ตัวนับฟรีค่าธรรมเนียม{card.waiver_period_note ? ` · ${card.waiver_period_note}` : ''}
         </span>
-        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 700, color: waiver.met ? 'var(--success)' : 'var(--accent-strong)' }}>
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, color: waiver.met ? 'var(--success)' : 'var(--accent-strong)' }}>
           {waiver.mode === 'count'
             ? `${waiver.progress}/${target || '?'} ครั้ง`
             : `${Math.round(waiver.progress).toLocaleString('en-US')} / ${target ? Math.round(target).toLocaleString('en-US') : '?'}฿`}
@@ -513,7 +511,7 @@ function WaiverBox({ card, waiver }) {
 
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.6 }}>
         {waiver.met
-          ? <>ครบเงื่อนไขแล้ว ✓ ปีถัดไปฟรี</>
+          ? <>ครบเงื่อนไขแล้ว · ปีถัดไปฟรี</>
           : target > 0
             ? <>อีก <b style={{ color: 'var(--accent-strong)' }}>
               {waiver.mode === 'count'
@@ -838,7 +836,7 @@ function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) 
             style={{ ...INPUT, fontFamily: 'var(--f-mono)' }} />)}
           {field('วันครบกำหนดจ่าย', <input type="number" min="1" max="31" value={form.due_day}
             onChange={e => set('due_day', e.target.value)} placeholder="10"
-            style={{ ...INPUT, fontFamily: 'var(--f-mono)' }} />)}
+            style={{ fontVariantNumeric: 'tabular-nums', ...INPUT }} />)}
         </>)}
 
         {field('บันทึกการเปิดบัตร', <input type="text" value={form.opened_note}
@@ -864,7 +862,7 @@ function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) 
               style={{ ...INPUT, fontFamily: 'var(--f-mono)' }} />)}
             {field('ทำไปแล้ว', <input type="number" min="0" step="1" value={form.waiver_progress}
               onChange={e => set('waiver_progress', e.target.value)} placeholder="2"
-              style={{ ...INPUT, fontFamily: 'var(--f-mono)' }} />)}
+              style={{ fontVariantNumeric: 'tabular-nums', ...INPUT }} />)}
           </>)}
           {form.waiver_mode !== 'none' && field('รอบปีบัตร', <input type="text" value={form.waiver_period_note}
             onChange={e => set('waiver_period_note', e.target.value)}

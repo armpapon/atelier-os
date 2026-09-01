@@ -87,7 +87,7 @@ export function StudyDrawer({ source, onClose, onChange }) {
               {source.title}
             </div>
             {source.author && (
-              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
                 · {source.author}
               </div>
             )}
@@ -357,7 +357,7 @@ function BookStudy({ source, onSaved }) {
           <input type="number" min="0" value={toPage} onChange={e => setToPage(e.target.value)} style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
         </Field>
         <div style={{ padding: '8px 16px', background: 'var(--accent-soft)', borderRadius: 'var(--radius-control)', textAlign: 'center' }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--accent-strong)' }}>+อ่าน</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 9, color: 'var(--accent-strong)' }}>+อ่าน</div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--accent-strong)', fontWeight: 600 }}>{pagesRead}</div>
         </div>
       </div>
@@ -481,12 +481,12 @@ function InsightsBank({ source, insights, onChange }) {
             { id: 'action', label: `${KINDS.action.icon} ลงมือทำ · ${counts.action}` },
           ].map(f => (
             <button key={f.id} onClick={() => setFilter(f.id)} className="focus-ring"
-              style={{
-                padding: '5px 11px', borderRadius: 'var(--radius-pill)', fontSize: 11,
+              style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+                padding: '5px 11px', borderRadius: 'var(--radius-pill)', fontSize: 13,
                 background: filter === f.id ? 'var(--accent-soft)' : 'var(--surface)',
                 color: filter === f.id ? 'var(--accent-strong)' : 'var(--text-muted)',
                 border: '1px solid ' + (filter === f.id ? 'var(--accent)' : 'var(--border)'),
-                cursor: 'pointer', fontFamily: 'var(--f-mono)',
+                cursor: 'pointer'
               }}>{f.label}</button>
           ))}
         </div>
@@ -529,7 +529,7 @@ function InsightCard({ insight, onToggle, onDelete }) {
             borderRadius: 5, border: '1.5px solid ' + (insight.is_done ? 'var(--success)' : 'var(--border-strong)'),
             background: insight.is_done ? 'var(--success)' : 'transparent',
             color: 'var(--text-inverse)', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>{insight.is_done ? '✓' : ''}</button>
+          }}>{insight.is_done ? <Icon name="check" size={12} /> : ''}</button>
       ) : (
         <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{m.icon}</span>
       )}
@@ -543,7 +543,7 @@ function InsightCard({ insight, onToggle, onDelete }) {
           {isQuote && '“'}{insight.content}{isQuote && '”'}
         </div>
         {insight.page_ref != null && (
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
             หน้า {insight.page_ref}
           </div>
         )}
@@ -762,7 +762,7 @@ function SessionList({ sessions, onDelete }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: s.summary || s.notes ? 6 : 0 }}>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)' }}>
                   {new Date(s.session_date).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' })}
                   {s.duration_min ? ` · ${s.duration_min} นาที` : ''}
                   {s.pages_read ? ` · ${s.pages_read} หน้า (p.${s.from_page}–${s.to_page})` : ''}
@@ -786,7 +786,7 @@ function SessionList({ sessions, onDelete }) {
               </div>
             )}
             {s.notes && (
-              <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', fontFamily: 'var(--f-mono)', padding: '6px 0 0', borderTop: '1px dashed var(--border)', whiteSpace: 'pre-wrap' }}>
+              <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)', padding: '6px 0 0', borderTop: '1px dashed var(--border)', whiteSpace: 'pre-wrap' }}>
                 {s.notes}
               </div>
             )}
@@ -878,7 +878,7 @@ function Stat({ label, value, sub }) {
     <div style={{ padding: '10px 12px', background: 'var(--background-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-control)' }}>
       <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--text-primary)', fontWeight: 600, marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }

@@ -130,7 +130,7 @@ function Stat({ label, value, sub, tone }) {
     <div className="card" style={{ padding: 16 }}>
       <div className="stat__label">{label}</div>
       <div className="stat__value" style={{ fontSize: 26, color: tone || 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
-      {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-4)', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
@@ -204,7 +204,7 @@ function LifeGrid({ mode, lifespan, lived, markers, fit }) {
       out.push(
         <div key={r} style={{ display: 'flex', alignItems: 'center', gap: ROW_GAP }}>
           {showLabels && (
-            <div style={{ width: LABEL_GUTTER, textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', flexShrink: 0 }}>
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', width: LABEL_GUTTER, textAlign: 'right', fontSize: 13, color: 'var(--ink-4)', flexShrink: 0 }}>
               {labelFor(r)}
             </div>
           )}
@@ -221,7 +221,7 @@ function LifeGrid({ mode, lifespan, lived, markers, fit }) {
         {rowEls}
       </div>
       {/* Legend */}
-      <div style={{ display: 'flex', gap: 18, marginTop: 18, flexWrap: 'wrap', fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>
+      <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', gap: 18, marginTop: 18, flexWrap: 'wrap', fontSize: 13, color: 'var(--ink-3)' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 11, height: 11, borderRadius: 2, background: 'var(--accent)' }} /> ผ่านมาแล้ว
         </span>
@@ -358,23 +358,21 @@ export function LifeCalendar() {
             <div style={{ display: 'flex', gap: 6 }}>
               {MODES.map(md => (
                 <button key={md.id} onClick={() => setMode(md.id)}
-                  style={{
-                    padding: '5px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
-                    fontFamily: 'var(--f-mono)', fontSize: 11,
+                  style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+                    padding: '5px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer', fontSize: 13,
                     border: `1px solid ${mode === md.id ? 'var(--accent)' : 'var(--line)'}`,
                     background: mode === md.id ? 'var(--accent-soft)' : 'transparent',
-                    color: mode === md.id ? 'var(--accent-strong)' : 'var(--ink-3)',
+                    color: mode === md.id ? 'var(--accent-strong)' : 'var(--ink-3)'
                   }}>
                   {md.label}
                 </button>
               ))}
               <button onClick={() => setFit(f => !f)}
-                style={{
-                  marginLeft: 'auto', padding: '5px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
-                  fontFamily: 'var(--f-mono)', fontSize: 11,
+                style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+                  marginLeft: 'auto', padding: '5px 14px', borderRadius: 'var(--radius-pill)', cursor: 'pointer', fontSize: 13,
                   border: `1px solid ${fit ? 'var(--accent)' : 'var(--line)'}`,
                   background: fit ? 'var(--accent-soft)' : 'transparent',
-                  color: fit ? 'var(--accent-strong)' : 'var(--ink-3)',
+                  color: fit ? 'var(--accent-strong)' : 'var(--ink-3)'
                 }}>
                 {fit ? '⤢ พอดีจอ' : '⤢ ขนาดปกติ'}
               </button>
@@ -419,12 +417,12 @@ export function LifeCalendar() {
                         <span style={{ fontSize: 20 }}>{ms.emoji}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontFamily: 'var(--f-display)', fontSize: 14.5, color: 'var(--ink)' }}>{ms.label}</div>
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-4)' }}>
+                          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>
                             {new Date(ms.date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                             {ageAt >= 0 && ` · อายุ ${ageAt.toFixed(0)} ปี`}
                           </div>
                         </div>
-                        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: future ? 'var(--accent-strong)' : 'var(--ink-4)' }}>
+                        <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: future ? 'var(--accent-strong)' : 'var(--ink-4)' }}>
                           {future ? `อีก ${Math.max(1, Math.round(yearsFromNow * 10) / 10)} ปี` : `ผ่านมา ${Math.round(Math.abs(yearsFromNow))} ปี`}
                         </span>
                         <button onClick={() => removeMilestone(ms.id)} title="ลบ"

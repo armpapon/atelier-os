@@ -34,7 +34,7 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' }}>
         <b style={{ fontSize: 13 }}>Tweaks</b>
-        <button onClick={onClose} style={{ background: 'transparent', border: 0, color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}><Icon name="x" size={15} /></button>
+        <button onClick={onClose} aria-label="ปิด" title="ปิด" style={{ background: 'transparent', border: 0, color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}><Icon name="x" size={15} /></button>
       </div>
       <div style={{ padding: '4px 14px 14px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 90px)', overflowY: 'auto' }}>
         <div>

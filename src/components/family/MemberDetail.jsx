@@ -328,7 +328,7 @@ function HealthTab({ member, onChange }) {
                 <div>
                   <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{v.vaccine_name}</span>
                   {v.dose_number && <Badge tone="neutral" size="sm" style={{ marginLeft: 6 }}>เข็ม {v.dose_number}</Badge>}
-                  {v.location && <span style={{ marginLeft: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>{v.location}</span>}
+                  {v.location && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginLeft: 8, fontSize: 13, color: 'var(--text-muted)' }}>{v.location}</span>}
                 </div>
                 {v.next_due && (
                   <Badge tone="warning" size="sm">
@@ -379,13 +379,13 @@ function VaccinationForm({ memberId, onSubmit, onCancel }) {
           placeholder="ชื่อวัคซีน" required style={fieldInputStyle} />
         <datalist id="vaccine-list">{VACCINE_PRESETS.map(v => <option key={v} value={v} />)}</datalist>
         <input type="number" min="1" value={form.dose_number} onChange={e => set('dose_number', e.target.value)}
-          placeholder="เข็ม" style={{ ...fieldInputStyle, fontFamily: 'var(--f-mono)' }} />
+          placeholder="เข็ม" style={{ fontVariantNumeric: 'tabular-nums', ...fieldInputStyle }} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
         <input type="date" value={form.date_given} onChange={e => set('date_given', e.target.value)}
           style={{ ...fieldInputStyle, fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
         <input type="date" value={form.next_due} onChange={e => set('next_due', e.target.value)}
-          placeholder="เข็มถัดไป" style={{ ...fieldInputStyle, fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
+          placeholder="เข็มถัดไป" style={{ fontVariantNumeric: 'tabular-nums', ...fieldInputStyle, color: 'var(--text-secondary)' }} />
         <input value={form.location} onChange={e => set('location', e.target.value)}
           placeholder="รพ." style={fieldInputStyle} />
       </div>
@@ -584,7 +584,7 @@ function GrowthChart({ records }) {
       background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 'var(--radius-control)', padding: 14, marginBottom: 14,
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11, fontFamily: 'var(--f-mono)' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11 }}>
         <span style={{ color: 'var(--blue)' }}><Icon name="ruler" size={13} /> ส่วนสูง (cm)</span>
         <span style={{ color: 'var(--accent-strong)' }}><Icon name="scale" size={13} /> น้ำหนัก (kg)</span>
       </div>
@@ -742,12 +742,11 @@ function MilestoneForm({ memberId, onSubmit, onCancel }) {
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {Object.entries(MILESTONE_CAT).map(([k, m]) => (
           <button key={k} type="button" onClick={() => set('category', k)} className="focus-ring"
-            style={{
-              padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontSize: 10.5, cursor: 'pointer',
+            style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+              padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontSize: 13, cursor: 'pointer',
               background: form.category === k ? 'var(--accent-soft)' : 'var(--surface)',
               color: form.category === k ? 'var(--accent-strong)' : 'var(--text-secondary)',
-              border: `1px solid ${form.category === k ? 'var(--accent)' : 'var(--border)'}`,
-              fontFamily: 'var(--f-mono)',
+              border: `1px solid ${form.category === k ? 'var(--accent)' : 'var(--border)'}`
             }}>{m.icon} {m.label}</button>
         ))}
       </div>

@@ -25,10 +25,9 @@ const SECTION_LABEL = {
   fontWeight: 500, fontSize: 13, color: 'var(--ink-4)', padding: '2px 2px'
 };
 
-const TOOL_BTN = {
-  display: 'inline-flex', alignItems: 'center', gap: 5,
-  fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-2)', cursor: 'pointer',
-  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 9px',
+const TOOL_BTN = { fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+  display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'var(--ink-2)', cursor: 'pointer',
+  border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 9px'
 };
 
 // Pixel position of the caret (at `position`) inside a textarea, relative to its
@@ -76,7 +75,7 @@ function NoteListItem({ note, active, onClick }) {
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-muted)'; }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'var(--surface)'; }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {note.pinned && <span style={{ color: 'var(--accent-strong)', }}><Icon name="pin" size={11} /></span>}
+        {note.pinned && <span style={{ color: 'var(--accent-strong)', }}><Icon name="pin" size={11} label="ปักหมุดไว้" /></span>}
         <span style={{
           fontFamily: 'var(--f-display)', fontSize: 14.5, fontWeight: 500, color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
@@ -321,6 +320,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, paddingTop: 4 }}>
           <button onClick={() => { onPatch(note.id, { pinned: !note.pinned }); }}
             title={note.pinned ? 'เลิกปักหมุด' : 'ปักหมุด'}
+            aria-label={note.pinned ? 'เลิกปักหมุด' : 'ปักหมุด'} aria-pressed={!!note.pinned}
             style={{ padding: '6px 8px', borderRadius: 'var(--r-sm)', fontSize: 14,
               color: note.pinned ? 'var(--accent-strong)' : 'var(--ink-4)', cursor: 'pointer' }}>
             <Icon name="pin" size={14} />
@@ -433,8 +433,8 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
           <button onMouseDown={e => { e.preventDefault(); toggleMarker('1. '); }} title="ลำดับเลข" style={TOOL_BTN}>1. ลำดับ</button>
           <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 2px' }} />
           <button onClick={insertLinkTemplate} style={{ ...TOOL_BTN, color: 'var(--accent-strong)' }}>[[ ]] แทรกลิงก์</button>
-          <span style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 10, color: savedFlash ? 'var(--success)' : 'var(--ink-4)', transition: 'color 200ms' }}>
-            {savedFlash ? '✓ บันทึกแล้ว' : 'Enter ต่อรายการ · Tab เยื้อง'}
+          <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginLeft: 'auto', fontSize: 13, color: savedFlash ? 'var(--success)' : 'var(--ink-4)', transition: 'color 200ms' }}>
+            {savedFlash ? <><Icon name="check" size={12} /> บันทึกแล้ว</> : 'Enter ต่อรายการ · Tab เยื้อง'}
           </span>
         </div>
       </div>
@@ -693,7 +693,7 @@ export function SecondBrain() {
               {allTags.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button onClick={() => setActiveTag('')}
-                    style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, padding: '3px 10px', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
+                    style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, padding: '3px 10px', borderRadius: 'var(--radius-pill)', cursor: 'pointer',
                       border: `1px solid ${!activeTag ? 'var(--accent)' : 'var(--line)'}`,
                       background: !activeTag ? 'var(--accent-soft)' : 'transparent',
                       color: !activeTag ? 'var(--accent-strong)' : 'var(--ink-3)' }}>

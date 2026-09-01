@@ -22,10 +22,10 @@ const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.
 //  1. RecurringTracker
 // ════════════════════════════════════════════════════════════════════════════
 const RECURRING_STATUS = {
-  paid:     { label: 'จ่ายแล้ว', tone: 'success', icon: '✓' },
-  pending:  { label: 'รอจ่าย',   tone: 'warning', icon: '◷' },
-  overdue:  { label: 'เกินกำหนด', tone: 'danger',  icon: '!' },
-  upcoming: { label: 'อนาคต',    tone: 'neutral', icon: '…' },
+  paid:     { label: 'จ่ายแล้ว', tone: 'success', icon: 'check' },
+  pending:  { label: 'รอจ่าย',   tone: 'warning', icon: 'clock' },
+  overdue:  { label: 'เกินกำหนด', tone: 'danger',  icon: 'warning' },
+  upcoming: { label: 'อนาคต',    tone: 'neutral', icon: 'hourglass' },
 };
 
 export function RecurringTracker({ recurring, transactions, historyTxns, yearMonth, scope, onChange }) {
@@ -142,13 +142,13 @@ export function RecurringTracker({ recurring, transactions, historyTxns, yearMon
                   <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {r.name}
                   </div>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                  <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
                     {r.frequency === 'monthly' ? `ทุก ${r.due_day || 5} ของเดือน` : r.frequency}
                     {r.category ? ` · ${r.category}` : ''}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                     {Number(r.amount) > 0 ? fmt(r.amount) : 'ผันแปร'}
                     {Number(r.amount) > 0 && r.frequency && r.frequency !== 'monthly' && (
                       <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 400 }}>
@@ -156,13 +156,13 @@ export function RecurringTracker({ recurring, transactions, historyTxns, yearMon
                       </span>
                     )}
                   </div>
-                  <Badge tone={st.tone} size="sm">{st.icon} {st.label}</Badge>
+                  <Badge tone={st.tone} size="sm"><Icon name={st.icon} size={12} /> {st.label}</Badge>
                 </div>
                 {!isPaid && (
                   <button onClick={() => markPaid(r)} title="บันทึกว่าจ่ายแล้ว"
                     style={{ flexShrink: 0, background: 'var(--success-soft)', color: 'var(--success)', border: '1px solid var(--success)',
                       borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-body)', fontSize: 11.5, fontWeight: 500, padding: '5px 11px', cursor: 'pointer' }}>
-                    ✓ จ่ายแล้ว
+                    <Icon name="check" size={12} /> จ่ายแล้ว
                   </button>
                 )}
                 <button onClick={() => { if (confirm(`ลบ "${r.name}"?`)) deleteRecurring(r.id).then(onChange); }}
@@ -196,7 +196,7 @@ function SuggestionsList({ suggestions, scope, onAdd }) {
           }}>
             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
               {s.title}
-              <span style={{ marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+              <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginLeft: 6, fontSize: 13, color: 'var(--text-muted)' }}>
                 · {s.monthsCount} เดือน
               </span>
             </div>
@@ -252,19 +252,18 @@ function RecurringForm({ initial, scope, onSubmit, onCancel }) {
           <option value="yearly">รายปี</option>
         </select>
         <input type="number" min="1" max="31" value={form.due_day} onChange={e => set('due_day', e.target.value)}
-          placeholder="วันที่" style={{ ...input, fontFamily: 'var(--f-mono)' }} />
+          placeholder="วันที่" style={{ fontVariantNumeric: 'tabular-nums', ...input }} />
         <input type="text" value={form.category} onChange={e => set('category', e.target.value)}
           placeholder="หมวด (streaming, utility...)" style={input} />
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
         {['personal', 'family'].map(s => (
           <button key={s} type="button" onClick={() => set('scope', s)} className="focus-ring"
-            style={{
-              padding: '4px 14px', borderRadius: 'var(--radius-pill)', fontSize: 11, cursor: 'pointer',
+            style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+              padding: '4px 14px', borderRadius: 'var(--radius-pill)', fontSize: 13, cursor: 'pointer',
               background: form.scope === s ? 'var(--accent-soft)' : 'var(--surface)',
               color: form.scope === s ? 'var(--accent-strong)' : 'var(--text-secondary)',
-              border: '1px solid ' + (form.scope === s ? 'var(--accent)' : 'var(--border)'),
-              fontFamily: 'var(--f-mono)',
+              border: '1px solid ' + (form.scope === s ? 'var(--accent)' : 'var(--border)')
             }}>{s === 'family' ? 'ครอบครัว' : 'ส่วนตัว'}</button>
         ))}
       </div>
@@ -338,10 +337,10 @@ export function CashFlowForecastCard({ forecast }) {
               padding: '10px 12px', alignItems: 'center', fontSize: 12.5,
               borderBottom: i < projection.length - 1 ? '1px solid var(--hairline)' : 0,
             }}>
-              <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                 {THAI_MONTHS[m - 1]} {(y + 543).toString().slice(-2)}
               </span>
-              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
+              <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)' }}>
                 {p.activeDebtsCount} หนี้ · {fmt(p.debt)}
               </span>
               <span style={{
@@ -435,7 +434,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
                   }}
                   style={{ accentColor: 'var(--accent)' }} />
                 <span style={{ flex: 1, color: 'var(--text-primary)' }}>{a.name}</span>
-                <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 600 }}>
                   ฿{Number(a.balance || 0).toLocaleString('th', { maximumFractionDigits: 0 })}
                 </span>
               </label>
@@ -502,7 +501,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
         }}>
           <Icon name="target" size={13} /> ขาดอีก <strong>{fmt(coverage.targetGap6)}</strong> เพื่อครอบคลุม 6 เดือน
           {coverage.target6 > 0 && (
-            <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 11 }}>
+            <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', marginLeft: 6, fontSize: 13 }}>
               (target: {fmt(coverage.target6)})
             </span>
           )}

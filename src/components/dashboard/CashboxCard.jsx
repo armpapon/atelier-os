@@ -101,7 +101,7 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
         </div>
 
         {/* Legend */}
-        <div style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', gap: 14, marginTop: 8, fontSize: 13, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--violet)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />แบ่งครอบครัว</span>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--danger)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />ใช้ตรงจาก Cashbox</span>
           <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--accent-soft)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />คงเหลือยังไม่แบ่ง</span>
@@ -135,7 +135,7 @@ function Stat({ label, value, color, sub }) {
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color, fontWeight: 500, lineHeight: 1.2, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }

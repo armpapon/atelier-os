@@ -1964,7 +1964,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--ink-2)' }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
                           <span style={{ flex: 1 }}>{label}</span>
-                          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color }}>{scope}</span>
+                          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10, color }}>{scope}</span>
                         </div>
                       ))}
                       <div style={{ marginTop: 4, fontSize: 11, color: 'var(--ink-3)', borderTop: '1px solid var(--line)', paddingTop: 8 }}>
@@ -2005,10 +2005,10 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     <div style={{ color: 'var(--text-muted)' }}><Icon name={pdfFile ? 'file' : 'download'} size={40} /></div>
                     {pdfFile ? (
                       <><div style={{ fontSize: 13, color: 'var(--profit)' }}>{pdfFile.name}</div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{(pdfFile.size/1024).toFixed(0)} KB · คลิกเปลี่ยนไฟล์</div></>
+                      <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>{(pdfFile.size/1024).toFixed(0)} KB · คลิกเปลี่ยนไฟล์</div></>
                     ) : (
                       <><div style={{ fontSize: 13, color: 'var(--ink-2)' }}>คลิกเพื่อเลือก หรือลาก PDF มาวาง</div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>.pdf · รองรับไฟล์ที่มีรหัสผ่าน</div></>
+                      <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>.pdf · รองรับไฟล์ที่มีรหัสผ่าน</div></>
                     )}
                   </div>
                   <input ref={pdfFileRef} type="file" accept=".pdf" onChange={e => { const f = e.target.files[0]; if (f) { setPdfFile(f); setFileName(f.name); setError(null); } }} style={{ display: 'none' }} />
@@ -2022,6 +2022,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         placeholder="เช่น วันเดือนปีเกิด 8 หลัก"
                         style={{ flex: 1, fontFamily: 'var(--f-mono)', fontSize: 13 }} />
                       <button onClick={() => setShowPwd(p => !p)}
+                        aria-label={showPwd ? 'ซ่อนรหัส' : 'แสดงรหัส'} aria-pressed={showPwd}
                         style={{ background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '8px 12px', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14 }}>
                         <Icon name={showPwd ? 'eye-off' : 'eye'} size={15} />
                       </button>
@@ -2079,14 +2080,14 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 )}
 
                 {/* Income / Expense totals */}
-                <div style={{ padding: '7px 12px', background: 'var(--profit-bg)', border: '1px solid var(--profit)', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--profit)' }}>
+                <div style={{ fontVariantNumeric: 'tabular-nums', padding: '7px 12px', background: 'var(--profit-bg)', border: '1px solid var(--profit)', borderRadius: 'var(--r-md)', fontSize: 11, color: 'var(--profit)' }}>
                   +฿{totalIncome.toLocaleString('th', { maximumFractionDigits: 0 })}
                 </div>
-                <div style={{ padding: '7px 12px', background: 'var(--loss-bg)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--loss)' }}>
+                <div style={{ fontVariantNumeric: 'tabular-nums', padding: '7px 12px', background: 'var(--loss-bg)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 11, color: 'var(--loss)' }}>
                   -฿{totalExpense.toLocaleString('th', { maximumFractionDigits: 0 })}
                 </div>
 
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>
                   เลือก {sel.length}/{preview.length}
                 </div>
                 <button onClick={toggleAll} className="btn btn--ghost btn--sm" style={{ marginLeft: 'auto' }}>
@@ -2105,9 +2106,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                       { key: 'creditCol', label: 'ฝาก' }, { key: 'balanceCol', label: 'ยอดคงเหลือ' },
                     ].map(({ key, label }) => (
                       <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <span style={{ fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>{label}</span>
+                        <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>{label}</span>
                         <select value={colMap[key] || ''} onChange={e => handleColChange(key, e.target.value || null)}
-                          style={{ background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '4px 6px', fontSize: 11, color: 'var(--ink)', fontFamily: 'var(--f-mono)' }}>
+                          style={{ fontVariantNumeric: 'tabular-nums', background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '4px 6px', fontSize: 11, color: 'var(--ink)' }}>
                           <option value="">(ไม่ใช้)</option>
                           {headers.map(h => <option key={h} value={h}>{h}</option>)}
                         </select>
@@ -2125,7 +2126,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   display: 'flex', alignItems: 'center', gap: 10,
                 }}>
                   <Icon name="spark" size={16} />
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--paper-ink)' }}>
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--paper-ink)' }}>
                     ตรวจพบ Make Cloud Pocket CSV · แยก scope จากชื่อกระเป๋าอัตโนมัติ
                   </div>
                 </div>
@@ -2165,13 +2166,12 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           <span style={{ fontSize: 12, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {p.pocket}
                           </span>
-                          <span style={{
-                            fontFamily: 'var(--f-mono)', fontSize: 9, padding: '1px 6px', borderRadius: 99,
+                          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 9, padding: '1px 6px', borderRadius: 99,
                             background: SCOPE_BADGE[p.scope].bg, color: SCOPE_BADGE[p.scope].color,
-                            border: `1px solid ${SCOPE_BADGE[p.scope].border}`, flexShrink: 0,
+                            border: `1px solid ${SCOPE_BADGE[p.scope].border}`, flexShrink: 0
                           }}>{SCOPE_BADGE[p.scope].label}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>
+                        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--ink-3)' }}>
                           <span>{p.txCount} ครั้ง</span>
                           <span style={{ color: 'var(--ink)' }}>
                             ฿{(p.latestBalance != null ? p.latestBalance : 0).toLocaleString('th', { maximumFractionDigits: 0 })}
@@ -2204,7 +2204,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
                         alignItems: 'center', fontSize: 12,
                       }}>
-                        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                        <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)' }}>
                           แถวที่ {q.sourceRow}
                         </span>
                         <div style={{ overflow: 'hidden' }}>
@@ -2213,7 +2213,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--warning)' }}>{q.reason}</div>
                         </div>
-                        <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                        <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                           {q.amount != null ? `฿${Math.abs(q.amount).toLocaleString('th', { maximumFractionDigits: 0 })}` : '—'}
                         </span>
                       </div>
@@ -2288,16 +2288,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                             style={{ accentColor: 'var(--accent)' }} />
                           <div style={{ overflow: 'hidden' }}>
                             <span style={{ color: 'var(--text-primary)' }}>{sug.txn.title}</span>
-                            <span style={{ marginLeft: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                            <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginLeft: 8, fontSize: 13, color: 'var(--text-muted)' }}>
                               → {sug.debt.name}
                             </span>
                           </div>
-                          <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontWeight: 600 }}>
                             ฿{sug.amount.toLocaleString('th', { maximumFractionDigits: 0 })}
                           </span>
-                          <span style={{
-                            fontFamily: 'var(--f-mono)', fontSize: 10, textAlign: 'right',
-                            color: isStrong ? 'var(--success)' : 'var(--warning)',
+                          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10, textAlign: 'right',
+                            color: isStrong ? 'var(--success)' : 'var(--warning)'
                           }}>
                             {isStrong ? 'แม่นยำ' : 'น่าจะใช่'} {sug.confidence}%
                           </span>
@@ -2355,19 +2354,19 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--warning)'}}>ในไฟล์</span>
                               <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.title}</span>
-                              <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                                 {bangkokDate(row.occurred_at)} · ฿{Math.abs(row.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
                               </span>
                             </div>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2, opacity: 0.75 }}>
                               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>ในระบบ</span>
                               <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{existing.title}</span>
-                              <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-muted)' }}>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
                                 {bangkokDate(existing.occurred_at)} · ฿{Math.abs(existing.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
                               </span>
                             </div>
-                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, marginTop: 3, color: included ? 'var(--profit)' : 'var(--ink-3)' }}>
-                              {included ? '✓ จะนำเข้าเป็นรายการใหม่' : '— ข้าม (ค่าเริ่มต้น)'}
+                            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, marginTop: 3, color: included ? 'var(--profit)' : 'var(--ink-3)' }}>
+                              {included ? <><Icon name="check" size={12} /> จะนำเข้าเป็นรายการใหม่</> : '— ข้าม (ค่าเริ่มต้น)'}
                             </div>
                           </div>
                         </label>
@@ -2417,7 +2416,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   gridTemplateColumns: makeFmt ? '28px 80px 1fr 120px 90px 70px 70px' : '28px 80px 1fr 100px 90px 70px',
                   gap: 10, padding: '7px 12px', background: 'var(--bg-2)', fontSize: 13, color: 'var(--ink-3)', borderBottom: '1px solid var(--line)'
                 }}>
-                  <div>✓</div><div>วันที่</div><div>รายการ</div>
+                  <div><Icon name="check" size={12} label="เลือกนำเข้า" /></div><div>วันที่</div><div>รายการ</div>
                   {makeFmt && <div>กระเป๋า</div>}
                   <div style={{ textAlign: 'right' }}>จำนวน</div>
                   <div>ประเภท</div><div>Scope</div>
@@ -2442,7 +2441,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           background: chk ? 'var(--amber)' : 'var(--surface-2)',
                           border: `1.5px solid ${chk ? 'var(--amber)' : 'var(--line)'}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10,
-                        }}>{chk ? '✓' : ''}</div>
+                        }}>{chk ? <Icon name="check" size={11} /> : ''}</div>
 
                         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
                           {bangkokDate(row.occurred_at)}
@@ -2453,12 +2452,12 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         </div>
 
                         {makeFmt && (
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {row._pocket}
                           </div>
                         )}
 
-                        <div style={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 12, color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 600 }}>
+                        <div style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'right', fontSize: 12, color: isIn ? 'var(--profit)' : 'var(--loss)', fontWeight: 600 }}>
                           {isIn ? '+' : ''}฿{Math.abs(row.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
                         </div>
 
@@ -2466,10 +2465,9 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           {TYPE_ICONS[row.type]} {TYPE_LABELS[row.type]}
                         </div>
 
-                        <div style={{
+                        <div style={{ fontVariantNumeric: 'tabular-nums',
                           padding: '2px 7px', borderRadius: 99, fontSize: 9.5,
-                          background: badge.bg, border: `1px solid ${badge.border}`, color: badge.color,
-                          fontFamily: 'var(--f-mono)', whiteSpace: 'nowrap', textAlign: 'center',
+                          background: badge.bg, border: `1px solid ${badge.border}`, color: badge.color, whiteSpace: 'nowrap', textAlign: 'center'
                         }}>
                           {badge.label}
                         </div>
@@ -2536,7 +2534,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                             <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--warning)'}}>ในไฟล์</span>
                             <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.title}</span>
-                            <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                               {bangkokDate(inc.occurred_at)} · ฿{Math.abs(Number(inc.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
                             </span>
                           </div>
@@ -2544,13 +2542,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2, opacity: 0.75 }}>
                               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>ในระบบ</span>
                               <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{existing.title}</span>
-                              <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-muted)' }}>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
                                 {bangkokDate(existing.occurred_at)} · ฿{Math.abs(Number(existing.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
                               </span>
                             </div>
                           )}
-                          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, marginTop: 3, color: included ? 'var(--profit)' : 'var(--ink-3)' }}>
-                            {included ? '✓ จะนำเข้าเป็นรายการใหม่' : '— ข้าม (ค่าเริ่มต้น)'}
+                          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, marginTop: 3, color: included ? 'var(--profit)' : 'var(--ink-3)' }}>
+                            {included ? <><Icon name="check" size={12} /> จะนำเข้าเป็นรายการใหม่</> : '— ข้าม (ค่าเริ่มต้น)'}
                           </div>
                         </div>
                       </label>
@@ -2624,7 +2622,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   </div>
                 )}
                 {importStats?.inserted === 0 && importStats?.skipped > 0 && (
-                  <div style={{ marginTop: 14, color: 'var(--ink-3)', fontSize: 12, fontFamily: 'var(--f-mono)' }}>
+                  <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginTop: 14, color: 'var(--ink-3)', fontSize: 13 }}>
                     ทุกรายการเป็นรายการที่มีอยู่แล้ว — ไม่ได้เพิ่มอะไรใหม่
                   </div>
                 )}
@@ -2703,7 +2701,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               style={{ minWidth: 240, justifyContent: 'center' }}>
               {importing
                 ? 'กำลังบันทึก...'
-                : `✓ ยืนยัน — นำเข้า ${serverIncluded.size} · ข้าม ${serverAmbiguous.length - serverIncluded.size}`}
+                : <><Icon name="check" size={14} /> ยืนยัน — นำเข้า {serverIncluded.size} · ข้าม {serverAmbiguous.length - serverIncluded.size}</>}
             </button>
           </div>
         )}

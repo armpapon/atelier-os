@@ -85,7 +85,7 @@ const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' 
 // Form timestamps are sheet-local values stored as-if-UTC — display with the
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
-const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
+const mono10 = { fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' };
 const lbl = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
 
 // Slide-compare results persist in localStorage so they survive a reload (the
@@ -369,14 +369,14 @@ export function PettyCash() {
           ))}
         </div>
       )}
-      {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-      <button onClick={() => load(sheetId, tab)} disabled={busy} title="รีเฟรช"
+      {lastSync && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+      <button onClick={() => load(sheetId, tab)} disabled={busy} title="รีเฟรช" aria-label="รีเฟรชข้อมูล Petty Cash"
         style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
       <button onClick={() => {
         setEditing(true);
         setUrlInput(integ?.meta?.pettycash_sheet_url || '');
         setFormUrlInput(integ?.meta?.pettycash_form_sheet_url || '');
-      }} title="ตั้งค่าชีท"
+      }} title="ตั้งค่าชีท" aria-label="ตั้งค่าชีท Petty Cash"
         style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}><Icon name="gear" size={15} /></button>
     </div>
   );
@@ -489,7 +489,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
         <Tile v={baht(totalOut)} l={`เบิกออก · ${month == null ? year : TH_MONTHS[month]}`} />
         <Tile v={shownRows.length} l={`รายการ · ${employees.length} คน`} />
         <Tile v={flaggedCount} l="รายการมีจุดสังเกต" warn={flaggedCount > 0} />
-        <Tile v={Object.keys(marks).length} l="✓ รีวิวแล้ว (รายการ)" />
+        <Tile v={Object.keys(marks).length} l="รีวิวแล้ว (รายการ)" />
       </div>
 
       {!hasSlides && (
@@ -564,7 +564,7 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
           <div style={{ width: 40, height: 40, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 500, background: isSeal ? 'var(--surface-2)' : 'var(--accent-soft)', color: isSeal ? 'var(--ink-3)' : 'var(--accent-strong)' }}>{avatar}</div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)' }}>{isSeal ? 'ค่าใช้จ่ายบริษัท' : p.code}</div>
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>{isSeal ? 'ค่าใช้จ่ายบริษัท' : p.code}</div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600 }}>{baht(p.out)}</div>
@@ -574,7 +574,7 @@ function PersonCard({ p, open, onToggle, slides, comparing, compareDeck, hasSlid
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {p.flagTotal === 0
             ? <FlagChip tone="ok"
-              label={isSeal ? 'ค่าใช้จ่ายส่วนกลาง — ไม่ตรวจรายคน' : '✓ เรียบร้อย'}
+              label={isSeal ? 'ค่าใช้จ่ายส่วนกลาง — ไม่ตรวจรายคน' : 'เรียบร้อย'}
               help={isSeal
                 ? 'ค่าใช้จ่ายของบริษัทเอง ไม่ได้เบิกในนามพนักงาน — Loop จึงไม่ตรวจจุดสังเกตรายคนให้ แต่กดเข้าไปดูรายการได้'
                 : 'สแกนทุกรายการของคนนี้แล้ว ไม่เข้าเงื่อนไขจุดสังเกตข้อไหนเลย — ไม่ได้แปลว่าการันตีว่าถูกต้อง แค่ไม่มีอะไรผิดสังเกตเท่าที่ระบบตรวจได้ ยังเปิดดูหลักฐานเองได้'} />
@@ -625,7 +625,7 @@ function BlockGroup({ rows, slides, byRow, partners, marks, setMark, matchInfo, 
           <div style={{ fontSize: 13, fontWeight: 600 }}>แถวรวม {first}–{last} · {rows.length} รายการ</div>
           <div style={{ ...mono10, marginTop: 1 }}>
             ยอดก้อนเดียวตามชีท (ช่อง H)
-            {matched.length > 0 && <span style={{ color: 'var(--success)' }}> · ✓ ใบเบิกฟอร์ม {matched.length}/{rows.length}{allPaid ? ' · จ่ายแล้ว ✓' : ''}</span>}
+            {matched.length > 0 && <span style={{ color: 'var(--success)' }}> · <Icon name="check" size={11} /> ใบเบิกฟอร์ม {matched.length}/{rows.length}{allPaid ? ' · จ่ายแล้ว' : ''}</span>}
           </div>
         </div>
         <div style={{ marginLeft: 'auto', fontFamily: 'var(--f-mono)', fontSize: 15.5, fontWeight: 600 }}>{baht2(anchor.blockTotal ?? rows.reduce((s, r) => s + r.amountOut, 0))}</div>
@@ -690,7 +690,7 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
           ))}
           {p.formMissing?.map(f => (
             <FormRow key={f.formRow} tone="bad" tag="ไม่ถึงชีท" help={FLAG_HELP.formMissing}
-              left={`ส่งฟอร์ม ${fmtD(f.ts)}${f.paid ? ' · ทำจ่ายแล้ว ✓' : ''}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
+              left={`ส่งฟอร์ม ${fmtD(f.ts)}${f.paid ? ' · ทำจ่ายแล้ว' : ''}`} main={f.detail} amt={f.amount} url={f.slideUrl} />
           ))}
           {p.formPending?.map(f => (
             <FormRow key={f.formRow} tone="dim" tag="รอลงชีท" help="พนักงานเพิ่งส่งฟอร์มไม่เกิน 21 วัน และยังไม่ถูกนำไปลงชีทหลัก — ปกติของรอบทำจ่าย ยังไม่นับว่าตกหล่น"
@@ -836,7 +836,7 @@ function StatementPanel({ rows, sheetId, tab }) {
                       <div style={{ fontSize: 13 }}>
                         แถว {m.row.rowNo} · {m.row.nick || m.row.code || m.row.nameRaw || 'SEAL'}
                         <span style={{ marginLeft: 8, display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-                          {m.keys.map(k => <span key={k} style={stmtChip('g')}>✓ {KEY_LABEL[k] || k}</span>)}
+                          {m.keys.map(k => <span key={k} style={stmtChip('g')}><Icon name="check" size={10} /> {KEY_LABEL[k] || k}</span>)}
                         </span>
                       </div>
                       <div style={{ ...mono10, marginTop: 1 }}>{fmtStmtDay(m.txn.date)} {m.txn.time} · {m.txn.detail.slice(0, 56)}</div>
@@ -874,7 +874,7 @@ function PayQueue({ pay }) {
       <button onClick={() => setOpen(v => !v)}
         style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
         <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent-strong)' }}><Icon name="clock" size={14} /> รอทำจ่าย</span>
-        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: 'var(--accent-strong)' }}>{pay.count} ใบ · {baht(pay.total)}</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--accent-strong)' }}>{pay.count} ใบ · {baht(pay.total)}</span>
         <span style={{ fontSize: 11.5, color: 'var(--ink-3)', flex: 1 }}>— ยังไม่ติ๊ก "ทำจ่ายแล้ว" ในฟอร์ม · ไปทำจ่ายใน Make</span>
         <span style={{ color: 'var(--accent-strong)', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
       </button>
@@ -940,9 +940,9 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
         <div style={{ ...mono10, marginBottom: 2 }}>
           แถว {r.rowNo}{r.project ? ` · ${r.project}` : ''}
           {cmp?.slideDate ? ` · สไลด์ลงวันที่ ${cmp.slideDate.d}/${cmp.slideDate.m + 1}` : ''}
-          {formMatch?.ts && <span style={{ color: 'var(--success)' }}> · ✓ ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
+          {formMatch?.ts && <span style={{ color: 'var(--success)' }}> · <Icon name="check" size={11} /> ใบเบิกฟอร์ม {fmtD(formMatch.ts)}</span>}
           {formMatch && (formMatch.paid
-            ? <span style={{ color: 'var(--success)' }}> · จ่ายแล้ว ✓</span>
+            ? <span style={{ color: 'var(--success)' }}> · จ่ายแล้ว</span>
             : <span style={{ color: 'var(--accent-strong)' }}> · รอทำจ่าย</span>)}
         </div>
         {/* Full claim text, every line — Pat reads the item names to judge a
@@ -951,7 +951,7 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
         <div style={{ fontSize: 13.5, color: 'var(--ink)', whiteSpace: 'pre-line', overflowWrap: 'anywhere', lineHeight: 1.5 }}>{r.work || '—'}</div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4, opacity: mark === 'ok' ? 0.45 : 1 }}>
           {mark === 'ok' && (flagsSet?.size || cmpView) && (
-            <span style={{ ...mono10, alignSelf: 'center', color: 'var(--success)' }}>ตรวจแล้ว ✓</span>
+            <span style={{ ...mono10, alignSelf: 'center', color: 'var(--success)' }}>ตรวจแล้ว</span>
           )}
           {[...(flagsSet || [])].map(t => <FlagChip key={t} type={t} />)}
           {partners && partners.length > 0 && (flagsSet?.has('slideDup') || flagsSet?.has('workDup')) && (
@@ -1008,7 +1008,7 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
             : <span style={{ fontSize: 11, color: 'var(--danger)' }}>ไม่มีลิงก์</span>}
         {!isSeal && (
           <div style={{ display: 'flex', gap: 5 }}>
-            <button onClick={() => setMark(r.rowNo, 'ok')} style={markBtn(mark === 'ok', 'ok')}>✓ ตรง</button>
+            <button onClick={() => setMark(r.rowNo, 'ok')} style={markBtn(mark === 'ok', 'ok')}><Icon name="check" size={12} /> ตรง</button>
             <button onClick={() => setMark(r.rowNo, 'no')} style={markBtn(mark === 'no', 'no')}><Icon name="x" size={13} /> ไม่ตรง</button>
           </div>
         )}
@@ -1020,10 +1020,10 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
 function compareView(cmp) {
   if (!cmp) return null;
   switch (cmp.status) {
-    case 'match': return { tone: 'ok', text: '✓ ยอดตรงสไลด์', help: 'ยอดที่เขียนในสไลด์หลักฐาน ตรงกับยอดที่เบิกในชีท (ต่างกันไม่เกิน 1 บาท)' };
-    case 'match_multi': return { tone: 'ok', text: `✓ ยอดตรงสไลด์ (รวม ${cmp.count} ใบ)`, help: 'แถวนี้รวมหลายรายการไว้ในบรรทัดเดียว — Loop จับคู่ยอดย่อยแต่ละอันกับสไลด์คนละใบในเด็คแล้ว ผลรวมตรงกับยอดที่เบิก · กดดูสไลด์แต่ละใบได้ทางขวา' };
+    case 'match': return { tone: 'ok', text: 'ยอดตรงสไลด์', help: 'ยอดที่เขียนในสไลด์หลักฐาน ตรงกับยอดที่เบิกในชีท (ต่างกันไม่เกิน 1 บาท)' };
+    case 'match_multi': return { tone: 'ok', text: `ยอดตรงสไลด์ (รวม ${cmp.count} ใบ)`, help: 'แถวนี้รวมหลายรายการไว้ในบรรทัดเดียว — Loop จับคู่ยอดย่อยแต่ละอันกับสไลด์คนละใบในเด็คแล้ว ผลรวมตรงกับยอดที่เบิก · กดดูสไลด์แต่ละใบได้ทางขวา' };
     case 'wrong_link': return { tone: 'bad', text: 'ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว', help: 'ลิงก์ที่กรอกในชีทเปิดไปเจอสไลด์ที่ไม่ใช่ของรายการนี้ — Loop ไล่หาในเด็คแล้วเจอสไลด์ที่ชื่องานและยอดตรงกัน กดปุ่ม "สไลด์ที่ใช่" เพื่อไปดูใบจริง' };
-    case 'content_match': return { tone: 'ok', text: '✓ เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)', help: 'ลิงก์ในชีทชี้แค่ไฟล์เด็คทั้งใบ ไม่ได้เจาะจงสไลด์ — Loop หาสไลด์ที่ตรงจากชื่องาน+ยอดให้แล้ว กด "สไลด์ที่ใช่" ได้เลย' };
+    case 'content_match': return { tone: 'ok', text: 'เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)', help: 'ลิงก์ในชีทชี้แค่ไฟล์เด็คทั้งใบ ไม่ได้เจาะจงสไลด์ — Loop หาสไลด์ที่ตรงจากชื่องาน+ยอดให้แล้ว กด "สไลด์ที่ใช่" ได้เลย' };
     case 'amount_mismatch': return { tone: 'bad', text: `สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}`, help: 'ยอดที่เขียนในสไลด์หลักฐาน ไม่ตรงกับยอดที่เบิกจริงในชีท — เปิดสไลด์เทียบว่าฝั่งไหนถูก' };
     case 'no_amount': return { tone: 'warn', text: 'อ่านยอดในสไลด์ไม่ได้', help: 'เจอสไลด์ของรายการนี้แล้ว แต่ Loop อ่านตัวเลขยอดในสไลด์ไม่ออก (อาจเป็นรูปภาพหรือเขียนคนละรูปแบบ) — ต้องเปิดดูเอง' };
     case 'not_found': return { tone: 'warn', text: 'หาสไลด์ของรายการนี้ไม่เจอ', help: 'ไล่ทั้งเด็คของคนนี้แล้วไม่เจอสไลด์ที่ตรงกับรายการนี้ — อาจยังไม่ได้ทำสไลด์ หรือเขียนชื่องาน/ยอดต่างจากในชีทมาก' };
@@ -1044,7 +1044,7 @@ function ConnectPanel() {
 }
 
 function SheetPanel({ urlInput, setUrlInput, formUrlInput, setFormUrlInput, onSave, busy, canCancel, onCancel }) {
-  const inputStyle = { fontSize: 12, fontFamily: 'var(--f-mono)' };
+  const inputStyle = { fontVariantNumeric: 'tabular-nums', fontSize: 12 };
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 560 }}>
       <div>
@@ -1060,7 +1060,7 @@ function SheetPanel({ urlInput, setUrlInput, formUrlInput, setFormUrlInput, onSa
           placeholder="https://docs.google.com/spreadsheets/d/..." style={inputStyle} />
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn--ghost" onClick={onSave} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : '✓ บันทึก'}</button>
+        <button className="btn btn--ghost" onClick={onSave} disabled={busy || !urlInput.trim()}>{busy ? 'กำลังบันทึก…' : <><Icon name="check" size={13} /> บันทึก</>}</button>
         {canCancel && <button className="btn btn--ghost" onClick={onCancel}>ยกเลิก</button>}
       </div>
     </div>
@@ -1136,11 +1136,10 @@ function Tile({ v, l, warn }) {
 
 // ── Small style helpers ──────────────────────────────────────────────────────
 function chip(on) {
-  return {
-    fontFamily: 'var(--f-mono)', fontSize: 12, padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
+  return { fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, padding: '4px 10px', borderRadius: 99, cursor: 'pointer',
     border: `1px solid ${on ? 'var(--accent)' : 'var(--line)'}`,
     background: on ? 'var(--warning-soft)' : 'var(--surface)',
-    color: on ? 'var(--accent-strong)' : 'var(--ink-3)',
+    color: on ? 'var(--accent-strong)' : 'var(--ink-3)'
   };
 }
 const STAT = {

@@ -170,7 +170,7 @@ export function Trading() {
 
       <Card padding={14}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>FILTERS</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>ตัวกรอง</span>
           <FilterPills label="Session" value={filtSession} onChange={setFiltSession} options={sessions} />
           <FilterPills label="Setup"   value={filtSetup}   onChange={setFiltSetup}   options={setups} />
           <FilterPills label="Result"  value={filtResult}  onChange={setFiltResult}  options={results} />
@@ -437,7 +437,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
           <Card variant={trade.status === 'WIN' ? 'paper' : 'default'} padding={16}>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>RESULT</div>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>ผลลัพธ์</div>
                 <Badge tone={trade.status === 'WIN' ? 'success' : trade.status === 'LOSS' ? 'danger' : 'warning'} size="lg" style={{ marginTop: 4 }}>{trade.status}</Badge>
               </div>
               <div style={{ textAlign: 'right' }}>
