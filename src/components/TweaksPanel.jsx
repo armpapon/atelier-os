@@ -37,7 +37,7 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
       </div>
       <div style={{ padding: '4px 14px 14px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 90px)', overflowY: 'auto' }}>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>ลักษณะหน้าตา</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>ลักษณะหน้าตา</div>
           <div style={{ marginBottom: 10 }}>
             <div style={{ marginBottom: 6, color: 'var(--text-secondary)' }}>สีหลัก</div>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -78,7 +78,7 @@ export function TweaksPanel({ open, onClose, accent, setAccent, density, setDens
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 8 }}>โมดูล</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>โมดูล</div>
           <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 8 }}>6 โมดูลพร้อมใช้ · 2 กำลังออกแบบ</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {modules.map(m => (

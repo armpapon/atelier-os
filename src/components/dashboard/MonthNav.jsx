@@ -124,10 +124,10 @@ export function MonthNav({ value, onChange }) {
         <button
           onClick={() => onChange(today)}
           style={{
+            fontVariantNumeric: 'tabular-nums',
             padding: '6px 13px', borderRadius: 'var(--radius-btn)',
             background: 'var(--accent-tint)', border: 'none',
-            color: 'var(--accent-strong)', cursor: 'pointer', fontSize: 11, fontWeight: 600,
-            fontFamily: 'var(--f-mono)', letterSpacing: '0.08em',
+            color: 'var(--accent-strong)', cursor: 'pointer', fontSize: 13, fontWeight: 600
           }}>วันนี้</button>
       )}
     </div>

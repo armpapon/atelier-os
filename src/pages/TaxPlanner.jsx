@@ -23,8 +23,8 @@ import {
 
 const mono = { fontFamily: 'var(--f-mono)', fontVariantNumeric: 'tabular-nums' };
 const label10 = {
-  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--ink-3)',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'
 };
 
 /** Deduction rows grouped the way the form reads, top to bottom. */
@@ -432,8 +432,8 @@ function SaveIndicator({ state, error, onRetry }) {
   const text = state === 'saved' ? 'บันทึกแล้ว ✓' : state === 'saving' ? 'กำลังบันทึก…' : 'ยังไม่ได้บันทึก';
   return (
     <span style={{
-      ...mono, fontSize: 10.5, letterSpacing: '0.06em',
-      color: state === 'saved' ? 'var(--success)' : 'var(--ink-3)',
+      ...mono, fontSize: 10.5,
+      color: state === 'saved' ? 'var(--success)' : 'var(--ink-3)'
     }}>{text}</span>
   );
 }
@@ -650,12 +650,12 @@ function PeriodToggle({ value, onChange, name }) {
             aria-label={`${name} เป็นราย${PERIOD_LABEL[p]}`}
             onClick={() => onChange(p)}
             style={{
-              ...mono, fontSize: 10, letterSpacing: '0.04em', lineHeight: 1.6,
+              ...mono, fontSize: 10, lineHeight: 1.6,
               padding: '2px 8px', borderRadius: 999, border: 0, cursor: 'pointer',
               background: on ? 'var(--surface)' : 'transparent',
               color: on ? 'var(--ink)' : 'var(--ink-3)',
               boxShadow: on ? 'var(--shadow-card)' : 'none',
-              transition: 'background 120ms, color 120ms',
+              transition: 'background 120ms, color 120ms'
             }}>{PERIOD_LABEL[p]}</button>
         );
       })}

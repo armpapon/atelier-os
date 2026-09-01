@@ -117,7 +117,7 @@ export function Dashboard({ onNav, user }) {
 
       {/* Header */}
       <div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.22em', marginBottom: 6 }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 6 }}>
           ATELIER OS · LIFE OS
         </div>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 26 : 32, color: 'var(--ink)', lineHeight: 1.1 }}>
@@ -165,9 +165,9 @@ export function Dashboard({ onNav, user }) {
 
       {/* ── Direction & review zone (strategic, full editors) ── */}
       <div style={{
-        marginTop: 10, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)',
-        letterSpacing: '0.18em', textTransform: 'uppercase',
-        borderBottom: '1px solid var(--line)', paddingBottom: 8,
+        marginTop: 10, fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em',
+        color: 'var(--text-primary)',
+        borderBottom: '1px solid var(--line)', paddingBottom: 8
       }}>
         ทิศทาง & รีวิว
       </div>
@@ -184,9 +184,9 @@ export function Dashboard({ onNav, user }) {
 
       {/* Footer */}
       <div style={{
-        marginTop: 8, padding: '10px 16px', borderTop: '1px solid var(--line)',
-        fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-4)',
-        letterSpacing: '0.1em', textAlign: 'center',
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: 500,
+        marginTop: 8, padding: '10px 16px', borderTop: '1px solid var(--line)', fontSize: 13, color: 'var(--ink-4)', textAlign: 'center'
       }}>
         {goals.length} goals · {focus.length}/3 focus · {roadmap.length} milestones
         {!isSupabaseConfigured && ' · DEMO MODE'}
@@ -208,7 +208,7 @@ function CompassStrip({ manifest, themes, isMobile }) {
           background: 'var(--surface)', border: '1px solid var(--line)',
           borderRadius: 'var(--r-md)', padding: '9px 14px',
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)' }}>
             ✦ North Star
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.4 }}>{northStar}</div>
@@ -220,7 +220,7 @@ function CompassStrip({ manifest, themes, isMobile }) {
           background: 'var(--surface)', border: '1px solid var(--line)',
           borderRadius: 'var(--r-md)', padding: '9px 14px',
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)' }}>
             ◷ ธีมสัปดาห์นี้
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.4 }}>{weekTheme}</div>
@@ -299,7 +299,7 @@ function TodayHero({
         {/* Focus 3 */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>
               โฟกัส 3 อย่างวันนี้
             </span>
           </div>
@@ -343,7 +343,7 @@ function TodayHero({
 
         {/* Agenda */}
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>
             นัดถัดไป
           </div>
           <div style={{ background: 'var(--background-soft)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: '11px 14px' }}>

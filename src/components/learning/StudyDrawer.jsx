@@ -79,7 +79,7 @@ export function StudyDrawer({ source, onClose, onChange }) {
             }}>{isBook ? '📖' : isVideo ? '📺' : '📚'}</div>
           )}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
               {isBook ? 'BOOK' : isVideo ? 'YOUTUBE' : source.type?.toUpperCase()} · {source.category || '—'}
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: 'var(--text-primary)', marginTop: 3, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -173,7 +173,7 @@ function ProgressHero({ source, stats, isBook }) {
       borderBottom: '1px solid var(--border)', flexShrink: 0,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
           {hasPages
             ? `อ่านแล้ว ${source.current_page || 0} / ${source.total_pages} หน้า`
             : 'ความคืบหน้า'}
@@ -212,7 +212,7 @@ function ProgressHero({ source, stats, isBook }) {
 function MiniMetric({ icon, label, value, hot }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontSize: 13.5, fontWeight: 600, color: hot ? 'var(--accent-strong)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -333,8 +333,8 @@ function BookStudy({ source, onSaved }) {
         border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 14,
       }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>⏱ จับเวลาอ่าน</div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 40, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', letterSpacing: '0.04em', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>⏱ จับเวลาอ่าน</div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 40, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {fmt(timerSec)}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -625,7 +625,7 @@ function VideoStudy({ source, onSaved }) {
           border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 12,
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>⏱ TIMER</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>⏱ TIMER</div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
             {String(Math.floor(timerSec/60)).padStart(2,'0')}:{String(timerSec%60).padStart(2,'0')}
           </div>
@@ -715,7 +715,7 @@ function GenericStudy({ source, onSaved }) {
         border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 12,
       }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>⏱ TIMER</div>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>⏱ TIMER</div>
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {String(Math.floor(timerSec/60)).padStart(2,'0')}:{String(timerSec%60).padStart(2,'0')}
         </div>
@@ -850,7 +850,7 @@ function ScorePicker({ value, onChange }) {
   const labels = { 1: 'งง', 2: 'ยังไม่ค่อย', 3: 'พอเข้าใจ', 4: 'เข้าใจดี', 5: 'แม่นมาก' };
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em', marginBottom: 6 }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
         ⭐ ความเข้าใจ session นี้
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -875,7 +875,7 @@ function ScorePicker({ value, onChange }) {
 function Stat({ label, value, sub }) {
   return (
     <div style={{ padding: '10px 12px', background: 'var(--background-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-control)' }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--text-primary)', fontWeight: 600, marginTop: 2 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', marginTop: 2 }}>{sub}</div>}
     </div>
@@ -885,7 +885,7 @@ function Stat({ label, value, sub }) {
 function Field({ label, children }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
-      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>{label}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</span>
       {children}
     </label>
   );

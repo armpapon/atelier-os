@@ -27,8 +27,8 @@ function rankTone(rank) {
 }
 
 const SECT_LBL = {
-  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--text-muted)',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
 };
 
 const HAIRLINE = '1px solid var(--hairline)';
@@ -147,8 +147,9 @@ export function DebtAdvice({ debts }) {
           หากปี 2570 กลับสู่เกณฑ์ปกติ {deadline.toPct}% ยอดขั้นต่ำจะขยับจาก ~{baht(deadline.currentMinTotal)}
           {' '}เป็น <b>~{baht(deadline.futureMinTotal)}/เดือน</b> วางแผนโปะให้จบก่อนถึงตอนนั้น
           <div style={{
-            marginTop: 6, fontFamily: 'var(--f-mono)', fontSize: 10.5,
-            letterSpacing: '0.04em', color: 'var(--text-muted)',
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500,
+            marginTop: 6, fontSize: 13, color: 'var(--text-muted)'
           }}>
             ตรวจแหล่ง ธปท. ส.ค. 2569 · ทบทวนก่อน {deadline.effectiveLabel}
           </div>

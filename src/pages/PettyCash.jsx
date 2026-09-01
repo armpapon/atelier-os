@@ -85,7 +85,7 @@ const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' 
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
 const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
-const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+const lbl = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
 
 // Slide-compare results persist in localStorage so they survive a reload (the
 // session cache is in-memory only) — Pat runs them once per person and expects
@@ -663,7 +663,7 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
       )}
       {monthKeys.map(mk => (
         <div key={mk}>
-          <div style={{ padding: '5px 14px', background: 'var(--surface-2)', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ padding: '5px 14px', background: 'var(--surface-2)', ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
             <span>{mk === -1 ? 'ไม่ระบุเดือน' : TH_MONTHS[mk]} · {byMonth[mk].length} รายการ</span>
             <span>{baht(byMonth[mk].reduce((s, r) => s + r.amountOut, 0))}</span>
           </div>
@@ -680,7 +680,7 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
       {/* Form-side observations — these have no sheet row to sit on */}
       {(p.formMissing?.length > 0 || p.formPending?.length > 0 || p.formDups?.length > 0) && (
         <div>
-          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, color: 'var(--danger)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, color: 'var(--danger)'}}>
             🧾 ใบเบิกจากฟอร์มที่ยังไม่อยู่ในชีท
           </div>
           {p.formDups?.map(([a, b], i) => (
@@ -826,7 +826,7 @@ function StatementPanel({ rows, sheetId, tab }) {
 
               {/* matched */}
               <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
-                <div style={{ padding: '8px 14px', background: 'var(--surface-2)', ...mono10, letterSpacing: '0.12em' }}>
+                <div style={{ padding: '8px 14px', background: 'var(--surface-2)', ...mono10}}>
                   จับคู่สำเร็จ · {R.matched.length} รายการ
                 </div>
                 {R.matched.map((m, i) => (
@@ -881,7 +881,7 @@ function PayQueue({ pay }) {
         <div style={{ borderTop: '1px solid var(--warning)', background: 'var(--surface)' }}>
           {pay.groups.map(g => (
             <div key={g.code}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', background: 'var(--background-soft)', ...mono10, letterSpacing: '0.1em' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', background: 'var(--background-soft)', ...mono10}}>
                 <span>{parseName(g.who).label} · {g.claims.length} ใบ</span>
                 <span>{baht(g.total)}</span>
               </div>

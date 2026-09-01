@@ -758,7 +758,7 @@ function GmailInbox() {
     // A whisper, not a card — the way back for whoever hid it.
     return (
       <button onClick={() => toggleHidden(false)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 4px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--ink-4)' }}>
+        style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 4px', fontSize: 13, color: 'var(--ink-4)' }}>
         ✉ แสดง "เมลค้างตอบ"
       </button>
     );
@@ -1007,11 +1007,11 @@ function HabitModal({ onSave, onClose }) {
       }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>เพิ่ม Habit</div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อ Habit</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อ Habit</span>
           <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น ออกกำลังกาย, อ่านหนังสือ" autoFocus required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เป้าหมาย/สัปดาห์</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เป้าหมาย/สัปดาห์</span>
           <select className="input" value={target} onChange={e => setTarget(e.target.value)}>
             {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{n} ครั้ง/สัปดาห์</option>)}
           </select>
@@ -1053,8 +1053,9 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
     background: 'var(--fill)', color: 'var(--ink)', outline: 'none',
   };
   const labelStyle = {
-    display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10,
-    letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-2)', fontFamily: 'var(--f-mono)',
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 500,
+    display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13, color: 'var(--ink-2)'
   };
 
   return (
@@ -1105,11 +1106,11 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
         <a href={buildGCalUrl({ text: entry.text, note, location, event_time: time, event_end_time: endTime }, date)}
           target="_blank" rel="noopener noreferrer"
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-            fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
+            fontVariantNumeric: 'tabular-nums',
+            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', fontSize: 13,
             color: 'var(--accent-strong)', textDecoration: 'none', fontWeight: 600,
             border: 'none', borderRadius: 'var(--radius-btn)',
-            padding: '6px 12px', background: 'var(--accent-tint)',
+            padding: '6px 12px', background: 'var(--accent-tint)'
           }}>
           <Icon name="calendar" size={13} /> เพิ่มลง Google Calendar
         </a>
@@ -1341,7 +1342,7 @@ export function Journal() {
             {/* FYI — who's on leave today (informational, not tasks) */}
             {leaveEntries.length > 0 && (
               <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--fill)', border: 'none', borderRadius: 'var(--radius-field)' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-2)', marginBottom: 8 }}>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-2)', marginBottom: 8 }}>
                   วันนี้ใครลา · FYI
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>

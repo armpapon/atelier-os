@@ -131,7 +131,7 @@ export function Team() {
             )}
 
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', borderBottom: '1px solid var(--hairline)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr 120px', gap: 12, padding: '10px 14px', ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, borderBottom: '1px solid var(--hairline)' }}>
                 <span>รหัส</span><span>ชื่อ</span><span style={{ textAlign: 'right' }}>เบิกปี {data.year ?? '—'}</span>
               </div>
               {data.roster.map(e => (

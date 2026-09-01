@@ -45,12 +45,12 @@ export function DayCountdown() {
           transform="rotate(-90 33 33)"
           style={{ transition: 'stroke-dashoffset 950ms linear' }} />
         <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--accent-strong)' }}>{minLeft}</text>
-        <text x="33" y="44" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-3)', letterSpacing: '0.1em' }}>นาที</text>
+        <text x="33" y="44" textAnchor="middle" style={{ fontWeight: 500, fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-3)'}}>นาที</text>
       </svg>
 
       {/* Time text */}
       <div style={{ flex: 1, minWidth: 130 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
           เหลือเวลาวันนี้
         </div>
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>

@@ -355,13 +355,13 @@ export function AsanaHours({ date }) {
             <button className="btn btn--ghost" onClick={openPicker}>เลือก workspace / ทีม</button>
           ) : (
             <>
-              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Workspace</div>
+              <div style={{ ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>Workspace</div>
               <select value={wsGid} onChange={e => setWsGid(e.target.value)} style={inputStyle}>
                 {workspaces.map(w => <option key={w.gid} value={w.gid}>{w.name}</option>)}
               </select>
 
               {/* Roles + their daily hour targets */}
-              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>บทบาท & เป้า ชม./วัน</div>
+              <div style={{ ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>บทบาท & เป้า ชม./วัน</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {roleDraft.map(r => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -382,7 +382,7 @@ export function AsanaHours({ date }) {
                 </button>
               </div>
 
-              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
+              <div style={{ ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>
                 คนในทีม{selected.size ? ` · เลือก ${selected.size}` : ''}
               </div>
               {members === null ? (

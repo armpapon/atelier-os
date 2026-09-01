@@ -46,9 +46,8 @@ export function KPICard({ label, sub, value, valueColor = 'var(--text-primary)',
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <div style={{
-          fontFamily: 'var(--f-mono)', fontSize: 10.5,
-          color: 'var(--text-muted)', fontWeight: 500,
-          letterSpacing: '0.16em', textTransform: 'uppercase',
+          fontVariantNumeric: 'tabular-nums', fontSize: 13,
+          color: 'var(--text-muted)', fontWeight: 500
         }}>{label}</div>
         {sub && <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>{sub}</div>}
       </div>

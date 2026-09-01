@@ -21,8 +21,8 @@ function snippet(body, n = 90) {
 }
 
 const SECTION_LABEL = {
-  fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--ink-4)', padding: '2px 2px',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--ink-4)', padding: '2px 2px'
 };
 
 const TOOL_BTN = {
@@ -421,7 +421,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
                 </span>
               </button>
             )}
-            <div style={{ padding: '4px 10px 2px', fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)', letterSpacing: '0.04em' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, padding: '4px 10px 2px', fontSize: 13, color: 'var(--ink-4)'}}>
               ↑↓ เลือก · Enter ยืนยัน · Esc ปิด
             </div>
           </div>

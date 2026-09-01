@@ -120,7 +120,7 @@ export function Trading() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
             📈 TRADING JOURNAL · A3 SYSTEM
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
@@ -169,7 +169,7 @@ export function Trading() {
 
       <Card padding={14}>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>FILTERS</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>FILTERS</span>
           <FilterPills label="Session" value={filtSession} onChange={setFiltSession} options={sessions} />
           <FilterPills label="Setup"   value={filtSetup}   onChange={setFiltSetup}   options={setups} />
           <FilterPills label="Result"  value={filtResult}  onChange={setFiltResult}  options={results} />
@@ -255,7 +255,7 @@ function fmtUsd(v) {
 function KPI({ label, value, sub, color = 'var(--text-primary)', isMobile }) {
   return (
     <Card padding={18}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 26 : 32, color, marginTop: 6, fontWeight: 600, lineHeight: 1.1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
@@ -342,11 +342,10 @@ function TradeTable({ trades, onView, onDelete }) {
     <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-control)', border: '1px solid var(--border)' }}>
       <div style={{ minWidth: 620 }}>
       <div style={{
+        fontVariantNumeric: 'tabular-nums',
         display: 'grid', gridTemplateColumns: '70px 60px 50px 1fr 60px 100px 90px 40px',
-        gap: 10, padding: '8px 12px', background: 'var(--surface-muted)',
-        fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)',
-        letterSpacing: '0.06em', textTransform: 'uppercase',
-        borderBottom: '1px solid var(--border)',
+        gap: 10, padding: '8px 12px', background: 'var(--surface-muted)', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)',
+        borderBottom: '1px solid var(--border)'
       }}>
         <div>วันที่</div><div>Symbol</div><div>Dir</div><div>Setup / Session</div>
         <div>RR</div><div style={{ textAlign: 'right' }}>P&L</div>
@@ -418,7 +417,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
         }}>
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
               {trade.trade_date} · {trade.session || 'Session'}
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4 }}>
@@ -437,11 +436,11 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
           <Card variant={trade.status === 'WIN' ? 'paper' : 'default'} padding={16}>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>RESULT</div>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>RESULT</div>
                 <Badge tone={trade.status === 'WIN' ? 'success' : trade.status === 'LOSS' ? 'danger' : 'warning'} size="lg" style={{ marginTop: 4 }}>{trade.status}</Badge>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>P&L</div>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>P&L</div>
                 <div style={{ fontFamily: 'var(--f-display)', fontSize: 26, color: trade.pnl >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
                   {trade.pnl >= 0 ? '+' : ''}${Number(trade.pnl || 0).toFixed(2)}
                 </div>
@@ -501,7 +500,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
 function Field({ label, value, mono }) {
   return (
     <div style={{ padding: '8px 12px', background: 'var(--background-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-control)' }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em' }}>{label}</div>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>{label}</div>
       <div style={{
         fontFamily: mono ? 'var(--f-mono)' : 'var(--f-body)',
         fontSize: 14, color: 'var(--text-primary)', fontWeight: 500, marginTop: 2,

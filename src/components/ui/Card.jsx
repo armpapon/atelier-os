@@ -49,9 +49,9 @@ export function CardHeader({ eyebrow, title, meta, action, accent = 'var(--text-
       <div style={{ minWidth: 0, flex: 1 }}>
         {eyebrow && (
           <div style={{
-            fontFamily: 'var(--f-mono)', fontSize: 10.5, color: accent,
-            letterSpacing: '0.18em', textTransform: 'uppercase',
-            marginBottom: 4,
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500, fontSize: 13, color: accent,
+            marginBottom: 4
           }}>{eyebrow}</div>
         )}
         {title && (

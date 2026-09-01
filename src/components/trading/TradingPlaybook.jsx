@@ -159,7 +159,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
 
           {/* Session window */}
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', marginBottom: 8 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
               ⏰ หน้าต่างเทรด · UTC+7
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
@@ -192,7 +192,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
 
           {/* Pre-Trade Checklist */}
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', marginBottom: 8 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
               ✅ PRE-TRADE CHECKLIST · ตอบ "ใช่" ครบ 7 ข้อก่อนเข้า
             </div>
             <Card variant="paper" padding={14}>
@@ -215,7 +215,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
 
           {/* Rules */}
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', marginBottom: 8 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
               📜 กฎเหล็ก
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8 }}>

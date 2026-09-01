@@ -114,7 +114,7 @@ function AddSourceForm({ onSave, onClose }) {
 
         {/* Type */}
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {SOURCE_TYPES.map(s => (
               <button key={s.id} type="button" onClick={() => set('type', s.id)}
@@ -132,7 +132,7 @@ function AddSourceForm({ onSave, onClose }) {
 
         {/* URL */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>
             {form.type === 'youtube' ? '🔗 YouTube URL' : '🔗 URL / ลิงก์'}
           </span>
           <input className="input" type="url" value={form.url} onChange={e => handleUrlChange(e.target.value)}
@@ -146,33 +146,33 @@ function AddSourceForm({ onSave, onClose }) {
 
         {/* Title */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อเรื่อง *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อเรื่อง *</span>
           <input className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="ชื่อคลิป / หนังสือ / คอร์ส" required />
         </label>
 
         {/* Author */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ผู้สร้าง / ผู้เขียน</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ผู้สร้าง / ผู้เขียน</span>
           <input className="input" value={form.author} onChange={e => set('author', e.target.value)} placeholder="ICT, Ali Abdaal, etc." />
         </label>
 
         {/* Category + Duration */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>หมวดหมู่</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>หมวดหมู่</span>
             <select className="input" value={form.category} onChange={e => set('category', e.target.value)}>
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ความยาว (นาที)</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ความยาว (นาที)</span>
             <input className="input" type="number" min="0" value={form.duration_min} onChange={e => set('duration_min', e.target.value)} placeholder="60" />
           </label>
         </div>
 
         {/* Cover image — แทน initials เช่น "TH" ในการ์ด */}
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>
             รูปปก {form.type === 'youtube' && '(ไม่ต้องใส่ — ใช้ thumbnail YouTube)'}
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -280,7 +280,7 @@ function NoteCard({ note, onDelete }) {
           background: 'var(--accent-soft)', border: 'none',
           borderRadius: 'var(--r-sm)', fontSize: 13, lineHeight: 1.6,
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--amber-2)', marginBottom: 4, letterSpacing: '0.12em' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--amber-2)', marginBottom: 4}}>
             🌐 แปล → {TARGET_LANGS.find(l => l.code === translation.lang)?.label || translation.lang}
           </div>
           <div style={{ color: 'var(--ink-2)' }}>{translation.text}</div>
@@ -409,7 +409,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         {/* Progress tracker */}
         <div style={{ marginTop: 20, padding: '16px 18px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', letterSpacing: '0.12em' }}>PROGRESS</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>PROGRESS</div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: progress >= 100 ? 'var(--profit)' : 'var(--amber-2)', fontVariantNumeric: 'tabular-nums' }}>{progress}%</div>
           </div>
           <input type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))}
@@ -435,7 +435,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         {/* YouTube tips */}
         {videoId && (
           <div style={{ marginTop: 14, padding: '12px 16px', background: 'var(--success-soft)', border: 'none', borderRadius: 'var(--r-md)' }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 6, letterSpacing: '0.12em' }}>💡 เคล็ดลับการเรียน</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--profit)', marginBottom: 6}}>💡 เคล็ดลับการเรียน</div>
             <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.7 }}>
               • กด <strong>CC</strong> เพื่อเปิดซับไตเติ้ล · <strong>Settings → Subtitles → Auto-translate → Thai</strong> เพื่อแปลอัตโนมัติ<br/>
               • จด Key Insight ในช่องโน้ตด้านขวา · กด <strong>🌐 แปล</strong> เพื่อแปลโน้ตข้ามภาษา<br/>

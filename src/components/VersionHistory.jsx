@@ -2127,7 +2127,7 @@ export function VersionHistory({ onClose }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0,
         }}>
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em', marginBottom: 4 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
               ✦ VERSION HISTORY
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--text-primary)' }}>

@@ -237,8 +237,9 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
 
       {unconfirmed && (
         <div style={{
-          fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em',
-          color: 'var(--warning)', marginBottom: 8,
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500, fontSize: 13,
+          color: 'var(--warning)', marginBottom: 8
         }}>
           ⚠️ ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
         </div>
@@ -257,7 +258,7 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
         <NWRow label="หนี้สิน"    value={liabilities} color="var(--danger)" sign="-" />
         <div style={{ height: 1, background: 'var(--hairline)', margin: '4px 0' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>DEBT RATIO</span>
+          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)'}}>DEBT RATIO</span>
           <Badge tone={debtRatio > 50 ? 'danger' : debtRatio > 30 ? 'warning' : 'success'} size="sm">
             {debtRatio.toFixed(1)}%
           </Badge>
@@ -353,8 +354,8 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
         {['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'].map((d, i) => (
           <div key={i} style={{
-            textAlign: 'center', fontSize: 10, color: 'var(--text-muted)',
-            fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', fontWeight: 500,
+            fontVariantNumeric: 'tabular-nums',
+            textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', fontWeight: 500
           }}>{d}</div>
         ))}
       </div>

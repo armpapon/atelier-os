@@ -180,7 +180,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
         <div style={{
           marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', marginBottom: 8 }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
             📊 FORECAST · 12 เดือนข้างหน้า
           </div>
           <ForecastChart data={forecast} />
@@ -370,7 +370,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
       borderRadius: 'var(--radius-control)', padding: 14,
       display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12,
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {initial ? 'แก้ไขหนี้สิน' : 'เพิ่มหนี้สินใหม่'}
       </div>
 
@@ -489,8 +489,8 @@ function StatTile({ label, value, color, sub, small }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <div style={{
-        fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)',
-        letterSpacing: '0.14em', textTransform: 'uppercase',
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
       }}>{label}</div>
       <div style={{
         fontFamily: 'var(--f-display)', fontSize: small ? 17 : 22, fontWeight: 600,
@@ -554,7 +554,7 @@ function ForecastChart({ data }) {
 function MiniStat({ label, value, color, sub }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+      <div style={{ fontWeight: 500, fontSize: 9, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontSize: 12, color, fontWeight: 600, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -614,7 +614,7 @@ function DebtStrategyCard({ debts }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
             ⚡ STRATEGY · โปะหนี้
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
@@ -677,7 +677,7 @@ function DebtStrategyCard({ debts }) {
       }}>
         <span style={{ fontSize: 30, lineHeight: 1 }}>🎯</span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)' }}>
             วันปลอดหนี้
           </div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 600, color: 'var(--accent-strong)', lineHeight: 1.15 }}>
@@ -709,7 +709,7 @@ function DebtStrategyCard({ debts }) {
 
       {/* Payoff order */}
       <div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em', marginBottom: 8 }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
           ลำดับการปลอดหนี้
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

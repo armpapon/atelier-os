@@ -143,8 +143,7 @@ export function ThemesCard({ themes, onSave }) {
             alignItems: 'center',
           }}>
             <div style={{
-              fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)',
-              letterSpacing: '0.12em', fontWeight: 500,
+              fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', fontWeight: 500
             }}>
               {r.label}
             </div>
@@ -399,8 +398,9 @@ export function TodayFocus({ items, onAdd, onToggle, onDelete }) {
 
         {items.length === 3 && (
           <div style={{
-            fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)',
-            textAlign: 'center', marginTop: 4, letterSpacing: '0.1em',
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500, fontSize: 13, color: 'var(--text-muted)',
+            textAlign: 'center', marginTop: 4
           }}>
             ครบ 3 แล้ว — โฟกัสที่นี่ก่อน
           </div>
@@ -478,8 +478,7 @@ export function RoadmapTimeline({ milestones, monthsAhead = 6, onAdd, onUpdate, 
             ))}
             <div style={{ position: 'absolute', top: 14, left: `${todayPct}%`, transform: 'translateX(-50%)' }}>
               <div style={{
-                fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--accent-strong)',
-                letterSpacing: '0.14em', textAlign: 'center', marginBottom: 2, fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--accent-strong)', textAlign: 'center', marginBottom: 2, fontWeight: 600
               }}>NOW</div>
               <div style={{ width: 1.5, height: 30, background: 'var(--accent)', margin: '0 auto' }} />
             </div>
@@ -623,7 +622,7 @@ export function LifePulse({ finance, modules, onNav, user }) {
   return (
     <div>
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', letterSpacing: '0.18em', textTransform: 'uppercase' }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
           ⚡ Life Pulse
         </div>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
@@ -645,7 +644,7 @@ export function LifePulse({ finance, modules, onNav, user }) {
             <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: t.accent }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>{t.icon}</span>
-              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', textTransform: 'uppercase', fontWeight: 500 }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', fontWeight: 500 }}>
                 {t.label}
               </span>
             </div>

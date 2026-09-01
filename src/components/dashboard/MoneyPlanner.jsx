@@ -32,8 +32,8 @@ const SLIDER_STEP = 500;
 const DEFAULT_EXTRA = 5000;
 
 const MONO_LBL = {
-  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--text-muted)',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
 };
 const HAIRLINE = '1px solid var(--hairline)';
 
@@ -151,7 +151,7 @@ export function MoneyPlanner({ debts }) {
           background: 'var(--background-soft)', border: HAIRLINE,
           borderRadius: 14, padding: '15px 16px',
         }}>
-          <div style={{ ...MONO_LBL, fontSize: 9.5, letterSpacing: '0.14em' }}>ปลดหนี้ทุกก้อนหมด</div>
+          <div style={{ ...MONO_LBL, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>ปลดหนี้ทุกก้อนหมด</div>
           <div data-clear-date style={{
             fontSize: 23, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
             color: 'var(--success)',
@@ -165,7 +165,7 @@ export function MoneyPlanner({ debts }) {
           background: 'var(--background-soft)', border: HAIRLINE,
           borderRadius: 14, padding: '15px 16px',
         }}>
-          <div style={{ ...MONO_LBL, fontSize: 9.5, letterSpacing: '0.14em' }}>ประหยัดดอกเบี้ย</div>
+          <div style={{ ...MONO_LBL, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>ประหยัดดอกเบี้ย</div>
           {censored ? (
             <>
               <div data-interest-saved style={{

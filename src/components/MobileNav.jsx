@@ -126,9 +126,8 @@ export function MobileNav({ active, onChange, user, theme = 'light', onToggleThe
             {visibleNavGroups(user).map((group, gi) => (
               <div key={gi} style={{ marginBottom: 6 }}>
                 <div style={{
-                  fontFamily: 'var(--f-mono)', fontSize: 10,
-                  letterSpacing: '0.18em', textTransform: 'uppercase',
-                  color: 'var(--text-muted)', padding: '10px 4px 6px', fontWeight: 500,
+                  fontVariantNumeric: 'tabular-nums', fontSize: 13,
+                  color: 'var(--text-muted)', padding: '10px 4px 6px', fontWeight: 500
                 }}>{group.group}</div>
                 {group.children.map(item => {
                   const isActive = active === item.id;

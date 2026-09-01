@@ -86,7 +86,7 @@ export function MissionDashboard({ trades = [] }) {
       {/* Progress */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
             ความคืบหน้า
           </span>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 500 }}>
@@ -120,7 +120,7 @@ export function MissionDashboard({ trades = [] }) {
       </div>
 
       {/* Pass criteria */}
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
         เกณฑ์ผ่านภารกิจ
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -144,7 +144,7 @@ function Stat({ label, value, sub, color = 'var(--text-primary)' }) {
       padding: '12px 14px', background: 'var(--background-soft)',
       border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color, marginTop: 4, fontWeight: 600, lineHeight: 1.1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>

@@ -383,7 +383,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           <button type="button" onClick={onClose} style={{ color: 'var(--text-secondary)', fontSize: 18, background: 'none', border: 0, cursor: 'pointer', width: 28, height: 28, borderRadius: '50%' }}>×</button>
         </div>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
           {isTransferEdit ? (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -420,11 +420,11 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           )}
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รายการ</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>รายการ</span>
           <input ref={firstInputRef} className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="เช่น ข้าวกลางวัน, ค่าน้ำมัน" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>
             จำนวน (บาท) {isTransferEdit
               ? (Number(initialTxn.amount) < 0 ? '— โอนออก (-)' : '— รับโอน (+)')
               : (isIncome ? '— รายรับ (+)' : '— รายจ่าย (-)')}
@@ -448,12 +448,12 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           )}
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันที่</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>วันที่</span>
           <input className="input" type="date" value={form.occurred_at} onChange={e => set('occurred_at', e.target.value)} />
         </label>
         {accounts.length > 0 && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>บัญชี</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>บัญชี</span>
             <select className="input" value={form.account_id} onChange={e => set('account_id', e.target.value)}>
               <option value="">ไม่ระบุ</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -461,7 +461,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           </label>
         )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>โน้ต</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>โน้ต</span>
           <input className="input" value={form.note} onChange={e => set('note', e.target.value)} placeholder="หมายเหตุเพิ่มเติม" />
         </label>
         {error && <div style={{ padding: '10px 12px', background: 'var(--danger-soft)', color: 'var(--danger)', border: 'none', borderRadius: 'var(--radius-field)', fontSize: 12 }}>{error}</div>}
@@ -530,7 +530,7 @@ function AccountModal({ scope, initial = null, accounts = [], onSave, onClose })
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
 
-  const labelStyle = { fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+  const labelStyle = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
@@ -621,19 +621,19 @@ function GoalModal({ scope, onSave, onClose }) {
       <form onSubmit={handleSubmit} style={{ position: 'relative', background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)', padding: 30, width: 360, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>ตั้งเป้าหมาย</div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อเป้าหมาย</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อเป้าหมาย</span>
           <input className="input" value={form.title} onChange={e => setForm(f => ({...f, title: e.target.value}))} placeholder="เงินดาวน์บ้าน, กองทุนฉุกเฉิน" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เป้าหมาย (บาท)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เป้าหมาย (บาท)</span>
           <input className="input" type="number" min="1" value={form.target_amount} onChange={e => setForm(f => ({...f, target_amount: e.target.value}))} placeholder="500000" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>มีอยู่แล้ว (บาท)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>มีอยู่แล้ว (บาท)</span>
           <input className="input" type="number" min="0" value={form.current_amount} onChange={e => setForm(f => ({...f, current_amount: e.target.value}))} placeholder="0" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>กำหนด (ถ้ามี)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>กำหนด (ถ้ามี)</span>
           <input className="input" type="date" value={form.deadline} onChange={e => setForm(f => ({...f, deadline: e.target.value}))} />
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -1179,9 +1179,10 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         )}
         {loading && (
           <div style={{
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500,
             padding: '8px 14px', background: 'var(--fill)', color: 'var(--text-secondary)',
-            borderRadius: 'var(--radius-field)', fontSize: 11, fontFamily: 'var(--f-mono)',
-            letterSpacing: '0.1em', textAlign: 'center',
+            borderRadius: 'var(--radius-field)', fontSize: 13, textAlign: 'center'
           }}>
             กำลังโหลดข้อมูล…
           </div>
@@ -1653,7 +1654,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                       ฿{accounts.reduce((s, a) => s + Number(a.balance || 0), 0).toLocaleString('th', { maximumFractionDigits: 0 })}
                     </strong>
                     {balancesUnconfirmed && (
-                      <span style={{ color: 'var(--warning)', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em', marginLeft: 6 }}>
+                      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: 'var(--warning)', fontSize: 13, marginLeft: 6 }}>
                         · ยังไม่ยืนยัน
                       </span>
                     )}
@@ -1727,7 +1728,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                             title={a._balance_unconfirmed ? 'ยังไม่ยืนยัน — อ่านรายการหลังวันตั้งต้นไม่สำเร็จ' : undefined}>
                             ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
                             {a._balance_unconfirmed && (
-                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 500, letterSpacing: '0.1em', marginLeft: 5 }}>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 500, marginLeft: 5 }}>
                                 ยังไม่ยืนยัน
                               </span>
                             )}
@@ -1749,9 +1750,9 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
 
         {/* Footer */}
         <div style={{
-          marginTop: 4, padding: '10px 16px', borderTop: '1px solid var(--hairline)',
-          fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
-          letterSpacing: '0.1em', textAlign: 'center',
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500,
+          marginTop: 4, padding: '10px 16px', borderTop: '1px solid var(--hairline)', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center'
         }}>
           {txns.length} รายการ · {accounts.length} บัญชี · {budgets.length} งบ · {goals.length} เป้าหมาย
           {!isSupabaseConfigured && ' · DEMO MODE'}

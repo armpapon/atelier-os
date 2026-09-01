@@ -246,7 +246,7 @@ export function SheetTimeline({ date }) {
           {/* Billing chase list — every month, oldest posted first */}
           {sum.billing.length > 0 && (
             <>
-              <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase', marginTop: 2 }}>
+              <div style={{ ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, marginTop: 2 }}>
                 🚨 รอวางบิล ({sum.billing.length})
               </div>
               {billingShown.map((j, i) => jobRow(j, `b${i}`, true))}
@@ -259,7 +259,7 @@ export function SheetTimeline({ date }) {
           )}
 
           {/* This month's jobs */}
-          <div style={{ ...mono10, letterSpacing: '0.16em', textTransform: 'uppercase', marginTop: 2 }}>
+          <div style={{ ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, marginTop: 2 }}>
             งานเดือน{TH_MONTHS[monthIdx]} ({sum.monthTotal})
           </div>
           {sum.monthTotal === 0 ? (

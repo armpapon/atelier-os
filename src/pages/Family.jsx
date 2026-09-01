@@ -170,14 +170,15 @@ function MemberModal({ initial, onSave, onClose }) {
             style={{ cursor: 'pointer', position: 'relative' }}>
             <Avatar member={previewMember} size={88} />
             <div style={{
+              fontVariantNumeric: 'tabular-nums',
+              fontWeight: 500,
               position: 'absolute', inset: 0, borderRadius: '50%',
               background: 'var(--dim)',
               // Fixed white: sits on the always-dark scrim above, independent of theme
               // (var(--text-inverse) assumes an accent-coloured surface, not this scrim).
               color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: 0, transition: 'opacity 130ms', fontSize: 11,
-              fontFamily: 'var(--f-mono)', letterSpacing: '0.1em',
+              opacity: 0, transition: 'opacity 130ms', fontSize: 11
             }}
             onMouseEnter={e => e.currentTarget.style.opacity = 1}
             onMouseLeave={e => e.currentTarget.style.opacity = 0}>
@@ -208,18 +209,18 @@ function MemberModal({ initial, onSave, onClose }) {
         </div>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ชื่อ *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>ชื่อ *</span>
           <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อสมาชิก" autoFocus required />
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ความสัมพันธ์</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>ความสัมพันธ์</span>
           <input className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="แม่, ภรรยา, ลูกสาว, ลูกชาย" />
         </label>
 
         {/* Color picker — used as fallback when no photo */}
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
             สี Avatar <span style={{ color: 'var(--text-muted)' }}>· ใช้เมื่อไม่มีรูป</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -235,12 +236,12 @@ function MemberModal({ initial, onSave, onClose }) {
         </div>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>วันเกิด</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>วันเกิด</span>
           <input className="input" type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>โน้ต (ไม่บังคับ)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>โน้ต (ไม่บังคับ)</span>
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="ข้อมูลเพิ่มเติม" />
         </label>
 
@@ -306,16 +307,16 @@ function AddEventModal({ members, onSave, onClose }) {
       }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>เพิ่มเหตุการณ์</div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อเหตุการณ์ *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อเหตุการณ์ *</span>
           <input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น วันเกิด, นัดหมอ, ท่องเที่ยว" autoFocus required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันที่ *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>วันที่ *</span>
           <input className="input" type="date" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} required />
         </label>
         {members.length > 0 && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เกี่ยวกับใคร</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เกี่ยวกับใคร</span>
             <select className="input" value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}>
               <option value="">ทุกคน</option>
               {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -323,13 +324,13 @@ function AddEventModal({ members, onSave, onClose }) {
           </label>
         )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>โน้ต</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>โน้ต</span>
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
         </label>
 
         {/* Memory photos (optional, multiple) */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รูปภาพ (ใส่ได้หลายรูป)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>รูปภาพ (ใส่ได้หลายรูป)</span>
           {photos.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
               {photos.map((p, i) => (
@@ -388,15 +389,15 @@ function AddNoteDrawer({ onSave, onClose }) {
           <button type="button" onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 18 }}>×</button>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เขียนโดย</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เขียนโดย</span>
           <input className="input" value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} placeholder="ชื่อคุณ" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>หัวข้อ (ไม่บังคับ)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>หัวข้อ (ไม่บังคับ)</span>
           <input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น เรื่องที่อยากบอก" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เนื้อหา *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เนื้อหา *</span>
           <textarea className="input" rows={8} value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} placeholder="เขียนอะไรก็ได้ให้กับคนที่รัก..." required style={{ resize: 'vertical' }} />
         </label>
         <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
@@ -501,7 +502,7 @@ function EventDetail({ event, members, onChange, onClose }) {
     onChange(); onClose();
   };
 
-  const labelStyle = { fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+  const labelStyle = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 550, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -911,7 +912,7 @@ export function Family() {
                         fontFamily: 'var(--f-mono)',
                       }}>
                         {/* text-inverse flips correctly here since the badge bg is the accent/amber surface */}
-                        <div style={{ fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)', letterSpacing: '0.1em' }}>
+                        <div style={{ fontWeight: 500, fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)'}}>
                           {days === 0 ? 'วันนี้' : days === 1 ? 'พรุ่งนี้' : days < 0 ? 'ผ่านมา' : 'อีก'}
                         </div>
                         {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber-2)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}

@@ -68,11 +68,11 @@ function SetupCard({ initialBirth, initialSpan, onSave, onCancel }) {
         </div>
       </div>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันเกิด</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>วันเกิด</span>
         <input type="date" className="input" value={birth} onChange={e => setBirth(e.target.value)} required autoFocus max={todayStr()} />
       </label>
       <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>อายุที่คาดหวัง (ปี)</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>อายุที่คาดหวัง (ปี)</span>
         <input type="number" className="input" value={span} onChange={e => setSpan(e.target.value)} min={1} max={120} />
       </label>
       <div style={{ display: 'flex', gap: 10 }}>

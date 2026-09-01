@@ -30,8 +30,8 @@ import {
 
 // ── Tokens shared by every block in this file ────────────────────────────────
 const MONO_LABEL = {
-  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--text-muted)',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
 };
 const FACT_BOX = {
   background: 'var(--background-soft)', border: '1px solid var(--hairline)',
@@ -99,10 +99,10 @@ function CardFace({ card, url, cancelled }) {
   }
   return (
     <div style={{
+      fontVariantNumeric: 'tabular-nums',
       width: 44, height: 32, borderRadius: 7, flex: 'none',
       display: 'grid', placeItems: 'center', color: '#fff',
-      background: cancelled ? 'var(--text-muted)' : chipTone(card),
-      fontFamily: 'var(--f-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+      background: cancelled ? 'var(--text-muted)' : chipTone(card), fontSize: 10, fontWeight: 700
     }}>{chipLabel(card)}</div>
   );
 }
@@ -131,9 +131,9 @@ function UtilBar({ pct, showTickLabel = false, height = 8 }) {
       }}>
         {showTickLabel && (
           <span style={{
+            fontWeight: 500,
             position: 'absolute', top: -15, left: '50%', transform: 'translateX(-50%)',
-            fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)',
-            letterSpacing: '0.05em', whiteSpace: 'nowrap',
+            fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap'
           }}>30%</span>
         )}
       </div>

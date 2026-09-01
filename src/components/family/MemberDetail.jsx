@@ -92,7 +92,7 @@ export function MemberDetail({ member, onClose, onChange }) {
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 500, color: 'var(--text-primary)' }}>
               {member.name}
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 3, letterSpacing: '0.08em' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginTop: 3}}>
               {member.role}{age != null && ` · ${age} ปี`}
               {member.birth_date && ` · เกิด ${new Date(member.birth_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}`}
             </div>
@@ -154,7 +154,7 @@ function ProfileTab({ member }) {
         </div>
       </Card>
 
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', letterSpacing: '0.1em' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', textAlign: 'center'}}>
         แก้ไขข้อมูล/รูปได้จากปุ่ม ✎ บนการ์ดสมาชิก
       </div>
     </>
@@ -164,7 +164,7 @@ function ProfileTab({ member }) {
 function KV({ label, value, multiline }) {
   return (
     <>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', letterSpacing: '0.12em', paddingTop: 2 }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', paddingTop: 2 }}>
         {label}
       </div>
       <div style={{
@@ -484,7 +484,7 @@ function StatTile({ label, value, unit, delta }) {
       border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
       display: 'flex', flexDirection: 'column', gap: 2,
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 500, color: value ? 'var(--text-primary)' : 'var(--text-muted)' }}>
@@ -670,7 +670,7 @@ function MilestonesTab({ member }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {grouped.map(([year, list]) => (
             <div key={year}>
-              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', letterSpacing: '0.14em', marginBottom: 6 }}>
+              <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
                 {Number(year) + 543}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -769,7 +769,7 @@ const fieldInputStyle = {
 function Field({ label, children }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>
+      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </span>
       {children}
@@ -786,7 +786,7 @@ function InfoChip({ icon, label, value }) {
     }}>
       <span style={{ fontSize: 16 }}>{icon}</span>
       <div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em' }}>{label}</div>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</div>
         <div style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{value}</div>
       </div>
     </div>
@@ -804,7 +804,7 @@ function InfoBlock({ icon, label, value, tone }) {
     }}>
       <span style={{ fontSize: 16 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: 3 }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 3 }}>
           {label}
         </div>
         <div style={{ fontSize: 13, color: tone === 'danger' ? 'var(--danger)' : 'var(--text-primary)', lineHeight: 1.5 }}>

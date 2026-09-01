@@ -73,7 +73,7 @@ export function PnLCalendar({ trades = [] }) {
           <button onClick={() => setMonth(new Date(y, m + 1, 1))} style={navBtn} aria-label="เดือนถัดไป">›</button>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Monthly P&amp;L</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>Monthly P&amp;L</div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 600, color: monthlyPnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
             {money(monthlyPnl)}
           </div>
@@ -121,7 +121,7 @@ export function PnLCalendar({ trades = [] }) {
               border: '1px solid var(--line)', background: 'var(--surface-2)',
               display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center',
             }}>
-              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 8.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>Wk {wi + 1}</div>
+              <div style={{ fontWeight: 500, fontFamily: 'var(--f-mono)', fontSize: 8.5, color: 'var(--ink-4)' }}>Wk {wi + 1}</div>
               {wk.hasData && (
                 <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12, fontWeight: 600, color: wk.weekTotal >= 0 ? 'var(--profit)' : 'var(--loss)', marginTop: 2 }}>
                   {money(wk.weekTotal)}

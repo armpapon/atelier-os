@@ -13,9 +13,10 @@ function TxnList({ items = [], accountName, nested = false, extraMeta }) {
   return (
     <div className={'leak-detail' + (nested ? ' leak-detail--nested' : '')}>
       <div style={{
-        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
-        fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
-        color: 'var(--text-muted)', padding: '6px 0 8px',
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: 500,
+        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: 13,
+        color: 'var(--text-muted)', padding: '6px 0 8px'
       }}>
         <span>{items.length} รายการ</span>
         <span>·</span>
@@ -201,8 +202,8 @@ export function MoneyLeaks({
         meta="แตะแถวไหนก็ได้เพื่อดูว่าตัวเลขนั้นมาจากรายการอะไรบ้าง"
         action={
           <span style={{
-            fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.14em',
-            textTransform: 'uppercase', color: 'var(--text-muted)',
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
           }}>{monthLabel}</span>
         }
       />
@@ -210,7 +211,7 @@ export function MoneyLeaks({
       {/* Savings rate hero */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>อัตราการออม</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>อัตราการออม</div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: srColor, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
             {thisSum.savingsRate.toFixed(0)}%
           </div>
@@ -250,8 +251,9 @@ export function MoneyLeaks({
               expanded={openRow === id} onActivate={() => toggle(id)}>
               <div className="leak-detail">
                 <div style={{
-                  fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
-                  color: 'var(--text-muted)', padding: '6px 0 4px',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 500, fontSize: 13,
+                  color: 'var(--text-muted)', padding: '6px 0 4px'
                 }}>
                   {recurring.length} รายการ · เรียกเก็บล่าสุด · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
                 </div>

@@ -78,9 +78,8 @@ export function Button({
         fontSize: sz.fontSize, fontFamily: 'var(--f-body)', fontWeight: 500,
         borderRadius: isIcon ? 'var(--radius-field)' : 'var(--radius-btn)',
         minHeight: sz.minHeight, minWidth: isIcon ? sz.minHeight : 'auto',
-        width: fullWidth ? '100%' : 'auto',
-        letterSpacing: '0.01em', lineHeight: 1,
-        ...style,
+        width: fullWidth ? '100%' : 'auto', lineHeight: 1,
+        ...style
       }}>
       {children}
     </button>

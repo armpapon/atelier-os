@@ -68,8 +68,10 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
       {/* Flow bar visualization */}
       <div style={{ marginTop: 4 }}>
         <div style={{
-          display: 'flex', fontFamily: 'var(--f-mono)', fontSize: 10,
-          color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: 6,
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500,
+          display: 'flex', fontSize: 13,
+          color: 'var(--text-muted)', marginBottom: 6
         }}>
           <span>เงินเข้า {fmt(inflow)}</span>
           <span style={{ marginLeft: 'auto' }}>แบ่งออก {fmt(totalOut)}</span>
@@ -126,7 +128,7 @@ function Stat({ label, value, color, sub }) {
       padding: '10px 12px', background: 'var(--background-soft)',
       border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color, fontWeight: 500, lineHeight: 1.2, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>

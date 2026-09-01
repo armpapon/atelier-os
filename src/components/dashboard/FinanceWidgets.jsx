@@ -182,7 +182,7 @@ function SuggestionsList({ suggestions, scope, onAdd }) {
       background: 'var(--accent-soft)', border: '1px solid var(--accent)',
       borderRadius: 'var(--radius-control)', padding: 12, marginBottom: 10,
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--accent-strong)', letterSpacing: '0.14em', marginBottom: 8 }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)', marginBottom: 8 }}>
         🔍 ตรวจพบ — รายการที่เกิดซ้ำใน ≥ 2 เดือน
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -319,11 +319,11 @@ export function CashFlowForecastCard({ forecast }) {
         borderRadius: 'var(--radius-control)', overflow: 'hidden',
       }}>
         <div style={{
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500,
           display: 'grid', gridTemplateColumns: '90px 1fr 90px 100px', gap: 10,
-          padding: '8px 12px', background: 'var(--surface-muted)',
-          fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)',
-          letterSpacing: '0.12em', textTransform: 'uppercase',
-          borderBottom: '1px solid var(--hairline)',
+          padding: '8px 12px', background: 'var(--surface-muted)', fontSize: 13, color: 'var(--text-muted)',
+          borderBottom: '1px solid var(--hairline)'
         }}>
           <div>เดือน</div><div>หนี้ที่ active</div>
           <div style={{ textAlign: 'right' }}>Net</div>
@@ -416,7 +416,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
           background: 'var(--background-soft)', border: '1px solid var(--hairline)',
           borderRadius: 'var(--radius-control)', padding: 12, marginBottom: 12,
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: 8 }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
             ติ๊กบัญชีที่ใช้เป็นกองทุนฉุกเฉิน
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -445,8 +445,9 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
 
       {unconfirmed && (
         <div style={{
-          fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em',
-          color: 'var(--warning)', marginBottom: 10,
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500, fontSize: 13,
+          color: 'var(--warning)', marginBottom: 10
         }}>
           ⚠️ ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
         </div>
@@ -468,7 +469,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: ringColor, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
               {coverage.months.toFixed(1)}
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', marginTop: 2 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
               เดือน
             </div>
           </div>
@@ -517,7 +518,7 @@ function Stat({ label, value, color = 'var(--text-primary)' }) {
       padding: '8px 10px', background: 'var(--background-soft)',
       border: '1px solid var(--hairline)', borderRadius: 'var(--radius-control)',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 15, color, fontWeight: 600, marginTop: 2, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
