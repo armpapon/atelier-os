@@ -43,7 +43,7 @@ async function uploadCsv(container, csvText) {
   const input = container.querySelector('input[type="file"]');
   const file = new File([csvText], 'report.csv', { type: 'text/csv' });
   fireEvent.change(input, { target: { files: [file] } });
-  await screen.findByText(/ตัวเลือก IMPORT/);
+  await screen.findByText(/ตัวเลือกการนำเข้า/);
 }
 
 function importButton(scope = screen) {
@@ -127,7 +127,7 @@ describe('CSVImporter orchestration (round 6)', () => {
       '05/08/2026,KTC Krung ชำระบัตร,-5200\n' +
       '06/08/2026,Home Loan งวดบ้าน,-9999\n');
 
-    await screen.findByText(/AUTO-LINK/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ/);
     fireEvent.click(importButton());
     await screen.findByText(/Import สำเร็จ!/);
 
@@ -227,7 +227,7 @@ describe('CSVImporter orchestration (round 7)', () => {
     const back = screen.getByRole('button', { name: /← กลับ/ });
     expect(back.disabled).toBe(true);                       // exit blocked
     fireEvent.click(back);
-    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();  // still on preview
+    expect(screen.getByText(/ตัวเลือกการนำเข้า/)).toBeTruthy();  // still on preview
     expect(__tables.import_receipts).toHaveLength(1);       // recovery state intact
 
     fireEvent.click(importButton());                        // resume completes
@@ -292,7 +292,7 @@ describe('CSVImporter orchestration (round 7)', () => {
     await uploadCsv(container,
       'Date,Description,Amount\n05/08/2026,KTC Krung ชำระบัตร,-5200\n');
 
-    await screen.findByText(/AUTO-LINK/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ/);
     fireEvent.click(importButton());
     await screen.findByText(/ผูกงวดหนี้ไม่สำเร็จ 1 รายการ/);
     expect(__tables.debt_payments).toHaveLength(0);
@@ -396,7 +396,7 @@ describe('CSVImporter orchestration (round 8)', () => {
     const back = screen.getByRole('button', { name: /← กลับ/ });
     expect(back.disabled).toBe(true);
     fireEvent.click(back);
-    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();   // still on preview
+    expect(screen.getByText(/ตัวเลือกการนำเข้า/)).toBeTruthy();   // still on preview
 
     fireEvent.click(importButton());                    // the recovery read
     await screen.findByText(/Import สำเร็จ!/);
@@ -434,7 +434,7 @@ describe('CSVImporter orchestration (round 8)', () => {
       <CSVImporter scope="personal" debts={__tables.debts} onImported={() => {}} onClose={() => {}} />);
     await uploadCsv(container,
       'Date,Description,Amount\n05/08/2026,KTC Krung ชำระบัตร,-5200\n');
-    await screen.findByText(/AUTO-LINK/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ/);
 
     fireEvent.click(importButton());
     await screen.findByText(/Import ไม่สำเร็จ/);        // committed, response lost
@@ -580,7 +580,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
       'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
       '05/07/2026,09:15,Cashbox,Payment,-65,1000,ชา กาแฟ,,ร้านกาแฟ\n' +
       '05/08/2026,10:00,Wallet,Payment,-5200,7000,จ่ายหนี้,,KTC Krung ชำระบัตร\n');
-    await screen.findByText(/AUTO-LINK/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ/);
 
     // A legacy :00 row appears AFTER the preview classified, so the July row
     // can only be found ambiguous at EXECUTION time (call 1, answered), while
@@ -652,7 +652,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
       new File(['Date,Description,Amount\n09/09/2026,ของใหม่,-10\n'], 'new.csv', { type: 'text/csv' })] } });
     await waitFor(() => expect(window.alert).toHaveBeenCalled());
     expect(String(window.alert.mock.calls.at(-1)[0])).toMatch(/มีการนำเข้าค้างอยู่จากครั้งก่อน/);
-    expect(screen.queryByText(/ตัวเลือก IMPORT/)).toBeNull();       // never reached preview
+    expect(screen.queryByText(/ตัวเลือกการนำเข้า/)).toBeNull();       // never reached preview
     expect(storedRaw()).toBe(before);   // intact
 
     // Explicit informed discard — the confirm names the session and groups.
@@ -668,7 +668,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     // Now a new file is accepted.
     fireEvent.change(c2.querySelector('input[type="file"]'), { target: { files: [
       new File(['Date,Description,Amount\n09/09/2026,ของใหม่,-10\n'], 'new.csv', { type: 'text/csv' })] } });
-    await screen.findByText(/ตัวเลือก IMPORT/);
+    await screen.findByText(/ตัวเลือกการนำเข้า/);
   });
 
   it('(R5) an inserted receipt whose mapping is NULL (transaction deleted) is excluded from the account pass AND the debt links, and reported as skipped', async () => {
@@ -680,7 +680,7 @@ describe('CSVImporter cross-reload recovery (round 9)', () => {
     await uploadCsv(container,
       'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
       '05/08/2026,10:00,Wallet,Payment,-5200,7000,จ่ายหนี้,,KTC Krung ชำระบัตร\n');
-    await screen.findByText(/AUTO-LINK/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ/);
 
     fireEvent.click(importButton());
     await screen.findByText(/Import ไม่สำเร็จ/);        // committed, response lost
@@ -779,7 +779,7 @@ describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
       <CSVImporter scope="personal" debts={[]} onImported={() => {}} onClose={() => {}} />);
     fireEvent.change(B.querySelector('input[type="file"]'), { target: { files: [
       new File(['Date,Description,Amount\n05/08/2026,กาแฟของแท็บบี,-65\n'], 'b.csv', { type: 'text/csv' })] } });
-    await within(B).findByText(/ตัวเลือก IMPORT/);
+    await within(B).findByText(/ตัวเลือกการนำเข้า/);
     fireEvent.click(importButton(within(B)));
     await within(B).findByText(/Import ไม่สำเร็จ/);
 
@@ -798,7 +798,7 @@ describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
     window.alert.mockClear();
     fireEvent.change(A.querySelector('input[type="file"]'), { target: { files: [
       new File(['Date,Description,Amount\n05/09/2026,ของแท็บเอ,-10\n'], 'a.csv', { type: 'text/csv' })] } });
-    await within(A).findByText(/ตัวเลือก IMPORT/);             // NOT blocked by B's record
+    await within(A).findByText(/ตัวเลือกการนำเข้า/);             // NOT blocked by B's record
     expect(window.alert).not.toHaveBeenCalled();
 
     fireEvent.click(importButton(within(A)));
@@ -975,7 +975,7 @@ describe('CSVImporter cross-tab + resume fidelity (round 10)', () => {
     expect(__tables.accounts).toHaveLength(0);
     expect(storedRaw()).toBeNull();
     // The plan is intact: still on preview, still 2 rows selected.
-    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();
+    expect(screen.getByText(/ตัวเลือกการนำเข้า/)).toBeTruthy();
     expect(importButton().textContent).toMatch(/Import 2 รายการ/);
 
     setSpy.mockRestore();
@@ -1106,7 +1106,7 @@ describe('CSVImporter session ownership + honest aborts (round 11)', () => {
     // silently and this whole import went unrecorded.
     fireEvent.change(container.querySelector('input[type="file"]'), { target: { files: [
       new File(['Date,Description,Amount\n09/09/2026,ของรอบสอง,-42\n'], 'two.csv', { type: 'text/csv' })] } });
-    await screen.findByText(/ตัวเลือก IMPORT/);
+    await screen.findByText(/ตัวเลือกการนำเข้า/);
     fireEvent.click(importButton());
 
     // (5) K2 commits and loses its response.
@@ -1174,7 +1174,7 @@ describe('CSVImporter session ownership + honest aborts (round 11)', () => {
       'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
       '05/08/2026,09:15,Cashbox,Payment,-65,1000,ชา กาแฟ,,ร้านกาแฟ\n' +
       '05/08/2026,10:00,Wallet,Payment,-500,7000,อื่นๆ,,ของบ้าน\n');
-    expect(screen.getByText(/💼 บัญชี \/ Cloud Pockets · 2/)).toBeTruthy();
+    expect(screen.getByText(/บัญชี \/ Cloud Pockets · 2/)).toBeTruthy();
 
     // A 1-byte probe would sail through this; the real record cannot.
     const spy = breakStorage({ minLength: 8 });
@@ -1188,7 +1188,7 @@ describe('CSVImporter session ownership + honest aborts (round 11)', () => {
     expect(simCalls).toHaveLength(0);
     expect(__tables.transactions).toHaveLength(0);
     expect(storedRaw()).toBeNull();
-    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();     // plan intact
+    expect(screen.getByText(/ตัวเลือกการนำเข้า/)).toBeTruthy();     // plan intact
 
     spy.mockRestore();
     fireEvent.click(importButton());
@@ -1307,7 +1307,7 @@ describe('CSVImporter quota boundary (round-11 follow-up)', () => {
     // With nothing created, the clean-slate wording is literally true again.
     expect(screen.getByText(/ยังไม่ได้นำเข้าอะไรทั้งสิ้น/)).toBeTruthy();
     expect(screen.queryByText(/เตรียมบัญชีไว้แล้ว/)).toBeNull();
-    expect(screen.getByText(/ตัวเลือก IMPORT/)).toBeTruthy();     // plan intact
+    expect(screen.getByText(/ตัวเลือกการนำเข้า/)).toBeTruthy();     // plan intact
 
     spy.mockRestore();
     fireEvent.click(importButton());
@@ -1379,7 +1379,7 @@ describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
 
     // BOTH suggestions are offered — the family one only exists because the
     // importer went and loaded the family scope's debts itself.
-    await screen.findByText(/AUTO-LINK · 2 \/ 2/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ · 2 \/ 2/);
 
     fireEvent.click(importButton());
     await screen.findByText(/Import สำเร็จ!/);
@@ -1404,8 +1404,8 @@ describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
       'Date,Time,Cloud Pocket,Type,Txn,CP Bal,Category,Memo,Note\n' +
       '05/08/2026,09:15,กองทุนครอบครัว,Payment,-5200,1000,อื่นๆ,,KTC Krung ชำระบัตร\n');
 
-    await screen.findByText(/ตัวเลือก IMPORT/);
-    expect(screen.queryByText(/🔗 AUTO-LINK/)).toBeNull();
+    await screen.findByText(/ตัวเลือกการนำเข้า/);
+    expect(screen.queryByText(/จับคู่จ่ายหนี้อัตโนมัติ · \d+ \/ \d+/)).toBeNull();
 
     fireEvent.click(importButton());
     await screen.findByText(/Import สำเร็จ!/);
@@ -1423,14 +1423,14 @@ describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
     await uploadCsv(container, KTC_CSV);
 
     // The warning is visible, retryable, and NOT presented as "no payments".
-    await screen.findByText(/AUTO-LINK ปิดอยู่/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ · ปิดอยู่/);
     expect(screen.getByText(/โหลดประวัติการจ่ายหนี้ไม่สำเร็จ/)).toBeTruthy();
-    expect(screen.queryByText(/🔗 AUTO-LINK/)).toBeNull();   // ZERO suggestions
+    expect(screen.queryByText(/จับคู่จ่ายหนี้อัตโนมัติ · \d+ \/ \d+/)).toBeNull();   // ZERO suggestions
 
     // Retry — the second read succeeds and the suggestion comes back.
     fireEvent.click(screen.getByRole('button', { name: /ลองใหม่/ }));
-    await screen.findByText(/🔗 AUTO-LINK · 1 \/ 1/);
-    expect(screen.queryByText(/AUTO-LINK ปิดอยู่/)).toBeNull();
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ · 1 \/ 1/);
+    expect(screen.queryByText(/จับคู่จ่ายหนี้อัตโนมัติ · ปิดอยู่/)).toBeNull();
 
     fireEvent.click(importButton());
     await screen.findByText(/Import สำเร็จ!/);
@@ -1451,7 +1451,7 @@ describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
     const { container } = render(
       <CSVImporter scope="personal" debts={[KTC_DEBT]} onImported={() => {}} onClose={() => {}} />);
     await uploadCsv(container, KTC_CSV);
-    await screen.findByText(/AUTO-LINK ปิดอยู่/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ · ปิดอยู่/);
 
     // The import still runs — only the guessing is switched off.
     fireEvent.click(importButton());
@@ -1474,12 +1474,12 @@ describe('CSVImporter debt auto-link trust (batch A · B6/B7)', () => {
       '05/08/2026,09:15,Cashbox,Payment,-5200,1000,อื่นๆ,,KTC Krung ชำระบัตร\n' +
       '06/08/2026,10:00,กองทุนครอบครัว,Payment,-8800,7000,อื่นๆ,,Toyota Leasing งวดรถ\n');
 
-    await screen.findByText(/AUTO-LINK ปิดอยู่/);
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ · ปิดอยู่/);
     expect(screen.getByText(/โหลดรายการหนี้สินข้ามหมวดไม่สำเร็จ/)).toBeTruthy();
-    expect(screen.queryByText(/🔗 AUTO-LINK/)).toBeNull();
+    expect(screen.queryByText(/จับคู่จ่ายหนี้อัตโนมัติ · \d+ \/ \d+/)).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /ลองใหม่/ }));
-    await screen.findByText(/🔗 AUTO-LINK · 1 \/ 1/);   // the personal one returns
+    await screen.findByText(/จับคู่จ่ายหนี้อัตโนมัติ · 1 \/ 1/);   // the personal one returns
   });
 });
 

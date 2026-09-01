@@ -73,10 +73,18 @@
   phase 5. **Any token you add to `:root` needs a dark value too** — assuming
   dark was unexposed is exactly how `--accent-fill` shipped broken in v4.53
   (light blue on dark's `--text-inverse` at 3.62:1). Typography /
-  uppercase-mono label cleanup is phase 2.
+  uppercase-mono label cleanup shipped as phase 2 (v4.56).
+- **UI-chrome icons are `<Icon name>` from `src/components/Icon.jsx`**, not
+  emoji (v4.56). Emoji stay ONLY where they are data the user owns or picks:
+  mood entries, custom-category icons, Life Calendar milestones, note
+  templates, and the changelog's own history.
 - Fonts: the native system stack (`--f-display` / `--f-body` / `--f-mono`), no webfont.
 - **Inline styles using CSS variables**. Avoid creating new utility classes — extend `src/styles.css` only when a pattern repeats 3+ times.
-- Mono-style small labels: `fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase'`.
+- **Small labels are sentence case** (phase 2, v4.56): `fontSize: 13, fontWeight: 500,
+  color: 'var(--text-muted)'` — never `textTransform: 'uppercase'`, never positive
+  `letterSpacing`, never `--f-mono` on text that is not digits. `--f-mono` and
+  `fontVariantNumeric: 'tabular-nums'` are for amounts, dates-as-digits and
+  counters only; prefer the latter. Section headings are 20px / 700 / -0.02em.
 - All copy is **Thai**. Commit messages and code comments stay English.
 
 ### Data model conventions
