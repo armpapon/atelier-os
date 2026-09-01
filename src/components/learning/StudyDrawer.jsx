@@ -117,7 +117,7 @@ export function StudyDrawer({ source, onClose, onChange }) {
               {t.id === 'insights' && openActions > 0 && (
                 <span style={{
                   marginLeft: 5, fontSize: 9, padding: '1px 5px', borderRadius: 8,
-                  background: 'var(--warning)', color: 'var(--text-inverse)', fontFamily: 'var(--f-mono)', fontWeight: 600,
+                  background: 'var(--warning)', color: 'var(--text-inverse)', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
                 }}>{openActions} to-do</span>
               )}
             </button>

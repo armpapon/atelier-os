@@ -13,7 +13,7 @@ const svgEntry = `
       <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
     </marker>
   </defs>
-  <text x="18" y="30" font-size="12" font-family="var(--f-mono)" fill="currentColor" opacity=".65">ราคา XAUUSD · 1H</text>
+  <text x="18" y="30" font-size="12" fill="currentColor" opacity=".65">ราคา XAUUSD · 1H</text>
   <text x="18" y="318" font-size="12" font-family="var(--f-mono)" fill="currentColor" opacity=".65">MACD (12,26,9)</text>
   <line x1="14" y1="292" x2="746" y2="292" stroke="currentColor" stroke-opacity=".18"/>
   <path d="M 30 250 C 180 242, 380 226, 520 208 S 700 186, 740 180" fill="none" stroke="var(--accent-strong)" stroke-width="2.5"/>
@@ -37,7 +37,7 @@ const svgEntry = `
     <line x1="538" y1="102" x2="538" y2="140"/><rect x="531" y="110" width="14" height="24" rx="1.5"/>
   </g>
   <line x1="512" y1="56" x2="512" y2="286" stroke="currentColor" stroke-dasharray="5 4" stroke-opacity=".5"/>
-  <text x="506" y="48" font-size="12" font-family="var(--f-mono)" fill="currentColor" text-anchor="end">แท่งสัญญาณปิด</text>
+  <text x="506" y="48" font-size="12" fill="currentColor" text-anchor="end">แท่งสัญญาณปิด</text>
   <g color="var(--success)">
     <line x1="512" y1="112" x2="528" y2="112" stroke="var(--success)" stroke-width="2" marker-end="url(#pbAh)"/>
   </g>

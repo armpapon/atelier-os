@@ -433,7 +433,7 @@ function SaveIndicator({ state, error, onRetry }) {
   const text = state === 'saved' ? 'บันทึกแล้ว' : state === 'saving' ? 'กำลังบันทึก…' : 'ยังไม่ได้บันทึก';
   return (
     <span style={{
-      ...mono, fontSize: 10.5,
+      fontVariantNumeric: 'tabular-nums', fontSize: 10.5,
       color: state === 'saved' ? 'var(--success)' : 'var(--ink-3)'
     }}>{text}</span>
   );
@@ -548,7 +548,7 @@ function PersonTabs({
                 {p.person_name}
                 {p.is_self && <Badge tone="outline" size="sm">ฉัน</Badge>}
               </div>
-              <div style={{ ...mono, fontSize: 11.5, color: on ? 'var(--accent-strong)' : 'var(--ink-3)', marginTop: 3 }}>
+              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11.5, color: on ? 'var(--accent-strong)' : 'var(--ink-3)', marginTop: 3 }}>
                 ภาษี {baht(r?.tax || 0)}
               </div>
             </button>
@@ -651,7 +651,7 @@ function PeriodToggle({ value, onChange, name }) {
             aria-label={`${name} เป็นราย${PERIOD_LABEL[p]}`}
             onClick={() => onChange(p)}
             style={{
-              ...mono, fontSize: 10, lineHeight: 1.6,
+              fontVariantNumeric: 'tabular-nums', fontSize: 10, lineHeight: 1.6,
               padding: '2px 8px', borderRadius: 999, border: 0, cursor: 'pointer',
               background: on ? 'var(--surface)' : 'transparent',
               color: on ? 'var(--ink)' : 'var(--ink-3)',
@@ -972,7 +972,7 @@ function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomCh
       }}>
         <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>
           ค่าใช้จ่าย 50% (สูงสุด {baht(EXPENSE_CAP)})
-          <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)', marginLeft: 8 }}>อัตโนมัติ</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10.5, color: 'var(--ink-3)', marginLeft: 8 }}>อัตโนมัติ</span>
           <span style={{ ...mono, display: 'block', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 }}>
             {d.expense}
           </span>
@@ -1003,12 +1003,12 @@ function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomCh
             />
           )))}
           {section.keys.includes('ssf') && result.retirement.trimmed > 0 && (
-            <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
               <Icon name="warning" size={12} /> รวมกันเกินเพดาน {baht(RETIREMENT_COMBINED_CAP)} — ส่วนเกิน {baht(result.retirement.trimmed)} หักไม่ได้
             </div>
           )}
           {section.keys.includes('healthInsurance') && result.lifeHealth.trimmed > 0 && (
-            <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
               <Icon name="warning" size={12} /> ประกันชีวิต + สุขภาพ รวมกันเกิน {baht(100000)} — ส่วนเกิน {baht(result.lifeHealth.trimmed)} หักไม่ได้
             </div>
           )}
@@ -1100,7 +1100,7 @@ function DeductionRow({ spec, row, value, period, ceiling, derivation, blocked, 
           )}
           {row.capped && (
             <span style={{
-              ...mono, display: 'inline-block', marginTop: 4, fontSize: 10,
+              fontVariantNumeric: 'tabular-nums', display: 'inline-block', marginTop: 4, fontSize: 10,
               color: 'var(--accent-strong)', background: 'var(--warning-soft)',
               border: '1px solid var(--warning)', borderRadius: 999, padding: '1px 8px',
             }}>
@@ -1203,7 +1203,7 @@ function SocialSecurityRow({ spec, row, sso, period, onSso, onPeriod }) {
             </span>
             {row.capped && (
               <span style={{
-                ...mono, display: 'inline-block', marginTop: 4, fontSize: 10,
+                fontVariantNumeric: 'tabular-nums', display: 'inline-block', marginTop: 4, fontSize: 10,
                 color: 'var(--accent-strong)', background: 'var(--warning-soft)',
                 border: '1px solid var(--warning)', borderRadius: 999, padding: '1px 8px',
               }}>
@@ -1221,7 +1221,7 @@ function SocialSecurityRow({ spec, row, sso, period, onSso, onPeriod }) {
               <span style={{ ...mono, fontSize: 13, color: 'var(--ink)', minWidth: 132, textAlign: 'right' }}>
                 {baht(sso.derived.annual)}
               </span>
-              <span style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)' }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10.5, color: 'var(--ink-3)' }}>
                 {baht(sso.derived.monthly)}/เดือน × {fmtNumber(s.monthsWorked)} เดือน
               </span>
               <LinkButton onClick={() => onSso({ ssoMode: 'manual', socialSecurity: sso.derived.annual })}>
@@ -1238,7 +1238,7 @@ function SocialSecurityRow({ spec, row, sso, period, onSso, onPeriod }) {
               />
               {sso.overridden && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <span style={{ ...mono, fontSize: 10.5, color: 'var(--accent-strong)' }}>กรอกเอง (ทับค่าที่คำนวณ)</span>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10.5, color: 'var(--accent-strong)' }}>กรอกเอง (ทับค่าที่คำนวณ)</span>
                   <LinkButton onClick={() => onSso({ ssoMode: 'auto' })}>คำนวณใหม่</LinkButton>
                 </span>
               )}
@@ -1343,7 +1343,7 @@ function ResultCard({ result }) {
               display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
               padding: '5px 0', borderTop: i ? '1px solid var(--hairline)' : 'none',
             }}>
-              <span style={{ ...mono, fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
                 {baht(b.from)}–{Number.isFinite(b.to) ? baht(b.to) : 'ขึ้นไป'}
               </span>
               <span style={{ ...mono, fontSize: 11, color: b.rate ? 'var(--accent-strong)' : 'var(--ink-4)' }}>
@@ -1440,11 +1440,11 @@ function AdviceCard({ result }) {
                   {r.label} เพิ่มได้อีก <b style={mono}>{baht(r.room)}</b>
                   {r.weight === 2 && <span style={{ fontSize: 11, color: 'var(--ink-3)' }}> (หัก 2 เท่า)</span>}
                 </div>
-                <div style={{ ...mono, fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 }}>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10.5, color: 'var(--ink-3)', marginTop: 2 }}>
                   ใช้ไปแล้ว {baht(r.used)}{r.cap != null ? ` / ${baht(r.cap)}` : ''}
                 </div>
               </div>
-              <div style={{ ...mono, fontSize: 14, color: 'var(--profit)', whiteSpace: 'nowrap' }}>
+              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 14, color: 'var(--profit)', whiteSpace: 'nowrap' }}>
                 ประหยัด ~{baht(r.taxSaved)}
               </div>
             </div>

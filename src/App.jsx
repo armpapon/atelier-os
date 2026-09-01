@@ -314,7 +314,6 @@ export default function App() {
         <button
           onClick={() => setTweaksOpen(true)}
           title="Tweaks" aria-label="เปิดแผง Tweaks"
-          aria-label="เปิด Tweaks"
           className="focus-ring"
           style={{
             position: 'fixed', right: 20, zIndex: 999,
