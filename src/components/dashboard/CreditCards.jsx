@@ -921,26 +921,49 @@ function CardFormModal({ initial, scope, cards = [], debts, onSaved, onClose }) 
 // ════════════════════════════════════════════════════════════════════════════
 //  The tab panel
 // ════════════════════════════════════════════════════════════════════════════
-export function CreditCards({ scope = 'personal', debts = [], isMobile = false, today }) {
-  const [cards, setCards]     = useState([]);
-  const [missing, setMissing] = useState(false);
-  const [loading, setLoading] = useState(true);
+/**
+ * @param cards    OPTIONAL controlled rows. When the parent passes them (the
+ *                 Finance page does since v4.61) this tab NEVER fetches: the
+ *                 page owns the one `listCreditCards` call per load, so the
+ *                 ภาพรวม utilisation row and this grid cannot show two
+ *                 different snapshots, and CRUD here refreshes THAT source
+ *                 through `onChange` (audit A12 · 2).
+ * @param onChange Called after every successful create/edit/delete. With
+ *                 controlled `cards` it is the only refresh path.
+ * With no `cards` prop the tab keeps loading for itself exactly as it did in
+ * v4.36 — which is how the mounted acceptance suite renders it.
+ */
+export function CreditCards({
+  scope = 'personal', debts = [], isMobile = false, today,
+  cards: cardsProp, missing: missingProp, loading: loadingProp, onChange,
+}) {
+  // The mode is pinned on first render — a mid-life flip would swap the grid
+  // onto a stale snapshot the user never asked for.
+  const controlled = useRef(cardsProp !== undefined).current;
+  const [localCards, setLocalCards]     = useState([]);
+  const [localMissing, setLocalMissing] = useState(false);
+  const [localLoading, setLocalLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing]   = useState(null);
 
+  const cards   = controlled ? (cardsProp || [])       : localCards;
+  const missing = controlled ? !!missingProp           : localMissing;
+  const loading = controlled ? !!loadingProp           : localLoading;
+
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    if (controlled) { await onChange?.(); return; }
+    setLocalLoading(true); setError(null);
     try {
       const { cards: rows, missing: gone } = await listCreditCards(scope);
-      setCards(rows);
-      setMissing(gone);
+      setLocalCards(rows);
+      setLocalMissing(gone);
     } catch (err) {
       setError(err.message || 'โหลดบัตรไม่สำเร็จ');
-    } finally { setLoading(false); }
-  }, [scope]);
+    } finally { setLocalLoading(false); }
+  }, [scope, controlled, onChange]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!controlled) load(); }, [load, controlled]);
 
   const ordered = useMemo(() => sortCards(cards), [cards]);
   const summary = useMemo(() => summarizeCards({ cards, debts, today }), [cards, debts, today]);
