@@ -173,7 +173,7 @@ describe('บัตรเครดิต · the fee-waiver counter', () => {
   it('says ฟรี ไม่มีเงื่อนไข when there is nothing to chase', async () => {
     __tables.credit_cards = [card({ name: 'KTC VISA PLATINUM', waiver_mode: 'none' })];
     render(<CreditCards scope="personal" debts={[]} />);
-    expect(await screen.findByText('ฟรี ไม่มีเงื่อนไข ✓')).toBeTruthy();
+    expect(await screen.findByText('ฟรี ไม่มีเงื่อนไข')).toBeTruthy();
   });
 });
 

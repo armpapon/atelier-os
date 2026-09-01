@@ -92,7 +92,7 @@ describe('วางแผนภาษี · filling it in for the household', ()
     await waitFor(() => {
       expect(__tables.tax_profiles[0].income.salaryMonthly).toBe(150000);
     }, { timeout: 4000 });
-    await screen.findByText('บันทึกแล้ว ✓');
+    await screen.findByText('บันทึกแล้ว');
 
     // ── Household total = everyone's tax, แพท still at zero ─────────────
     expect(document.body.textContent).toContain('รวมทั้งบ้าน');
@@ -510,6 +510,6 @@ describe('วางแผนภาษี · a failed save is never silent', () =
     await waitFor(() => {
       expect(__tables.tax_profiles[0].income.salaryMonthly).toBe(80000);
     }, { timeout: 4000 });
-    await screen.findByText('บันทึกแล้ว ✓');
+    await screen.findByText('บันทึกแล้ว');
   });
 });
