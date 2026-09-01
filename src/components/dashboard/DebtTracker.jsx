@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Card, CardHeader, Badge, Button, EmptyState } from '../ui/index.js';
+import { Badge, Button, EmptyState } from '../ui/index.js';
+import { SectionCaption, InsetGroup, RowBar, Pill, NUM } from './InsetList.jsx';
 import {
   summarizeDebts, forecastDebts, recordDebtPayment, deleteDebtPayment, deleteDebt,
   calculateDebtMath, simulatePayoff, archiveDebt,
@@ -90,15 +91,8 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
   };
 
   return (
-    <Card>
-      <CardHeader
-        eyebrow={`หนี้สิน & ผ่อนชำระ · ${debts.length} รายการ`}
-        title="Debt Tracker"
-        meta={debts.length > 0
-          ? `ภาระต่อเดือน ${fmt(summary.monthlyBurden)}`
-            + (summary.completedCount > 0 ? ` · ผ่อนหมดแล้ว ${summary.completedCount} รายการ` : '')
-            + (summary.upcomingCount  > 0 ? ` · ยังไม่เริ่ม ${summary.upcomingCount} รายการ`  : '')
-          : null}
+    <div>
+      <SectionCaption
         action={
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {debts.length > 1 && (
@@ -113,48 +107,59 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
             )}
             <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>+ เพิ่ม</Button>
           </div>
-        }
-      />
+        }>
+        หนี้ทั้งหมด · {debts.length} ก้อน
+      </SectionCaption>
 
-      {/* Summary stats */}
       {debts.length > 0 && (
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10,
-          padding: 12, marginBottom: 14,
-          background: 'var(--background-soft)', borderRadius: 'var(--radius-control)',
-          border: '1px solid var(--hairline)',
-        }}>
-          <StatTile label="จ่ายแล้ว"   value={summary.paidCount}    color="var(--success)" sub={fmt(summary.paidThisMonth)} />
-          <StatTile label="รอจ่าย"     value={summary.pendingCount} color="var(--warning)" sub={fmt(summary.pending)} />
-          <StatTile label="เกินกำหนด"  value={summary.overdueCount} color="var(--danger)"  sub={fmt(summary.overdue)} />
-          <StatTile label="คงเหลือรวม" value={fmt(summary.totalRemaining)} color="var(--text-primary)"
-            sub={summary.maxMonthsRemaining > 0 ? `~${summary.maxMonthsRemaining} เดือน` : ''} small />
-        </div>
+        <>
+          <div style={{ margin: '-4px 6px 8px', fontSize: 12.5, color: 'var(--text-muted)', ...NUM }}>
+            ภาระต่อเดือน {fmt(summary.monthlyBurden)}
+            {summary.completedCount > 0 && ` · ผ่อนหมดแล้ว ${summary.completedCount} รายการ`}
+            {summary.upcomingCount  > 0 && ` · ยังไม่เริ่ม ${summary.upcomingCount} รายการ`}
+          </div>
+          {/* This month's payment status. The totals (คงเหลือรวม · ผ่อนรวม) are
+              the room's hero now, so they are not repeated here. */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
+            padding: '12px 16px', marginBottom: 10,
+            background: 'var(--surface)', borderRadius: 16, boxShadow: 'var(--shadow-card)',
+          }}>
+            <StatTile label="จ่ายแล้ว"  value={summary.paidCount}    color="var(--success)" sub={fmt(summary.paidThisMonth)} />
+            <StatTile label="รอจ่าย"    value={summary.pendingCount} color="var(--warning)" sub={fmt(summary.pending)} />
+            <StatTile label="เกินกำหนด" value={summary.overdueCount} color="var(--danger)"  sub={fmt(summary.overdue)} />
+          </div>
+        </>
       )}
 
-      {/* Add form (shows at top — only for new debts) */}
+      {/* Add form (shows above the list — only for new debts) */}
       {showAdd && (
         <DebtForm scope={scope} onSubmit={async () => { setShowAdd(false); onChange?.(); }} onCancel={() => setShowAdd(false)} />
       )}
 
       {/* Empty state */}
       {debts.length === 0 && !showAdd ? (
-        <EmptyState
-          icon={<Icon name="card" size={20} />}
-          title="ยังไม่มีรายการหนี้สิน"
-          description="เพิ่มหนี้สินที่ผ่อนรายเดือน (บัตรเครดิต ผ่อนรถ บ้าน) เพื่อ track ว่าจ่ายหรือยัง และ forecast วันปลอดหนี้"
-          actionLabel="เพิ่มหนี้สินแรก"
-          onAction={() => setShowAdd(true)}
-          compact
-        />
+        <InsetGroup>
+          <div style={{ padding: '6px 16px 10px' }}>
+            <EmptyState
+              icon={<Icon name="card" size={20} />}
+              title="ยังไม่มีรายการหนี้สิน"
+              description="เพิ่มหนี้สินที่ผ่อนรายเดือน (บัตรเครดิต ผ่อนรถ บ้าน) เพื่อ track ว่าจ่ายหรือยัง และ forecast วันปลอดหนี้"
+              actionLabel="เพิ่มหนี้สินแรก"
+              onAction={() => setShowAdd(true)}
+              compact
+            />
+          </div>
+        </InsetGroup>
       ) : (
-        /* Debt list — edit form renders inline below the active row */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {summary.statuses.map(({ debt, status }) => (
-            <div key={debt.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        /* Debt list — one grouped-inset list; the edit form opens inside the row */
+        <InsetGroup>
+          {summary.statuses.map(({ debt, status }, i) => (
+            <div key={debt.id}>
               <DebtRow
                 debt={debt}
                 status={status}
+                first={i === 0}
                 isEditing={editing?.id === debt.id}
                 busy={busyDebts.has(debt.id)}
                 onMarkPaid={() => markPaid(debt)}
@@ -164,23 +169,23 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
                 onDelete={() => handleDelete(debt)}
               />
               {editing?.id === debt.id && (
-                <DebtForm
-                  initial={editing}
-                  scope={scope}
-                  onSubmit={async () => { setEditing(null); onChange?.(); }}
-                  onCancel={() => setEditing(null)}
-                />
+                <div style={{ padding: '0 16px 14px' }}>
+                  <DebtForm
+                    initial={editing}
+                    scope={scope}
+                    onSubmit={async () => { setEditing(null); onChange?.(); }}
+                    onCancel={() => setEditing(null)}
+                  />
+                </div>
               )}
             </div>
           ))}
-        </div>
+        </InsetGroup>
       )}
 
       {/* Forecast — 12 months */}
       {showForecast && debts.length > 0 && (
-        <div style={{
-          marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
-        }}>
+        <div style={{ marginTop: 12, padding: '14px 16px', background: 'var(--surface)', borderRadius: 16, boxShadow: 'var(--shadow-card)' }}>
           <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
             <Icon name="chart" size={14} /> คาดการณ์ · 12 เดือนข้างหน้า
           </div>
@@ -190,16 +195,27 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
 
       {/* Strategy comparison */}
       {showStrategy && debts.length > 1 && (
-        <DebtStrategyCard debts={debts} />
+        <div style={{ marginTop: 12, padding: '4px 16px 16px', background: 'var(--surface)', borderRadius: 16, boxShadow: 'var(--shadow-card)' }}>
+          <DebtStrategyCard debts={debts} />
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
 
+/** A value is MISSING when it is null, blank or unreadable — a real 0 is data. */
+function isMissing(v) {
+  if (v == null) return true;
+  if (typeof v === 'string' && v.trim() === '') return true;
+  return !Number.isFinite(Number(v));
+}
+
 // ════════════════════════════════════════════════════════════════════════════
-//  Debt Row
+//  Debt Row — one line of the grouped-inset list (v4.59).
+//  Left: name + terms + progress. Right: balance over rate. Below: the actions,
+//  unchanged — every CRUD path this row had still fires the same handler.
 // ════════════════════════════════════════════════════════════════════════════
-function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, onEdit, onArchive, onDelete }) {
+function DebtRow({ debt, status, isEditing, busy = false, first = false, onMarkPaid, onUnmark, onEdit, onArchive, onDelete }) {
   const typeMeta   = TYPE_META[debt.type]      || TYPE_META.other;
   const statusMeta = STATUS_META[status.status] || STATUS_META.upcoming;
   const monthsRemaining = debt.total_months
@@ -210,80 +226,81 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
     : 0;
   const math = calculateDebtMath(debt);
 
+  const rateMissing    = isMissing(debt.interest_rate);
+  const balanceMissing = isMissing(debt.remaining_balance);
+  const incomplete     = rateMissing || balanceMissing;
+
   return (
     <div style={{
-      padding: '12px 14px',
-      background: status.status === 'overdue'   ? 'var(--danger-soft)' :
-                  status.status === 'paid'      ? 'var(--success-soft)' :
-                  status.status === 'completed' ? 'var(--success-soft)' : 'var(--fill)',
-      borderRadius: 'var(--radius-control)',
+      padding: '13px 16px',
+      borderTop: first ? 'none' : '1px solid var(--hairline)',
       display: 'flex', flexDirection: 'column', gap: 8,
     }}>
-      {/* Top row: name + amount + status */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0, flex: 1 }}>
-          <span style={{ fontSize: 18 }}>{typeMeta.icon}</span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontSize: 13.5, color: 'var(--text-primary)', fontWeight: 500,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{debt.name}</div>
-            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 1 }}>
-              {typeMeta.label} · ครบกำหนดทุกวันที่ {debt.due_day || 5}
-              {debt.creditor && ` · ${debt.creditor}`}
-            </div>
+      <div style={{ display: 'flex', gap: 13, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 16, fontWeight: 500, letterSpacing: '-0.01em',
+            color: 'var(--text-primary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{debt.name}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 1, ...NUM }}>
+            งวดละ {fmt(debt.monthly_payment)} · ครบกำหนดทุกวันที่ {debt.due_day || 5}
+            {debt.creditor && ` · ${debt.creditor}`}
           </div>
+
+          {/* An incomplete row is an INVITATION, not a fault: blue, never red. */}
+          {incomplete && (
+            <div style={{ marginTop: 6 }}>
+              <Pill tone="info">
+                {rateMissing && balanceMissing ? 'ขาดยอด/อัตรา — กรอกเพิ่มเพื่อเข้าแผนโปะ'
+                  : rateMissing ? 'ขาดอัตราดอกเบี้ย — กรอกเพิ่ม'
+                  : 'ขาดยอดคงเหลือ — กรอกเพิ่ม'}
+              </Pill>
+            </div>
+          )}
+
+          {/* Progress — grey when the row's own data can't be trusted yet */}
+          {debt.total_months ? (
+            <>
+              <RowBar pct={progressPct}
+                color={incomplete ? 'var(--ink-4)'
+                  : progressPct >= 100 ? 'var(--success)' : 'var(--accent)'} />
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, ...NUM }}>
+                {debt.months_paid || 0} / {debt.total_months} งวด · {progressPct.toFixed(0)}%
+                {monthsRemaining > 0 && ` · เหลือ ${monthsRemaining} เดือน`}
+                {monthsRemaining === 0 && ' · ปลอดหนี้!'}
+              </div>
+            </>
+          ) : null}
+
+          {/* The interest split, one line instead of three tiles */}
+          {math.hasInterestData && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, ...NUM }}>
+              เงินต้น {fmt(math.principal)} · ดอกรวม {fmt(math.totalInterest)} · ดอกที่เหลือ {fmt(math.remainingInterest)}
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-          <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-            {fmt(debt.monthly_payment)}<span style={{ fontSize: 10, color: 'var(--text-muted)' }}>/เดือน</span>
+
+        <div style={{ flex: 'none', textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', ...NUM }}>
+            {balanceMissing ? '—' : fmt(debt.remaining_balance)}
+          </div>
+          <div style={{
+            fontSize: 12, fontWeight: 500, ...NUM,
+            color: rateMissing ? 'var(--text-muted)'
+              : Number(debt.interest_rate) >= 12 ? 'var(--danger)' : 'var(--text-muted)',
+          }}>
+            {rateMissing ? '?%' : `${Number(debt.interest_rate).toFixed(2)}%`}
           </div>
           <Badge tone={statusMeta.tone} size="sm">
             <span style={{ marginRight: 4 }}><Icon name={statusMeta.icon} size={12} /></span>{statusMeta.label}
           </Badge>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{typeMeta.label}</div>
         </div>
       </div>
 
-      {/* Progress bar — only if we know total_months */}
-      {debt.total_months && (
-        <div>
-          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
-            <span>{debt.months_paid || 0} / {debt.total_months} งวด</span>
-            <span>
-              {progressPct.toFixed(0)}%
-              {monthsRemaining > 0 && ` · เหลือ ${monthsRemaining} เดือน`}
-              {monthsRemaining === 0 && ' · ปลอดหนี้!'}
-            </span>
-          </div>
-          <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, overflow: 'hidden' }}>
-            <div style={{
-              width: `${progressPct}%`, height: '100%',
-              background: progressPct >= 100 ? 'var(--success)' : 'var(--accent)',
-              borderRadius: 999,
-              transition: 'width 300ms',
-            }} />
-          </div>
-        </div>
-      )}
-
-      {/* Interest breakdown — only if interest_rate set */}
-      {math.hasInterestData && (
-        <div style={{ fontVariantNumeric: 'tabular-nums',
-          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
-          padding: '8px 10px', background: 'var(--background-soft)',
-          borderRadius: 'var(--radius-control)', border: '1px solid var(--hairline)',
-          fontSize: 10.5
-        }}>
-          <MiniStat label="เงินต้น" value={fmt(math.principal)} color="var(--text-primary)" />
-          <MiniStat label="ดอกเบี้ยรวม" value={fmt(math.totalInterest)} color="var(--danger)"
-            sub={`${((math.totalInterest / math.totalPaid) * 100).toFixed(0)}% ของจ่ายรวม`} />
-          <MiniStat label="ดอกเบี้ยที่เหลือ" value={fmt(math.remainingInterest)} color="var(--accent-strong)"
-            sub={`${Number(debt.interest_rate).toFixed(2)}% ต่อปี`} />
-        </div>
-      )}
-
-      {/* Actions */}
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+      {/* Actions — unchanged behaviour, quieter chrome */}
+      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         {status.status === 'completed' ? (
           /* B8: nothing left to pay — offer to file it away instead of
              nagging for a payment that does not exist. */
@@ -482,24 +499,16 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Stat Tile
+//  Stat Tile — this month's payment status, three across
 // ════════════════════════════════════════════════════════════════════════════
-function StatTile({ label, value, color, sub, small }) {
+function StatTile({ label, value, color, sub }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div style={{
-        fontVariantNumeric: 'tabular-nums',
-        fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
-      }}>{label}</div>
-      <div style={{
-        fontFamily: 'var(--f-display)', fontSize: small ? 17 : 22, fontWeight: 600,
-        color, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums',
-      }}>{value}</div>
-      {sub && (
-        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)' }}>
-          {sub}
-        </div>
-      )}
+      <div style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)' }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color, lineHeight: 1.1, ...NUM }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', ...NUM }}>{sub}</div>
     </div>
   );
 }
