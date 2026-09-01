@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Card, CardHeader, EmptyState } from '../ui/index.js';
+import { EmptyState } from '../ui/index.js';
 import { chartGeometry, barPath, monthReadout, resolveSelection } from '../../lib/cashflow.js';
 import { Icon } from '../Icon.jsx';
+import { SectionCaption } from './InsetList.jsx';
 
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -21,6 +22,12 @@ function fmtYMLong(ym) {
 const baht = (n) => '฿' + Math.round(Math.abs(Number(n) || 0)).toLocaleString('th');
 
 const NUM = { fontVariantNumeric: 'tabular-nums' };
+
+// The phase-3 chart chrome: one inset panel, no card header, no axis furniture.
+const PANEL = {
+  background: 'var(--surface)', borderRadius: 16,
+  boxShadow: 'var(--shadow-card)', padding: '16px 16px 12px',
+};
 
 /**
  * 12-month cash flow chart — income vs expense bars over a window that is
@@ -45,19 +52,22 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
   const hasData = data?.some(d => d.income > 0 || d.expense > 0);
   if (!data?.length || !hasData) {
     return (
-      <Card>
-        <CardHeader eyebrow="Cash Flow · 12 เดือน" title="กระแสเงินสด" />
-        <EmptyState
-          icon={<Icon name="trade" size={20} />}
-          title="ยังไม่มีข้อมูลย้อนหลัง"
-          description="เมื่อมีรายรับ-รายจ่ายในเดือนต่าง ๆ จะเห็นกราฟ 12 เดือนล่าสุด"
-          compact
-        />
-      </Card>
+      <div>
+        <SectionCaption>กระแสเงินสด 12 เดือน</SectionCaption>
+        <div style={PANEL}>
+          <EmptyState
+            icon={<Icon name="trade" size={20} />}
+            title="ยังไม่มีข้อมูลย้อนหลัง"
+            description="เมื่อมีรายรับ-รายจ่ายในเดือนต่าง ๆ จะเห็นกราฟ 12 เดือนล่าสุด"
+            compact
+          />
+        </div>
+      </div>
     );
   }
 
-  const g = chartGeometry(data);
+  // The axis gutter is gone with the gridlines (phase 3), so the plot reclaims it.
+  const g = chartGeometry(data, { padL: 10 });
   const selIdx = resolveSelection(data, selectedYm);
   const sel = monthReadout(data, selectedYm);
   const todayYm = currentYm || data[data.length - 1].ym;
@@ -67,19 +77,28 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
     if (d) onMonthClick?.(d.ym);
   };
 
+  // The headline the axis labels used to carry: what an average month leaves.
+  const months = data.filter(d => (d.income || 0) > 0 || (d.expense || 0) > 0);
+  const avgNet = months.length
+    ? months.reduce((s, d) => s + ((Number(d.income) || 0) - (Number(d.expense) || 0)), 0) / months.length
+    : 0;
+
   return (
-    <Card>
-      <CardHeader
-        eyebrow="Cash Flow · 12 เดือนล่าสุด"
-        title="กระแสเงินสด"
-        meta="ภาพรวมอยู่นิ่ง · แตะเดือนไหนก็เห็นตัวเลขเดือนนั้น"
-        action={
-          <div style={{ display: 'flex', gap: 14 }}>
+    <div>
+      <SectionCaption>กระแสเงินสด 12 เดือน</SectionCaption>
+      <div style={PANEL}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+          gap: 12, flexWrap: 'wrap', marginBottom: 4,
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', ...NUM }}>
+            {avgNet >= 0 ? 'เฉลี่ยเหลือ ' : 'เฉลี่ยขาด '}{baht(avgNet)}/เดือน
+          </span>
+          <span style={{ display: 'flex', gap: 14 }}>
             <Legend color="var(--chart-income)"  label="รายรับ" />
             <Legend color="var(--chart-expense)" label="รายจ่าย" />
-          </div>
-        }
-      />
+          </span>
+        </div>
 
       <svg
         viewBox={`0 0 ${g.W} ${g.H}`}
@@ -88,25 +107,11 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
         role="img"
         aria-label="กราฟรายรับรายจ่าย 12 เดือนล่าสุด"
       >
-        {/* Three recessive hairlines + the baseline */}
-        {g.grid.map((t, i) => (
-          <g key={`grid-${i}`}>
-            <line x1={g.padL} x2={g.W - g.padR} y1={t.y} y2={t.y}
-              stroke="var(--hairline)" strokeWidth="1" />
-            <text x={g.padL - 6} y={t.y + 3} textAnchor="end"
-              fontSize="9.5" fill="var(--text-muted)" fontFamily="var(--f-mono)" style={NUM}>
-              {t.label}
-            </text>
-          </g>
-        ))}
-        <line x1={g.padL} x2={g.W - g.padR} y1={g.baseY} y2={g.baseY}
-          stroke="var(--hairline)" strokeWidth="1" />
-
         {g.bars.map((b, i) => {
           const d = data[i];
           const isSel   = i === selIdx;
           const isHover = i === hoverIdx;
-          const op = isSel ? 1 : isHover ? 0.85 : 0.55;
+          const op = isSel ? 1 : isHover ? 0.9 : 0.7;
           return (
             <g key={b.ym}
               data-month={b.ym}
@@ -151,8 +156,9 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
         })}
       </svg>
 
-      {sel && <SummaryStrip sel={sel} todayYm={todayYm} data={data} pick={pick} onMonthClick={onMonthClick} />}
-    </Card>
+        {sel && <SummaryStrip sel={sel} todayYm={todayYm} data={data} pick={pick} onMonthClick={onMonthClick} />}
+      </div>
+    </div>
   );
 }
 
