@@ -107,6 +107,39 @@ export function filterToMonths(txns, months) {
   return (txns || []).filter(t => keep.has(bangkokMonth(t.occurred_at)));
 }
 
+/**
+ * The chart header's readout: what an ACTIVE month leaves over.
+ *
+ * ⚠️ THE DENOMINATOR IS DELIBERATE, AND THE LABEL MUST SAY SO (audit A12 · 3).
+ * This averages over the months that actually have a figure — NOT over the
+ * whole 12-slot window. Loop's ledger starts mid-2569, so a window average
+ * would divide real months by empty ones the household did not live through
+ * and understate every month before the account existed. The component's copy
+ * is therefore "เฉลี่ยเดือนที่มีรายการ", never a bare "เฉลี่ย/เดือน" — the
+ * previous wording promised a 12-month average this function never computed.
+ *
+ * A month COUNTS when it has any income or any expense; a genuinely empty slot
+ * (no rows at all) is not a ฿0 month, it is a month with no data.
+ *
+ * Returns { avg, monthsCounted, total, windowMonths }:
+ *   · monthsCounted 0 → avg 0 and total 0, explicitly defined. The caller is
+ *     expected to render no readout at all in that case (the chart itself does
+ *     not render without data), never "฿0/เดือน" as if that were a measurement.
+ * Pure: no Date, no fetch, null-safe like every other function in this file.
+ */
+export function averageMonthlyNet(series = []) {
+  const rows = series || [];
+  const active = rows.filter(d => (Number(d?.income) || 0) > 0 || (Number(d?.expense) || 0) > 0);
+  const total = active.reduce(
+    (s, d) => s + ((Number(d.income) || 0) - (Number(d.expense) || 0)), 0);
+  return {
+    avg: active.length ? total / active.length : 0,
+    monthsCounted: active.length,
+    total,
+    windowMonths: rows.length,
+  };
+}
+
 /** Axis-label money: 87K / 1.2M / 940. No decimals in the thousands band. */
 export function compactBaht(v) {
   const n = Math.abs(Math.round(Number(v) || 0));
