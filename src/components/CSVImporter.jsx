@@ -9,6 +9,7 @@ import {
   importTransactionsBatch, isRpcMissing, isDefinitiveServerError,
 } from '../lib/api/finance.js';
 import { parseKBankPDF } from '../lib/kbankPdfParser.js';
+import { Icon } from './Icon.jsx';
 
 // ── Round-8 B2 / round-9 M2 / round-10: the COMPLETE import session,
 //    survivable across reloads AND across tabs ──────────────────────────────
@@ -1730,7 +1731,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)' }}>
               Import Statement — Make by KBank
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', marginTop: 3, letterSpacing: '0.12em' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginTop: 3}}>
               แยก ส่วนตัว / ครอบครัว อัตโนมัติจากชื่อกระเป๋า
             </div>
           </div>
@@ -1782,7 +1783,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   borderRadius: 'var(--radius-card)', padding: '14px 18px',
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', fontWeight: 600, color: 'var(--warning)' }}>
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--warning)' }}>
                     มีการนำเข้าค้างที่ยังไม่ได้เลือกกู้คืน · {allSessions.length} ชุด — เลือกชุดที่จะกู้คืน
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.55 }}>
@@ -1825,8 +1826,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
                   <div style={{
-                    fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', fontWeight: 600,
-                    color: `var(${recoveryReport?.kind === 'none' ? '--loss' : '--warning'})`,
+                    fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600,
+                    color: `var(${recoveryReport?.kind === 'none' ? '--loss' : '--warning'})`
                   }}>
                     {recoveryReport?.kind === 'none'     ? 'ยังไม่ได้นำเข้า — กรุณานำเข้าใหม่'
                      : recoveryReport?.kind === 'partial' ? 'นำเข้าไปแล้วบางส่วน — ยังไม่จบ'
@@ -1894,7 +1895,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {!recoveryReport && (
                       <button className="btn btn--primary" onClick={recoverStoredSession} disabled={recovering}>
-                        {recovering ? 'กำลังตรวจสอบ...' : '↻ ตรวจสอบผลอีกครั้ง'}
+                        {recovering ? 'กำลังตรวจสอบ...' : 'ตรวจสอบผลอีกครั้ง'}
                       </button>
                     )}
                     {recoveryReport?.kind === 'partial' && (
@@ -1912,7 +1913,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
               {/* Tab */}
               <div style={{ display: 'flex', gap: 3, background: 'var(--bg-2)', padding: 3, borderRadius: 'var(--r-md)', border: '1px solid var(--line)' }}>
-                {[{ id: 'csv', label: '📋 CSV (Cloud Pocket)' }, { id: 'pdf', label: '📄 PDF Statement' }].map(t => (
+                {[{ id: 'csv', label: 'CSV (Cloud Pocket)' }, { id: 'pdf', label: 'PDF Statement' }].map(t => (
                   <button key={t.id} onClick={() => { setTab(t.id); setError(null); }} style={{
                     padding: '7px 18px', borderRadius: 'var(--r-sm)', border: 0,
                     background: tab === t.id ? 'var(--surface)' : 'transparent',
@@ -1940,7 +1941,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
                       cursor: 'pointer', transition: 'border-color 150ms', background: 'var(--surface-2)',
                     }}>
-                    <div style={{ fontSize: 40 }}>📋</div>
+                    <div style={{ color: 'var(--text-muted)' }}><Icon name="clipboard" size={40} /></div>
                     <div style={{ fontSize: 13, color: 'var(--ink-2)', textAlign: 'center', lineHeight: 1.6 }}>
                       คลิกเพื่อเลือก หรือลาก CSV มาวาง<br/>
                       <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>report_xxx-x-x147-8_…csv</span>
@@ -1951,7 +1952,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
                   {/* Legend */}
                   <div style={{ width: 420, background: tint('--blue', 8), border: `1px solid ${tint('--blue', 30)}`, borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--blue)', marginBottom: 10, letterSpacing: '0.12em' }}>
+                    <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--blue)', marginBottom: 10}}>
                       การแยก ส่วนตัว / ครอบครัว อัตโนมัติ
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1973,7 +1974,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   </div>
 
                   <div style={{ width: 420, background: tint('--success', 8), border: `1px solid ${tint('--success', 30)}`, borderRadius: 'var(--r-lg)', padding: '14px 18px' }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--profit)', marginBottom: 8, letterSpacing: '0.12em' }}>วิธี Export CSV จาก Make</div>
+                    <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--profit)', marginBottom: 8}}>วิธี Export CSV จาก Make</div>
                     <ol style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12, color: 'var(--ink-3)', lineHeight: 2 }}>
                       <li>เปิด <strong style={{ color: 'var(--ink-2)' }}>Make by KBank</strong> → กด <strong style={{ color: 'var(--ink-2)' }}>บัญชีหลัก</strong></li>
                       <li>เลือก <strong style={{ color: 'var(--ink-2)' }}>Statement → ช่วงเวลา</strong></li>
@@ -2001,7 +2002,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
                       cursor: 'pointer', transition: 'border-color 150ms', background: 'var(--surface-2)',
                     }}>
-                    <div style={{ fontSize: 40 }}>{pdfFile ? '📄' : '📥'}</div>
+                    <div style={{ color: 'var(--text-muted)' }}><Icon name={pdfFile ? 'file' : 'download'} size={40} /></div>
                     {pdfFile ? (
                       <><div style={{ fontSize: 13, color: 'var(--profit)' }}>{pdfFile.name}</div>
                       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{(pdfFile.size/1024).toFixed(0)} KB · คลิกเปลี่ยนไฟล์</div></>
@@ -2013,7 +2014,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   <input ref={pdfFileRef} type="file" accept=".pdf" onChange={e => { const f = e.target.files[0]; if (f) { setPdfFile(f); setFileName(f.name); setError(null); } }} style={{ display: 'none' }} />
 
                   <div style={{ width: 420 }}>
-                    <label style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 6, letterSpacing: '0.1em' }}>รหัสผ่าน PDF (ถ้ามี)</label>
+                    <label style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', display: 'block', marginBottom: 6}}>รหัสผ่าน PDF (ถ้ามี)</label>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <input type={showPwd ? 'text' : 'password'} className="input" value={pdfPassword}
                         onChange={e => setPdfPassword(e.target.value)}
@@ -2022,20 +2023,20 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                         style={{ flex: 1, fontFamily: 'var(--f-mono)', fontSize: 13 }} />
                       <button onClick={() => setShowPwd(p => !p)}
                         style={{ background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)', padding: '8px 12px', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14 }}>
-                        {showPwd ? '🙈' : '👁'}
+                        <Icon name={showPwd ? 'eye-off' : 'eye'} size={15} />
                       </button>
                     </div>
                   </div>
                   <button className="btn btn--primary" disabled={!pdfFile || pdfParsing} onClick={handlePDFParse}
                     style={{ width: 420, justifyContent: 'center' }}>
-                    {pdfParsing ? '⏳ กำลังอ่าน PDF...' : '📊 วิเคราะห์ Statement'}
+                    {pdfParsing ? 'กำลังอ่าน PDF...' : 'วิเคราะห์ Statement'}
                   </button>
                 </>
               )}
 
               {error && (
                 <div style={{ width: 420, padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 13 }}>
-                  ⚠️ {error}
+                  <Icon name="warning" size={14} /> {error}
                 </div>
               )}
             </div>
@@ -2096,7 +2097,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               {/* Column mapping — generic CSV only */}
               {!makeFmt && headers.length > 0 && (
                 <div style={{ background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', padding: '12px 16px' }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em', marginBottom: 10 }}>MAP COLUMNS</div>
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 10 }}>จับคู่คอลัมน์</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                     {[
                       { key: 'dateCol', label: 'วันที่' }, { key: 'descCol', label: 'รายการ' },
@@ -2123,7 +2124,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   borderRadius: 'var(--r-md)', padding: '10px 16px',
                   display: 'flex', alignItems: 'center', gap: 10,
                 }}>
-                  <span style={{ fontSize: 16 }}>✨</span>
+                  <Icon name="spark" size={16} />
                   <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--paper-ink)' }}>
                     ตรวจพบ Make Cloud Pocket CSV · แยก scope จากชื่อกระเป๋าอัตโนมัติ
                   </div>
@@ -2138,8 +2139,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10, alignItems: 'baseline' }}>
                     <div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em' }}>
-                        💼 บัญชี / Cloud Pockets · {pocketSummary.length}
+                      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>
+                        <Icon name="work" size={14} /> บัญชี / Cloud Pockets · {pocketSummary.length}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--ink-2)', marginTop: 3 }}>
                         จะถูกสร้าง/อัพเดต balance จาก CP Bal ล่าสุด
@@ -2188,8 +2189,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   background: tint('--warning', 8), border: '1px solid var(--warning)',
                   borderRadius: 'var(--radius-card)', padding: '14px 16px',
                 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                    ⛔ อ่านวันที่ไม่ได้ · {quarantined.length} แถว — ไม่นำเข้า
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--warning)', fontWeight: 600 }}>
+                    <Icon name="ban" size={14} /> อ่านวันที่ไม่ได้ · {quarantined.length} แถว — ไม่นำเข้า
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 3, marginBottom: 10 }}>
                     ระบบจะไม่เดาวันที่ให้ (เมื่อก่อนแถวแบบนี้ถูกบันทึกเป็น “วันนี้”) —
@@ -2235,15 +2236,15 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
                 }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                      ⚠️ AUTO-LINK ปิดอยู่
+                    <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--warning)', fontWeight: 600 }}>
+                      <Icon name="warning" size={14} /> จับคู่จ่ายหนี้อัตโนมัติ · ปิดอยู่
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 3 }}>
                       {autoLinkBlockedMsg}
                     </div>
                   </div>
                   <button className="btn btn--ghost btn--sm" onClick={() => setLinkRetry(n => n + 1)}>
-                    ↻ ลองใหม่
+                    <Icon name="refresh" size={13} /> ลองใหม่
                   </button>
                 </div>
               )}
@@ -2256,8 +2257,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
                     <div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--accent-strong)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                        🔗 AUTO-LINK · {activeSuggestions.length} / {debtSuggestions.length} รายการ
+                      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--accent-strong)', fontWeight: 600 }}>
+                        <Icon name="link" size={14} /> จับคู่จ่ายหนี้อัตโนมัติ · {activeSuggestions.length} / {debtSuggestions.length} รายการ
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-primary)', marginTop: 3 }}>
                         ระบบเจอ transactions ที่น่าจะเป็นการจ่ายหนี้สิน — จะ link อัตโนมัติให้
@@ -2314,8 +2315,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   borderRadius: 'var(--radius-card)', padding: '14px 16px',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-                    <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                      ⚠️ อาจซ้ำกับรายการเดิม — เลือกเอง · {ambiguous.length} รายการ
+                    <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--warning)', fontWeight: 600 }}>
+                      <Icon name="warning" size={14} /> อาจซ้ำกับรายการเดิม — เลือกเอง · {ambiguous.length} รายการ
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button type="button" className="btn btn--ghost btn--sm"
@@ -2352,14 +2353,14 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                             style={{ accentColor: 'var(--warning)', marginTop: 2 }} />
                           <div style={{ minWidth: 0 }}>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--warning)', letterSpacing: '0.1em' }}>ในไฟล์</span>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--warning)'}}>ในไฟล์</span>
                               <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.title}</span>
                               <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
                                 {bangkokDate(row.occurred_at)} · ฿{Math.abs(row.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
                               </span>
                             </div>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2, opacity: 0.75 }}>
-                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-3)', letterSpacing: '0.1em' }}>ในระบบ</span>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>ในระบบ</span>
                               <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{existing.title}</span>
                               <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-muted)' }}>
                                 {bangkokDate(existing.occurred_at)} · ฿{Math.abs(existing.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
@@ -2382,8 +2383,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 borderRadius: 'var(--r-lg)', padding: '12px 16px',
                 display: 'flex', flexDirection: 'column', gap: 8,
               }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.16em', marginBottom: 2 }}>
-                  ⚙ ตัวเลือก IMPORT
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 2 }}>
+                  <Icon name="gear" size={14} /> ตัวเลือกการนำเข้า
                 </div>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12.5, color: 'var(--ink-2)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={dedup} onChange={e => setDedup(e.target.checked)}
@@ -2399,7 +2400,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   <input type="checkbox" checked={wipeMonth} onChange={e => setWipeMonth(e.target.checked)}
                     style={{ accentColor: 'var(--loss)', cursor: 'pointer', marginTop: 2 }} />
                   <span>
-                    <strong style={{ color: 'var(--loss)' }}>⚠️ ลบรายการเดิมในเดือนนั้นก่อน import</strong>
+                    <strong style={{ color: 'var(--loss)' }}><Icon name="warning" size={13} /> ลบรายการเดิมในเดือนนั้นก่อน import</strong>
                     <span style={{ color: 'var(--ink-3)', marginLeft: 6 }}>
                       — ใช้เมื่อต้องการ re-import แบบสะอาด (ลบของเก่าหมดในเดือนที่เกี่ยวข้อง)
                     </span>
@@ -2410,11 +2411,11 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               {/* Table */}
               <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
                 <div style={{
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 500,
                   display: 'grid',
                   gridTemplateColumns: makeFmt ? '28px 80px 1fr 120px 90px 70px 70px' : '28px 80px 1fr 100px 90px 70px',
-                  gap: 10, padding: '7px 12px', background: 'var(--bg-2)',
-                  fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.14em',
-                  textTransform: 'uppercase', color: 'var(--ink-3)', borderBottom: '1px solid var(--line)',
+                  gap: 10, padding: '7px 12px', background: 'var(--bg-2)', fontSize: 13, color: 'var(--ink-3)', borderBottom: '1px solid var(--line)'
                 }}>
                   <div>✓</div><div>วันที่</div><div>รายการ</div>
                   {makeFmt && <div>กระเป๋า</div>}
@@ -2480,7 +2481,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
               {error && (
                 <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 13 }}>
-                  ⚠️ {error}
+                  <Icon name="warning" size={14} /> {error}
                 </div>
               )}
             </div>
@@ -2495,8 +2496,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 borderRadius: 'var(--radius-card)', padding: '14px 16px',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                    ⚠️ พบรายการกำกวมตอนบันทึกจริง · {serverAmbiguous.length} รายการ — ต้องตัดสินใจก่อนปิดงาน
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--warning)', fontWeight: 600 }}>
+                    <Icon name="warning" size={14} /> พบรายการกำกวมตอนบันทึกจริง · {serverAmbiguous.length} รายการ — ต้องตัดสินใจก่อนปิดงาน
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button type="button" className="btn btn--ghost btn--sm"
@@ -2533,7 +2534,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           style={{ accentColor: 'var(--warning)', marginTop: 2 }} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--warning)', letterSpacing: '0.1em' }}>ในไฟล์</span>
+                            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--warning)'}}>ในไฟล์</span>
                             <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.title}</span>
                             <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
                               {bangkokDate(inc.occurred_at)} · ฿{Math.abs(Number(inc.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
@@ -2541,7 +2542,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                           </div>
                           {existing && (
                             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginTop: 2, opacity: 0.75 }}>
-                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-3)', letterSpacing: '0.1em' }}>ในระบบ</span>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>ในระบบ</span>
                               <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{existing.title}</span>
                               <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-muted)' }}>
                                 {bangkokDate(existing.occurred_at)} · ฿{Math.abs(Number(existing.amount)).toLocaleString('th', { maximumFractionDigits: 0 })}
@@ -2559,7 +2560,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
               </div>
               {error && (
                 <div style={{ padding: '10px 16px', background: 'var(--loss-bg)', color: 'var(--loss)', border: '1px solid var(--loss)', borderRadius: 'var(--r-md)', fontSize: 13 }}>
-                  ⚠️ {error}
+                  <Icon name="warning" size={14} /> {error}
                 </div>
               )}
             </div>
@@ -2567,7 +2568,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
 
           {step === 'done' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 22, padding: '40px 0' }}>
-              <div style={{ fontSize: 52 }}>{pendingSideEffects ? '🟡' : '✅'}</div>
+              <div style={{ color: pendingSideEffects ? 'var(--warning)' : 'var(--success)' }}><Icon name={pendingSideEffects ? 'warning' : 'check'} size={48} /></div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)', marginBottom: 14 }}>
                   {pendingSideEffects ? 'นำเข้ารายการสำเร็จ — เหลืองานปิดท้าย' : 'Import สำเร็จ!'}
@@ -2580,7 +2581,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     <StatChip label="ข้าม (ซ้ำ)"  value={importStats.skipped} accent="var(--ink-3)" />
                   )}
                   {importStats?.ambiguousSkipped > 0 && (
-                    <StatChip label="⚠️ กำกวม — ข้ามไว้" value={importStats.ambiguousSkipped} accent="var(--warning)" />
+                    <StatChip label="กำกวม — ข้ามไว้" value={importStats.ambiguousSkipped} accent="var(--warning)" />
                   )}
                   {importStats?.ambiguousImported > 0 && (
                     <StatChip label="กำกวม — เลือกนำเข้า" value={importStats.ambiguousImported} accent="var(--profit)" />
@@ -2589,13 +2590,13 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     <StatChip label="บัญชี" value={importStats.accountsCreated} accent="var(--amber-2)" />
                   )}
                   {importStats?.debtLinked > 0 && (
-                    <StatChip label="🔗 จ่ายหนี้ที่ link" value={importStats.debtLinked} accent="var(--accent-strong)" />
+                    <StatChip label="จ่ายหนี้ที่ link" value={importStats.debtLinked} accent="var(--accent-strong)" />
                   )}
                   {importStats?.wipedMonths > 0 && (
                     <StatChip label="เดือนที่ล้าง" value={importStats.wipedMonths} accent="var(--loss)" />
                   )}
                   {importStats?.quarantined > 0 && (
-                    <StatChip label="⛔ ไม่มีวันที่ — ไม่ได้นำเข้า" value={importStats.quarantined} accent="var(--warning)" />
+                    <StatChip label="ไม่มีวันที่ — ไม่ได้นำเข้า" value={importStats.quarantined} accent="var(--warning)" />
                   )}
                   {/* Round-9 F1: rows whose transaction was deleted after the
                       import — excluded from balances and debt links. */}
@@ -2605,7 +2606,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   {/* Batch C · B2: an import matching an archived account
                       reactivates it — never a silent write into a hidden row. */}
                   {importStats?.reactivatedAccounts?.length > 0 && (
-                    <StatChip label="🗂 บัญชีที่เก็บไว้ — เปิดใช้อีกครั้ง"
+                    <StatChip label="บัญชีที่เก็บไว้ — เปิดใช้อีกครั้ง"
                       value={importStats.reactivatedAccounts.length} accent="var(--amber-2)" />
                   )}
                 </div>
@@ -2639,8 +2640,8 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   borderRadius: 'var(--radius-card)', padding: '14px 18px',
                   display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left',
                 }}>
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--warning)', letterSpacing: '0.16em', fontWeight: 600 }}>
-                    ⚠️ นำเข้ารายการสำเร็จ แต่ยังมีงานปิดท้ายไม่สำเร็จ
+                  <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--warning)', fontWeight: 600 }}>
+                    <Icon name="warning" size={14} /> นำเข้ารายการสำเร็จ แต่ยังมีงานปิดท้ายไม่สำเร็จ
                   </div>
                   {pendingSideEffects.accounts && (
                     <div style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>
@@ -2661,7 +2662,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                   </div>
                   <button className="btn btn--primary" onClick={retrySideEffects} disabled={importing}
                     style={{ alignSelf: 'flex-start' }}>
-                    {importing ? 'กำลังลองใหม่...' : '↻ ลองอีกครั้ง'}
+                    {importing ? 'กำลังลองใหม่...' : 'ลองอีกครั้ง'}
                   </button>
                 </div>
               )}
@@ -2692,7 +2693,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                 ...(quarantineBlocks ? { opacity: 0.4, cursor: 'not-allowed' } : null) }}>
               {importing
                 ? 'กำลัง Import...'
-                : `💾 Import ${sel.length} รายการ${familySel > 0 ? ` (${familySel} ครอบครัว)` : ''}`}
+                : `Import ${sel.length} รายการ${familySel > 0 ? ` (${familySel} ครอบครัว)` : ''}`}
             </button>
           </div>
         )}
@@ -2721,7 +2722,7 @@ function StatChip({ label, value, accent }) {
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: accent }}>
         {value}
       </div>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-3)', letterSpacing: '0.12em' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>
         {label}
       </div>
     </div>

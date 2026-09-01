@@ -374,13 +374,12 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .sidebar__brand-name { font-family: var(--f-display); font-size: 18px; color: var(--ink); }
 .sidebar__brand-sub {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; color: var(--ink-3);
-  letter-spacing: 0.06em; text-transform: uppercase; margin-left: auto; align-self: center;
+  font-size: 13px; font-weight: 500; color: var(--ink-3);
+  margin-left: auto; align-self: center;
 }
 
 .nav-section-label {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-4); padding: 14px 10px 6px;
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-4); padding: 14px 10px 6px;
 }
 .nav-item {
   display: flex; align-items: center; gap: 11px; padding: 9px 10px;
@@ -420,8 +419,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
   display: flex; align-items: flex-end; justify-content: space-between; gap: 24px;
 }
 .page-header__eyebrow {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--amber-2); margin-bottom: 8px;
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--amber-2); margin-bottom: 8px;
 }
 .page-header__title {
   font-family: var(--f-display); font-weight: 400; font-size: 38px;
@@ -448,8 +446,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .card__title { font-family: var(--f-display); font-size: 17px; color: var(--ink); margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 .card--paper .card__title { color: var(--paper-ink); }
 .card__label {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-3);
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-3);
 }
 
 .btn {
@@ -469,7 +466,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 
 .tag {
   display: inline-flex; align-items: center; gap: 5px;
-  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.04em;
+  font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
   padding: 2.5px 9px; border-radius: var(--radius-btn); border: 1px solid transparent;
   color: var(--ink-2); background: var(--fill); white-space: nowrap;
 }
@@ -499,8 +496,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 
 .stat { display: flex; flex-direction: column; gap: 6px; }
 .stat__label {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-3);
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-3);
 }
 .stat__value {
   font-family: var(--f-display); font-size: 30px; font-weight: 400;
@@ -578,14 +574,13 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
   align-items: center; font-size: 13px;
 }
 .trade-row--head {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-3); background: var(--bg-2);
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-3); background: var(--bg-2);
 }
 .trade-row:not(.trade-row--head):hover { background: var(--surface-2); }
 .trade-symbol { font-family: var(--f-mono); font-weight: 500; color: var(--ink); }
 .trade-side {
-  font-family: var(--f-mono); font-size: 10.5px; padding: 1px 7px;
-  border-radius: 3px; letter-spacing: 0.06em;
+  font-size: 12px; font-weight: 600; padding: 1px 7px;
+  border-radius: 3px;
 }
 .trade-side--long { background: var(--profit-bg); color: var(--profit); }
 .trade-side--short { background: var(--loss-bg); color: var(--loss); }
@@ -618,15 +613,15 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
   color: var(--ink);
 }
 .journal-entry__date {
-  font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3);
-  letter-spacing: 0.12em; text-transform: uppercase; margin-top: 6px;
+  font-size: 13px; font-weight: 500; color: var(--ink-3);
+  font-variant-numeric: tabular-nums; margin-top: 6px;
 }
 
 /* ICT setup chip */
 .setup-chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 3px 9px; border-radius: 4px;
-  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.05em;
+  font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
   background: #1a2330; color: var(--blue); border: 1px solid #2a3a4a;
 }
 
@@ -642,8 +637,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 }
 .course-thumb__src {
   position: absolute; top: 10px; left: 10px;
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; padding: 3px 7px;
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; padding: 3px 7px;
   background: var(--fill-2); border: none;
   border-radius: 999px; color: var(--ink-2); backdrop-filter: blur(4px);
 }
@@ -699,8 +693,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .journal-day__title { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
 .journal-day__sub   { font-size: 13px; font-weight: 500; color: var(--ink-2); margin-top: 2px; }
 .journal-day__dow {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-3);
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-3);
 }
 
 /* Day progress — thin accent meter + "เสร็จแล้ว X จาก Y" */
@@ -771,7 +764,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 /* Apple-Calendar-style month grid */
 .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
-.cal-grid .wd { font-size: 10.5px; font-weight: 600; color: var(--ink-3); padding: 4px 0 8px; text-transform: uppercase; }
+.cal-grid .wd { font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 4px 0 8px; }
 .cal-grid .d {
   position: relative; font-size: 13px; font-weight: 500;
   width: 30px; height: 30px; margin: 0 auto;
@@ -813,7 +806,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
 .up-row:last-child { border-bottom: 0; }
 .up-row__badge { width: 42px; flex-shrink: 0; text-align: center; background: var(--fill); border-radius: 10px; padding: 5px 0; }
 .up-row__badge b { display: block; font-size: 15px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-.up-row__badge span { display: block; font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.up-row__badge span { display: block; font-size: 11px; font-weight: 600; color: var(--ink-2); }
 
 .mood-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .mood-cell {
@@ -854,8 +847,7 @@ input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; 
   padding: 28px; position: relative; overflow: hidden;
 }
 .balance-card__label {
-  font-family: var(--f-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-  text-transform: uppercase; color: var(--ink-3);
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-3);
 }
 .balance-card__value {
   font-family: var(--f-display); font-size: 56px; font-weight: 300;

@@ -180,8 +180,8 @@ const styles = {
   sub: { color: 'var(--ink-3)', fontSize: 13.5, marginBottom: 8 },
   field: { display: 'flex', flexDirection: 'column', gap: 6 },
   label: {
-    fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em',
-    textTransform: 'uppercase', color: 'var(--ink-3)',
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'
   },
   input: {
     background: 'var(--fill)', border: '1px solid transparent',

@@ -20,11 +20,12 @@ import {
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, copyYear,
 } from '../lib/api/tax.js';
+import { Icon } from '../components/Icon.jsx';
 
 const mono = { fontFamily: 'var(--f-mono)', fontVariantNumeric: 'tabular-nums' };
 const label10 = {
-  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--ink-3)',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'
 };
 
 /** Deduction rows grouped the way the form reads, top to bottom. */
@@ -432,8 +433,8 @@ function SaveIndicator({ state, error, onRetry }) {
   const text = state === 'saved' ? 'บันทึกแล้ว ✓' : state === 'saving' ? 'กำลังบันทึก…' : 'ยังไม่ได้บันทึก';
   return (
     <span style={{
-      ...mono, fontSize: 10.5, letterSpacing: '0.06em',
-      color: state === 'saved' ? 'var(--success)' : 'var(--ink-3)',
+      ...mono, fontSize: 10.5,
+      color: state === 'saved' ? 'var(--success)' : 'var(--ink-3)'
     }}>{text}</span>
   );
 }
@@ -650,12 +651,12 @@ function PeriodToggle({ value, onChange, name }) {
             aria-label={`${name} เป็นราย${PERIOD_LABEL[p]}`}
             onClick={() => onChange(p)}
             style={{
-              ...mono, fontSize: 10, letterSpacing: '0.04em', lineHeight: 1.6,
+              ...mono, fontSize: 10, lineHeight: 1.6,
               padding: '2px 8px', borderRadius: 999, border: 0, cursor: 'pointer',
               background: on ? 'var(--surface)' : 'transparent',
               color: on ? 'var(--ink)' : 'var(--ink-3)',
               boxShadow: on ? 'var(--shadow-card)' : 'none',
-              transition: 'background 120ms, color 120ms',
+              transition: 'background 120ms, color 120ms'
             }}>{PERIOD_LABEL[p]}</button>
         );
       })}
@@ -921,7 +922,7 @@ function SanityCard({ warnings }) {
     }}>
       {warnings.map(w => (
         <div key={w.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <span aria-hidden style={{ color: 'var(--accent-strong)', fontSize: 12, lineHeight: 1.7 }}>⚠</span>
+          <span aria-hidden style={{ color: 'var(--accent-strong)', fontSize: 12, lineHeight: 1.7 }}><Icon name="warning" size={12} /></span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12.5, color: 'var(--accent-strong)', lineHeight: 1.6, fontWeight: 600 }}>
               {w.text}
@@ -1003,12 +1004,12 @@ function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomCh
           )))}
           {section.keys.includes('ssf') && result.retirement.trimmed > 0 && (
             <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
-              ⚠ รวมกันเกินเพดาน {baht(RETIREMENT_COMBINED_CAP)} — ส่วนเกิน {baht(result.retirement.trimmed)} หักไม่ได้
+              <Icon name="warning" size={12} /> รวมกันเกินเพดาน {baht(RETIREMENT_COMBINED_CAP)} — ส่วนเกิน {baht(result.retirement.trimmed)} หักไม่ได้
             </div>
           )}
           {section.keys.includes('healthInsurance') && result.lifeHealth.trimmed > 0 && (
             <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
-              ⚠ ประกันชีวิต + สุขภาพ รวมกันเกิน {baht(100000)} — ส่วนเกิน {baht(result.lifeHealth.trimmed)} หักไม่ได้
+              <Icon name="warning" size={12} /> ประกันชีวิต + สุขภาพ รวมกันเกิน {baht(100000)} — ส่วนเกิน {baht(result.lifeHealth.trimmed)} หักไม่ได้
             </div>
           )}
         </div>

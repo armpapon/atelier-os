@@ -373,12 +373,12 @@ function GoogleCalendarButton({ date, existing, onImported }) {
   if (status === 'disconnected')
     return (
       <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}
-        title="เชื่อม Google Calendar เพื่อดึงตารางประชุมอัตโนมัติ">🗓 เชื่อม Google</button>
+        title="เชื่อม Google Calendar เพื่อดึงตารางประชุมอัตโนมัติ"><Icon name="calendar" size={14} /> เชื่อม Google</button>
     );
   return (
     <button className="btn btn--ghost" onClick={pull} disabled={busy}
       title="ดึงตารางประชุมของวันนี้จาก Google Calendar">
-      {busy ? '...' : '🗓 ดึงประชุม'}
+      {busy ? '...' : 'ดึงประชุม'}
     </button>
   );
 }
@@ -602,14 +602,14 @@ function ShopeeOrders() {
   return (
     <div className="card">
       <div className="card__head">
-        <div className="card__title">📦 Shopee รอจัดส่ง ({queue.length})</div>
+        <div className="card__title"><Icon name="archive" size={16} /> Shopee รอจัดส่ง ({queue.length})</div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <a href="https://seller.shopee.co.th/portal/sale/order?type=toship" target="_blank" rel="noopener noreferrer"
             style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>เปิด Seller Centre ↗</a>
           {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>
             {mode === 'shared' ? 'คิวร่วม · ' : ''}ซิงก์ {fmtSyncClock(lastSync)}</span>}
           <button onClick={() => refresh(true)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
-            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+            style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -758,8 +758,8 @@ function GmailInbox() {
     // A whisper, not a card — the way back for whoever hid it.
     return (
       <button onClick={() => toggleHidden(false)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 4px', fontFamily: 'var(--f-mono)', fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--ink-4)' }}>
-        ✉ แสดง "เมลค้างตอบ"
+        style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 4px', fontSize: 13, color: 'var(--ink-4)' }}>
+        <Icon name="mail" size={13} /> แสดง "เมลค้างตอบ"
       </button>
     );
   }
@@ -790,7 +790,7 @@ function GmailInbox() {
               ? <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>สแกน {progress.done}/{progress.total}…</span>
               : lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
             <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
-              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
           </span>
         )}
       </div>
@@ -802,7 +802,7 @@ function GmailInbox() {
               เชื่อม Gmail เพื่อดูเมลลูกค้าที่ยังไม่ได้ตอบ
             </div>
             <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}>
-              ✉️ เชื่อม Gmail
+              <Icon name="mail" size={14} /> เชื่อม Gmail
             </button>
           </div>
         ) : busy && items === null ? (
@@ -810,7 +810,7 @@ function GmailInbox() {
             {progress ? `กำลังสแกน ${progress.done}/${progress.total}…` : 'กำลังดึง...'}
           </div>
         ) : (items && items.length === 0) ? (
-          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>ไม่มีเมลลูกค้าค้างตอบ 🎉</div>
+          <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '16px 0', fontSize: 12 }}>ไม่มีเมลลูกค้าค้างตอบ</div>
         ) : items ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {items.map(m => (
@@ -940,7 +940,7 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ink-2)', cursor: 'pointer' }}>
           <input type="checkbox" checked={shareWith} onChange={e => setShareWith(e.target.checked)}
             style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
+          <Icon name="users" size={13} /> นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
         </label>
       )}
 
@@ -1007,11 +1007,11 @@ function HabitModal({ onSave, onClose }) {
       }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>เพิ่ม Habit</div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อ Habit</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อ Habit</span>
           <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="เช่น ออกกำลังกาย, อ่านหนังสือ" autoFocus required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เป้าหมาย/สัปดาห์</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เป้าหมาย/สัปดาห์</span>
           <select className="input" value={target} onChange={e => setTarget(e.target.value)}>
             {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{n} ครั้ง/สัปดาห์</option>)}
           </select>
@@ -1053,8 +1053,9 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
     background: 'var(--fill)', color: 'var(--ink)', outline: 'none',
   };
   const labelStyle = {
-    display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10,
-    letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-2)', fontFamily: 'var(--f-mono)',
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 500,
+    display: 'flex', flexDirection: 'column', gap: 3, fontSize: 13, color: 'var(--ink-2)'
   };
 
   return (
@@ -1088,7 +1089,7 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
           <input type="checkbox" checked={entry.shared_with === partnerId}
             onChange={e => save({ shared_with: e.target.checked ? partnerId : null })}
             style={{ width: 15, height: 15, accentColor: 'var(--accent)', cursor: 'pointer' }} />
-          👥 นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
+          <Icon name="users" size={13} /> นัดนี้ด้วยกัน (โผล่ในวันของอีกฝ่ายด้วย)
         </label>
       )}
       <textarea
@@ -1105,11 +1106,11 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
         <a href={buildGCalUrl({ text: entry.text, note, location, event_time: time, event_end_time: endTime }, date)}
           target="_blank" rel="noopener noreferrer"
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-            fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
+            fontVariantNumeric: 'tabular-nums',
+            display: 'inline-flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start', fontSize: 13,
             color: 'var(--accent-strong)', textDecoration: 'none', fontWeight: 600,
             border: 'none', borderRadius: 'var(--radius-btn)',
-            padding: '6px 12px', background: 'var(--accent-tint)',
+            padding: '6px 12px', background: 'var(--accent-tint)'
           }}>
           <Icon name="calendar" size={13} /> เพิ่มลง Google Calendar
         </a>
@@ -1276,7 +1277,7 @@ export function Journal() {
         actions={<>
           <button className="btn btn--ghost" onClick={() => setShowHabitModal(true)}>+ Habit</button>
           <GoogleCalendarButton date={date} existing={entries} onImported={refresh} />
-          <button className="btn btn--ghost" onClick={() => setShowPaste(true)}>📋 วางตาราง</button>
+          <button className="btn btn--ghost" onClick={() => setShowPaste(true)}><Icon name="clipboard" size={14} /> วางตาราง</button>
           <button className="btn btn--primary" onClick={() => setShowAddEntry(v => !v)}>
             <Icon name="plus" size={14}/> รายการใหม่
           </button>
@@ -1341,7 +1342,7 @@ export function Journal() {
             {/* FYI — who's on leave today (informational, not tasks) */}
             {leaveEntries.length > 0 && (
               <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--fill)', border: 'none', borderRadius: 'var(--radius-field)' }}>
-                <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-2)', marginBottom: 8 }}>
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-2)', marginBottom: 8 }}>
                   วันนี้ใครลา · FYI
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1412,7 +1413,7 @@ export function Journal() {
                                 name to show, so keep the app's existing wording. */}
                             {entry.shared_with && (
                               <span className="chip chip--together" title="นัดด้วยกัน">
-                                ♥ ด้วยกัน
+                                <Icon name="health" size={11} /> ด้วยกัน
                               </span>
                             )}
                             {entry.tag && <span className="chip">{entry.tag}</span>}
@@ -1421,7 +1422,7 @@ export function Journal() {
                             <div className="tl-s">
                               {entry.event_time && fmtEventRange(entry)}
                               {entry.event_time && entry.location ? ' · ' : ''}
-                              {entry.location && `📍 ${entry.location}`}
+                              {entry.location && <><Icon name="location" size={11} /> {entry.location}</>}
                             </div>
                           )}
                         </div>
@@ -1498,7 +1499,7 @@ export function Journal() {
                           <span style={{ display: 'block', fontSize: 14.5, fontWeight: 500, color: 'var(--ink)' }}>{ev.text}</span>
                           <span style={{ display: 'block', fontSize: 12.5, color: 'var(--ink-2)', marginTop: 1 }}>
                             {relativeDayLabel(ev.entry_date)} · {fmtEventRange(ev)}
-                            {ev.location ? ` · 📍 ${ev.location}` : ''}
+                            {ev.location ? <> · <Icon name="location" size={11} /> {ev.location}</> : ''}
                           </span>
                         </span>
                       </button>
@@ -1565,7 +1566,7 @@ export function Journal() {
                           }}>{h.name}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                          <span className="habit-row__streak">🔥 {h.target_per_week} วัน/สัปดาห์</span>
+                          <span className="habit-row__streak"><Icon name="flame" size={12} /> {h.target_per_week} วัน/สัปดาห์</span>
                           <button onClick={() => { if (confirm('ลบ Habit นี้?')) { deleteHabit(h.id).then(refresh); } }}
                             aria-label="ลบ Habit"
                             style={{ color: 'var(--ink-3)', fontSize: 12, padding: '2px 4px', background: 'none', border: 0, cursor: 'pointer' }}>×</button>

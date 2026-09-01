@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardHeader, Button, Badge } from '../ui/index.js';
 import { createScopeTransfer, listAccounts } from '../../lib/api/finance.js';
 import { todayStr } from '../../lib/dates.js';
+import { Icon } from '../Icon.jsx';
 
 const SCOPE_META = {
   personal: { label: 'ส่วนตัว',  icon: '👤', color: 'var(--accent-strong)' },
@@ -78,8 +79,8 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.18em' }}>
-              💸 SCOPE TRANSFER
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
+              <Icon name="transfer" size={14} /> โอนข้าม scope
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4, fontWeight: 600, letterSpacing: '-0.01em' }}>
               โอนเงินระหว่าง scope
@@ -99,7 +100,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
           border: '1px solid var(--hairline)', borderRadius: 'var(--radius-control)',
         }}>
           <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>จาก</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>จาก</div>
             <div style={{ fontSize: 22, marginTop: 4 }}>{fromMeta.icon}</div>
             <Badge tone="danger" size="sm" style={{ marginTop: 4 }}>
               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>-{fmt(amt)}</span>
@@ -123,7 +124,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
           </button>
 
           <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>ไป</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>ไป</div>
             <div style={{ fontSize: 22, marginTop: 4 }}>{toMeta.icon}</div>
             <Badge tone="success" size="sm" style={{ marginTop: 4 }}>
               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>+{fmt(amt)}</span>
@@ -192,24 +193,24 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             fontSize: 11.5, color: 'var(--text-primary)', fontFamily: 'var(--f-mono)',
             lineHeight: 1.7,
           }}>
-            <div style={{ fontSize: 10, color: 'var(--accent-strong)', letterSpacing: '0.14em', marginBottom: 4 }}>
+            <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)', marginBottom: 4 }}>
               จะสร้าง 2 รายการ:
             </div>
-            <div>👤 <strong>{fromMeta.label}</strong> · -{fmt(amt)} · "{title.trim() || `โอนไป${toMeta.label}`}"</div>
-            <div>❤️ <strong>{toMeta.label}</strong> · +{fmt(amt)} · "{title.trim() || `รับจาก${fromMeta.label}`}"</div>
+            <div><Icon name="user" size={13} /> <strong>{fromMeta.label}</strong> · -{fmt(amt)} · "{title.trim() || `โอนไป${toMeta.label}`}"</div>
+            <div><Icon name="health" size={13} /> <strong>{toMeta.label}</strong> · +{fmt(amt)} · "{title.trim() || `รับจาก${fromMeta.label}`}"</div>
           </div>
         )}
 
         {error && (
           <div style={{ padding: '10px 14px', background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)', fontSize: 13 }}>
-            ⚠️ {error}
+            <Icon name="warning" size={13} /> {error}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <Button type="button" variant="ghost" onClick={onClose}>ยกเลิก</Button>
           <Button type="submit" variant="primary" disabled={saving || !amount}>
-            {saving ? 'กำลังบันทึก...' : '💾 โอน 2 ฝั่ง'}
+            {saving ? 'กำลังบันทึก...' : 'โอน 2 ฝั่ง'}
           </Button>
         </div>
       </form>
@@ -220,7 +221,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
 function Field({ label, children }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.12em' }}>{label}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</span>
       {children}
     </label>
   );

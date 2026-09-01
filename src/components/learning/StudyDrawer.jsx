@@ -7,6 +7,7 @@ import {
   extractVideoId, getYouTubeEmbedUrl,
 } from '../../lib/api/learning.js';
 import { todayStr } from '../../lib/dates.js';
+import { Icon } from '../Icon.jsx';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  StudyDrawer — premium study/reading companion (open via source card)
@@ -42,10 +43,10 @@ export function StudyDrawer({ source, onClose, onChange }) {
   const openActions = insights.filter(i => i.kind === 'action' && !i.is_done).length;
 
   const tabs = [
-    { id: 'study',    label: isBook ? '📖 อ่าน' : isVideo ? '🎬 ดู' : '▶ เรียน' },
-    { id: 'insights', label: `💎 Insights${insights.length ? ` · ${insights.length}` : ''}` },
-    { id: 'sessions', label: `📜 Sessions${sessions.length ? ` · ${sessions.length}` : ''}` },
-    { id: 'stats',    label: '📊 Stats' },
+    { id: 'study',    label: isBook ? 'อ่าน' : isVideo ? 'ดู' : 'เรียน' },
+    { id: 'insights', label: `Insights${insights.length ? ` · ${insights.length}` : ''}` },
+    { id: 'sessions', label: `Sessions${sessions.length ? ` · ${sessions.length}` : ''}` },
+    { id: 'stats',    label: 'Stats' },
   ];
 
   return (
@@ -76,10 +77,10 @@ export function StudyDrawer({ source, onClose, onChange }) {
               width: 46, height: 62, borderRadius: 6, flexShrink: 0,
               background: 'var(--accent-soft)', border: '1px solid var(--border)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
-            }}>{isBook ? '📖' : isVideo ? '📺' : '📚'}</div>
+            }}><Icon name={isVideo ? 'play' : 'book'} size={22} /></div>
           )}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
               {isBook ? 'BOOK' : isVideo ? 'YOUTUBE' : source.type?.toUpperCase()} · {source.category || '—'}
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, color: 'var(--text-primary)', marginTop: 3, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -173,7 +174,7 @@ function ProgressHero({ source, stats, isBook }) {
       borderBottom: '1px solid var(--border)', flexShrink: 0,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em' }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
           {hasPages
             ? `อ่านแล้ว ${source.current_page || 0} / ${source.total_pages} หน้า`
             : 'ความคืบหน้า'}
@@ -197,13 +198,13 @@ function ProgressHero({ source, stats, isBook }) {
 
       {/* metric chips */}
       <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap' }}>
-        <MiniMetric icon="🔥" label="streak" value={stats.streak > 0 ? `${stats.streak} วัน` : '—'} hot={stats.streak >= 3} />
-        <MiniMetric icon="⏱" label="เวลารวม" value={stats.totalMin >= 60 ? `${Math.floor(stats.totalMin/60)}h ${stats.totalMin%60}m` : `${stats.totalMin}m`} />
-        {isBook && <MiniMetric icon="⚡" label="ความเร็ว" value={stats.pagesPerHour > 0 ? `${stats.pagesPerHour.toFixed(0)} น./ชม.` : '—'} />}
+        <MiniMetric icon={<Icon name="flame" size={15} />} label="streak" value={stats.streak > 0 ? `${stats.streak} วัน` : '—'} hot={stats.streak >= 3} />
+        <MiniMetric icon={<Icon name="clock" size={15} />} label="เวลารวม" value={stats.totalMin >= 60 ? `${Math.floor(stats.totalMin/60)}h ${stats.totalMin%60}m` : `${stats.totalMin}m`} />
+        {isBook && <MiniMetric icon={<Icon name="bolt" size={15} />} label="ความเร็ว" value={stats.pagesPerHour > 0 ? `${stats.pagesPerHour.toFixed(0)} น./ชม.` : '—'} />}
         {isBook && stats.daysToFinish != null && (
-          <MiniMetric icon="🏁" label="คาดว่าจบใน" value={`~${stats.daysToFinish} วัน`} />
+          <MiniMetric icon={<Icon name="flag" size={15} />} label="คาดว่าจบใน" value={`~${stats.daysToFinish} วัน`} />
         )}
-        <MiniMetric icon="⭐" label="เข้าใจเฉลี่ย" value={stats.avgScore ? `${stats.avgScore.toFixed(1)}/5` : '—'} />
+        <MiniMetric icon={<Icon name="star" size={15} />} label="เข้าใจเฉลี่ย" value={stats.avgScore ? `${stats.avgScore.toFixed(1)}/5` : '—'} />
       </div>
     </div>
   );
@@ -212,7 +213,7 @@ function ProgressHero({ source, stats, isBook }) {
 function MiniMetric({ icon, label, value, hot }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontSize: 13.5, fontWeight: 600, color: hot ? 'var(--accent-strong)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -301,7 +302,7 @@ function BookStudy({ source, onSaved }) {
   if (!source.total_pages) {
     return (
       <Card>
-        <CardHeader eyebrow="ตั้งค่าหนังสือ" title="📐 หนังสือเล่มนี้มีกี่หน้า?" />
+        <CardHeader eyebrow="ตั้งค่าหนังสือ" title="หนังสือเล่มนี้มีกี่หน้า?" />
         <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
           ใส่จำนวนหน้าทั้งหมดก่อน — ระบบจะได้คำนวณ % ความคืบหน้า, ความเร็วอ่าน
           และประมาณว่าอีกกี่วันจะอ่านจบให้อัตโนมัติ
@@ -333,14 +334,14 @@ function BookStudy({ source, onSaved }) {
         border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 14,
       }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>⏱ จับเวลาอ่าน</div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 40, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', letterSpacing: '0.04em', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}><Icon name="clock" size={13} /> จับเวลาอ่าน</div>
+        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 40, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {fmt(timerSec)}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {!running
-            ? <Button variant="primary" size="md" onClick={() => setRunning(true)}>▶ {timerSec > 0 ? 'อ่านต่อ' : 'เริ่ม'}</Button>
-            : <Button variant="secondary" size="md" onClick={() => setRunning(false)}>⏸ พัก</Button>}
+            ? <Button variant="primary" size="md" onClick={() => setRunning(true)}><Icon name="play" size={13} /> {timerSec > 0 ? 'อ่านต่อ' : 'เริ่ม'}</Button>
+            : <Button variant="secondary" size="md" onClick={() => setRunning(false)}><Icon name="pause" size={14} /> พัก</Button>}
           {timerSec > 0 && !running && (
             <Button variant="ghost" size="md" onClick={() => setTimerSec(0)}>↺ รีเซ็ต</Button>
           )}
@@ -363,13 +364,13 @@ function BookStudy({ source, onSaved }) {
 
       <ScorePicker value={score} onChange={setScore} />
 
-      <Field label="✨ สรุป — ได้อะไรจาก session นี้ (1-2 ประโยค)">
+      <Field label="สรุป — ได้อะไรจาก session นี้ (1-2 ประโยค)">
         <textarea value={summary} onChange={e => setSummary(e.target.value)} rows={3}
           placeholder='เช่น "Mark Douglas: ทุก trade คือ probability ไม่ใช่ certainty"'
           style={{ ...inputStyle, resize: 'vertical', minHeight: 70 }} />
       </Field>
 
-      <Field label="📝 Notes / quote / ข้ออ้างอิง (ไม่บังคับ)">
+      <Field label="Notes / quote / ข้ออ้างอิง (ไม่บังคับ)">
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           placeholder="p.45 — 'Best traders just lose less when wrong'"
           style={{ ...inputStyle, resize: 'vertical', minHeight: 56 }} />
@@ -377,12 +378,12 @@ function BookStudy({ source, onSaved }) {
 
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
         <Button variant="primary" size="md" onClick={handleSave} disabled={saving}>
-          {saving ? '...' : '💾 บันทึก Session'}
+          {saving ? '...' : 'บันทึก Session'}
         </Button>
       </div>
 
       <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
-        💡 อยากเก็บข้อคิด/quote/สิ่งที่จะลงมือทำถาวร? ไปแท็บ <strong>💎 Insights</strong>
+        <Icon name="bulb" size={13} /> อยากเก็บข้อคิด/quote/สิ่งที่จะลงมือทำถาวร? ไปแท็บ <strong>Insights</strong>
       </div>
     </Card>
   );
@@ -431,7 +432,7 @@ function InsightsBank({ source, insights, onChange }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {/* Quick add */}
       <Card>
-        <CardHeader eyebrow="คลังปัญญา" title="💎 เก็บข้อคิดจากเล่มนี้"
+        <CardHeader eyebrow="คลังปัญญา" title="เก็บข้อคิดจากเล่มนี้"
           meta="ข้อคิด · quote · สิ่งที่จะลงมือทำ" />
 
         {/* kind picker */}
@@ -493,7 +494,7 @@ function InsightsBank({ source, insights, onChange }) {
 
       {/* List */}
       {shown.length === 0 ? (
-        <EmptyState icon="💎" title="ยังไม่มี insight"
+        <EmptyState icon={<Icon name="gem" size={20} />} title="ยังไม่มี insight"
           description="ทุกครั้งที่อ่านเจออะไรดี ๆ เก็บไว้ที่นี่ — มันจะกลายเป็นคลังปัญญาส่วนตัวของเล่มนี้"
           compact />
       ) : (
@@ -613,7 +614,7 @@ function VideoStudy({ source, onSaved }) {
         </div>
       ) : (
         <Card padding={20}>
-          <EmptyState icon="📺" title="ไม่มี YouTube URL" description="แก้ source ใส่ url ก่อนเริ่ม study" compact />
+          <EmptyState icon={<Icon name="play" size={20} />} title="ไม่มี YouTube URL" description="แก้ source ใส่ url ก่อนเริ่ม study" compact />
         </Card>
       )}
 
@@ -625,31 +626,31 @@ function VideoStudy({ source, onSaved }) {
           border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 12,
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>⏱ TIMER</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}><Icon name="clock" size={13} /> จับเวลา</div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
             {String(Math.floor(timerSec/60)).padStart(2,'0')}:{String(timerSec%60).padStart(2,'0')}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             {!running
-              ? <Button variant="primary" size="sm" onClick={() => setRunning(true)}>▶ เริ่ม</Button>
-              : <Button variant="secondary" size="sm" onClick={() => setRunning(false)}>⏸ พัก</Button>}
+              ? <Button variant="primary" size="sm" onClick={() => setRunning(true)}><Icon name="play" size={13} /> เริ่ม</Button>
+              : <Button variant="secondary" size="sm" onClick={() => setRunning(false)}><Icon name="pause" size={14} /> พัก</Button>}
           </div>
         </div>
 
-        <Field label={`📍 ดูถึงนาทีไหน (วินาที) · ตอนนี้ ${fmt(videoSec)}`}>
+        <Field label={`ดูถึงนาทีไหน (วินาที) · ตอนนี้ ${fmt(videoSec)}`}>
           <input type="number" min="0" value={videoSec} onChange={e => setVideoSec(e.target.value)}
             style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
         </Field>
 
         <ScorePicker value={score} onChange={setScore} />
 
-        <Field label="✨ สรุป (key takeaway 1-2 ข้อ)">
+        <Field label="สรุป (key takeaway 1-2 ข้อ)">
           <textarea value={summary} onChange={e => setSummary(e.target.value)} rows={3}
             placeholder='เช่น "FVG ที่ใช้ได้จริงต้องมี H1 align กับ M15"'
             style={{ ...inputStyle, resize: 'vertical', minHeight: 70 }} />
         </Field>
 
-        <Field label="📝 Notes / timestamps สำคัญ">
+        <Field label="Notes / timestamps สำคัญ">
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
             placeholder="0:12:30 — Setup A+ · 0:24:15 — example chart"
             style={{ ...inputStyle, resize: 'vertical', minHeight: 56, fontFamily: 'var(--f-mono)' }} />
@@ -657,7 +658,7 @@ function VideoStudy({ source, onSaved }) {
 
         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
           <Button variant="primary" size="md" onClick={handleSave} disabled={saving}>
-            {saving ? '...' : '💾 บันทึก Session'}
+            {saving ? '...' : 'บันทึก Session'}
           </Button>
         </div>
       </Card>
@@ -707,7 +708,7 @@ function GenericStudy({ source, onSaved }) {
       <CardHeader eyebrow="Study Session" title="บันทึกการเรียนครั้งนี้" />
       {source.url && (
         <a href={source.url} target="_blank" rel="noopener noreferrer" className="btn btn--ghost btn--sm" style={{ marginBottom: 12, display: 'inline-flex' }}>
-          🔗 เปิดลิงก์
+          <Icon name="link" size={14} /> เปิดลิงก์
         </a>
       )}
       <div style={{
@@ -715,28 +716,28 @@ function GenericStudy({ source, onSaved }) {
         border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 12,
       }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>⏱ TIMER</div>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}><Icon name="clock" size={13} /> จับเวลา</div>
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: running ? 'var(--accent-strong)' : 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {String(Math.floor(timerSec/60)).padStart(2,'0')}:{String(timerSec%60).padStart(2,'0')}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {!running
-            ? <Button variant="primary" size="sm" onClick={() => setRunning(true)}>▶ เริ่ม</Button>
-            : <Button variant="secondary" size="sm" onClick={() => setRunning(false)}>⏸ พัก</Button>}
+            ? <Button variant="primary" size="sm" onClick={() => setRunning(true)}><Icon name="play" size={13} /> เริ่ม</Button>
+            : <Button variant="secondary" size="sm" onClick={() => setRunning(false)}><Icon name="pause" size={14} /> พัก</Button>}
         </div>
       </div>
       <ScorePicker value={score} onChange={setScore} />
-      <Field label="✨ สรุป (key takeaway)">
+      <Field label="สรุป (key takeaway)">
         <textarea value={summary} onChange={e => setSummary(e.target.value)} rows={3}
           style={{ ...inputStyle, resize: 'vertical', minHeight: 70 }} />
       </Field>
-      <Field label="📝 Notes (ไม่บังคับ)">
+      <Field label="Notes (ไม่บังคับ)">
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           style={{ ...inputStyle, resize: 'vertical', minHeight: 56 }} />
       </Field>
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 10 }}>
         <Button variant="primary" size="md" onClick={handleSave} disabled={saving}>
-          {saving ? '...' : '💾 บันทึก Session'}
+          {saving ? '...' : 'บันทึก Session'}
         </Button>
       </div>
     </Card>
@@ -748,7 +749,7 @@ function GenericStudy({ source, onSaved }) {
 // ════════════════════════════════════════════════════════════════════════════
 function SessionList({ sessions, onDelete }) {
   if (!sessions.length) {
-    return <EmptyState icon="📜" title="ยังไม่มี session" description="ไปแท็บแรกเพื่อเริ่ม session ของคุณ" compact />;
+    return <EmptyState icon={<Icon name="history" size={20} />} title="ยังไม่มี session" description="ไปแท็บแรกเพื่อเริ่ม session ของคุณ" compact />;
   }
   return (
     <Card>
@@ -781,7 +782,7 @@ function SessionList({ sessions, onDelete }) {
             </div>
             {s.summary && (
               <div style={{ fontSize: 12.5, color: 'var(--text-primary)', padding: '6px 0 0', borderTop: '1px solid var(--border)', lineHeight: 1.6 }}>
-                ✨ {s.summary}
+                <Icon name="spark" size={13} /> {s.summary}
               </div>
             )}
             {s.notes && (
@@ -825,20 +826,20 @@ function StatsTab({ source, stats, insights, onCompletePass }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-          <Stat label="🔥 Streak"       value={stats.streak > 0 ? `${stats.streak} วัน` : '—'} />
+          <Stat label="Streak"       value={stats.streak > 0 ? `${stats.streak} วัน` : '—'} />
           <Stat label="Sessions"        value={stats.sessionsCount} sub={`${stats.readingDays} วันที่อ่าน`} />
           <Stat label="เวลารวม"          value={`${Math.floor(stats.totalMin/60)}h ${stats.totalMin%60}m`} />
           <Stat label="คะแนนเฉลี่ย"      value={stats.avgScore ? `${stats.avgScore.toFixed(1)}/5` : '—'} />
           {isBook && <Stat label="หน้ารวม"     value={`${stats.totalPages}`} sub={`${stats.pagesPerHour.toFixed(0)} หน้า/ชม.`} />}
           {isBook && stats.daysToFinish != null && <Stat label="คาดว่าจบใน" value={`~${stats.daysToFinish} วัน`} sub={`${stats.pagesPerDay.toFixed(0)} หน้า/วัน`} />}
           {isBook && stats.readingCount > 0 && <Stat label="อ่านจบแล้ว"  value={`${stats.readingCount} รอบ`} />}
-          {actionsTotal > 0 && <Stat label="✅ ลงมือทำ" value={`${actionsDone}/${actionsTotal}`} sub="action items" />}
+          {actionsTotal > 0 && <Stat label="ลงมือทำ" value={`${actionsDone}/${actionsTotal}`} sub="action items" />}
         </div>
       </Card>
 
       {isBook && (
         <Button variant="secondary" fullWidth onClick={onCompletePass}>
-          🎁 บันทึกว่า "อ่านจบรอบที่ {(source.reading_count || 0) + 1}"
+          <Icon name="gift" size={14} /> บันทึกว่า "อ่านจบรอบที่ {(source.reading_count || 0) + 1}"
         </Button>
       )}
     </div>
@@ -850,8 +851,8 @@ function ScorePicker({ value, onChange }) {
   const labels = { 1: 'งง', 2: 'ยังไม่ค่อย', 3: 'พอเข้าใจ', 4: 'เข้าใจดี', 5: 'แม่นมาก' };
   return (
     <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em', marginBottom: 6 }}>
-        ⭐ ความเข้าใจ session นี้
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+        <Icon name="star" size={13} /> ความเข้าใจ session นี้
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {[1,2,3,4,5].map(n => (
@@ -875,7 +876,7 @@ function ScorePicker({ value, onChange }) {
 function Stat({ label, value, sub }) {
   return (
     <div style={{ padding: '10px 12px', background: 'var(--background-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-control)' }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.14em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--text-primary)', fontWeight: 600, marginTop: 2 }}>{value}</div>
       {sub && <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', marginTop: 2 }}>{sub}</div>}
     </div>
@@ -885,7 +886,7 @@ function Stat({ label, value, sub }) {
 function Field({ label, children }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
-      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>{label}</span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>{label}</span>
       {children}
     </label>
   );

@@ -6,6 +6,7 @@ import { formatBaht } from './KPICard.jsx';
 import { formatThaiMonth } from './MonthNav.jsx';
 import { currentYearMonth } from '../../lib/api/finance.js';
 import { Card, CardHeader } from '../ui/index.js';
+import { Icon } from '../Icon.jsx';
 
 // ── Drill-down: the transactions behind one insight ───────────────────────────
 function TxnList({ items = [], accountName, nested = false, extraMeta }) {
@@ -13,9 +14,10 @@ function TxnList({ items = [], accountName, nested = false, extraMeta }) {
   return (
     <div className={'leak-detail' + (nested ? ' leak-detail--nested' : '')}>
       <div style={{
-        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap',
-        fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
-        color: 'var(--text-muted)', padding: '6px 0 8px',
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: 500,
+        display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', fontSize: 13,
+        color: 'var(--text-muted)', padding: '6px 0 8px'
       }}>
         <span>{items.length} รายการ</span>
         <span>·</span>
@@ -201,8 +203,8 @@ export function MoneyLeaks({
         meta="แตะแถวไหนก็ได้เพื่อดูว่าตัวเลขนั้นมาจากรายการอะไรบ้าง"
         action={
           <span style={{
-            fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.14em',
-            textTransform: 'uppercase', color: 'var(--text-muted)',
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
           }}>{monthLabel}</span>
         }
       />
@@ -210,7 +212,7 @@ export function MoneyLeaks({
       {/* Savings rate hero */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap', marginBottom: 6 }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>อัตราการออม</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>อัตราการออม</div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 30, fontWeight: 600, color: srColor, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
             {thisSum.savingsRate.toFixed(0)}%
           </div>
@@ -243,15 +245,16 @@ export function MoneyLeaks({
         {recurring.length > 0 && (() => {
           const id = 'subs';
           return (
-            <LeakRow key={id} id={id} icon="🔁"
+            <LeakRow key={id} id={id} icon={<Icon name="refresh" size={15} />}
               title={`บิล/subscription ซ้ำ ${recurring.length} รายการ`}
               detail={`เรียกเก็บล่าสุด · ${recurring.map(r => r.title).slice(0, 3).join(' · ')}`}
               value={`${formatBaht(recurringTotal)}/ด`} tone="var(--accent-strong)"
               expanded={openRow === id} onActivate={() => toggle(id)}>
               <div className="leak-detail">
                 <div style={{
-                  fontFamily: 'var(--f-mono)', fontSize: 10.5, letterSpacing: '0.06em',
-                  color: 'var(--text-muted)', padding: '6px 0 4px',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 500, fontSize: 13,
+                  color: 'var(--text-muted)', padding: '6px 0 4px'
                 }}>
                   {recurring.length} รายการ · เรียกเก็บล่าสุด · รวม <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatBaht(recurringTotal)}</span>/เดือน
                 </div>
@@ -280,7 +283,7 @@ export function MoneyLeaks({
         {frequent.map(c => {
           const id = 'freq-' + c.key;
           return (
-            <LeakRow key={id} id={id} icon="☕"
+            <LeakRow key={id} id={id} icon={<Icon name="money" size={15} />}
               title={`${c.category} — เล็กแต่ถี่`}
               detail={`${c.count} ครั้ง · เฉลี่ย ${formatBaht(c.avg)}/ครั้ง`}
               value={formatBaht(c.amount)}
@@ -293,7 +296,7 @@ export function MoneyLeaks({
         {/* Debt interest — its detail is a debt, not a set of transactions,
             so this one jumps to the Debt Tracker card instead of expanding. */}
         {remainingInterest > 0 && (
-          <LeakRow id="debt" icon="🏦"
+          <LeakRow id="debt" icon={<Icon name="bank" size={15} />}
             title="ดอกเบี้ยหนี้ที่ยังต้องจ่าย"
             detail={worst
               ? `ถล่มก้อนดอกสูงสุดก่อน: ${worst.name} (${Number(worst.interest_rate).toFixed(1)}%) → ไปที่ตารางหนี้`
@@ -323,7 +326,7 @@ export function MoneyLeaks({
 
       <div style={{ marginTop: 12, fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 13, color: 'var(--text-muted)' }}>
         {thisSum.savingsRate >= 20
-          ? 'ออมได้ดีมาก — รักษาระดับนี้ไว้ 💪'
+          ? 'ออมได้ดีมาก — รักษาระดับนี้ไว้ '
           : thisSum.savingsRate >= 0
             ? 'เริ่มจากอุดรูที่ใหญ่สุดด้านบนก่อน แล้วค่อยไล่ลงมา'
             : 'เดือนนี้ใช้เกินรายรับ — ดูหมวดที่โตขึ้นด้านบนเป็นอันดับแรก'}

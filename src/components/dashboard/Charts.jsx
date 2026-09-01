@@ -1,5 +1,6 @@
 import { formatBaht } from './KPICard.jsx';
 import { Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
+import { Icon } from '../Icon.jsx';
 
 const CATEGORY_COLORS = {
   food:      'var(--accent)',
@@ -23,7 +24,7 @@ export function CategoryBreakdown({ data, totalExpense }) {
       <Card>
         <CardHeader eyebrow="หมวด" title="รายจ่ายตามหมวด" />
         <EmptyState
-          icon="🍜"
+          icon={<Icon name="money" size={20} />}
           title="ยังไม่มีรายจ่ายเดือนนี้"
           description="เมื่อมีรายจ่าย จะแบ่งเป็นหมวด เช่น อาหาร เดินทาง บิล ให้อัตโนมัติ"
           compact
@@ -83,7 +84,7 @@ export function TopExpenses({ data }) {
       <Card>
         <CardHeader eyebrow="Top 10" title="รายจ่ายใหญ่สุด" />
         <EmptyState
-          icon="💸"
+          icon={<Icon name="transfer" size={20} />}
           title="ยังไม่มีรายจ่าย"
           description="เมื่อมีรายการ จะแสดง 10 อันดับรายจ่ายที่ใหญ่ที่สุดของเดือน"
           compact
@@ -136,7 +137,7 @@ export function BudgetProgress({ budgets, categoryActuals, onAddBudget }) {
       <Card>
         <CardHeader eyebrow="งบประมาณ" title="งบ vs จ่ายจริง" />
         <EmptyState
-          icon="◎"
+          icon={<Icon name="target" size={20} />}
           title="ยังไม่ได้ตั้งงบเดือนนี้"
           description="ตั้งงบต่อหมวด (อาหาร เดินทาง บิล) เพื่อ track การใช้จ่ายให้อยู่ในแผน"
           actionLabel={onAddBudget ? 'ตั้งงบแรก' : null}
@@ -209,7 +210,7 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
       <Card style={{ height: '100%' }}>
         <CardHeader eyebrow="มูลค่าสุทธิ" title="Net Worth" />
         <EmptyState
-          icon="💼"
+          icon={<Icon name="work" size={20} />}
           title="ยังไม่มีบัญชี"
           description="เพิ่มบัญชี/ทรัพย์สิน หรือ import จาก Make จะสร้างให้อัตโนมัติ"
           compact
@@ -237,10 +238,11 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
 
       {unconfirmed && (
         <div style={{
-          fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em',
-          color: 'var(--warning)', marginBottom: 8,
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500, fontSize: 13,
+          color: 'var(--warning)', marginBottom: 8
         }}>
-          ⚠️ ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
+          <Icon name="warning" size={13} /> ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
         </div>
       )}
 
@@ -257,7 +259,7 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
         <NWRow label="หนี้สิน"    value={liabilities} color="var(--danger)" sign="-" />
         <div style={{ height: 1, background: 'var(--hairline)', margin: '4px 0' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', letterSpacing: '0.12em' }}>DEBT RATIO</span>
+          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)'}}>DEBT RATIO</span>
           <Badge tone={debtRatio > 50 ? 'danger' : debtRatio > 30 ? 'warning' : 'success'} size="sm">
             {debtRatio.toFixed(1)}%
           </Badge>
@@ -353,8 +355,8 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
         {['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'].map((d, i) => (
           <div key={i} style={{
-            textAlign: 'center', fontSize: 10, color: 'var(--text-muted)',
-            fontFamily: 'var(--f-mono)', letterSpacing: '0.1em', fontWeight: 500,
+            fontVariantNumeric: 'tabular-nums',
+            textAlign: 'center', fontSize: 10, color: 'var(--text-muted)', fontWeight: 500
           }}>{d}</div>
         ))}
       </div>

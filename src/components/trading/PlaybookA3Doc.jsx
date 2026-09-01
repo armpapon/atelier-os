@@ -108,7 +108,7 @@ const s = {
   statV:{ fontFamily: 'var(--f-mono)', fontSize: 21, color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums' },
   statL:{ fontSize: 12.5, color: 'var(--text-muted)' },
   table:{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 },
-  th: { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-muted)', textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--border)' },
+  th: { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--border)' },
   td: { padding: '8px 12px', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' },
   callout:{ borderLeft: '4px solid var(--accent)', background: 'var(--accent-soft)', borderRadius: '0 10px 10px 0', padding: '12px 16px', fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)', margin: '10px 0' },
   warn:{ borderLeft: '4px solid var(--danger)', background: 'var(--danger-soft)', borderRadius: '0 10px 10px 0', padding: '12px 16px', fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)', margin: '10px 0' },
@@ -118,8 +118,8 @@ export function PlaybookA3Doc() {
   return (
     <Card>
       <div style={{ maxWidth: 780 }}>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '.12em', color: 'var(--accent-strong)', textTransform: 'uppercase' }}>
-          A3 PLAYBOOK · ฉบับเต็ม
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)'}}>
+          A3 Playbook · ฉบับเต็ม
         </div>
         <p style={{ ...s.p, marginTop: 8 }}>
           เข้าเมื่อ<b>โมเมนตัมเพิ่งกลับทิศ</b> — เฉพาะฝั่งเดียวกับ<b>เทรนใหญ่</b> — แล้วปล่อยให้กำไรวิ่ง

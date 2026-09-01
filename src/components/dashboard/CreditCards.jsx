@@ -27,11 +27,12 @@ import {
   canShareInto, lineSharersOf,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
+import { Icon } from '../Icon.jsx';
 
 // ── Tokens shared by every block in this file ────────────────────────────────
 const MONO_LABEL = {
-  fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em',
-  textTransform: 'uppercase', color: 'var(--text-muted)',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
 };
 const FACT_BOX = {
   background: 'var(--background-soft)', border: '1px solid var(--hairline)',
@@ -99,10 +100,10 @@ function CardFace({ card, url, cancelled }) {
   }
   return (
     <div style={{
+      fontVariantNumeric: 'tabular-nums',
       width: 44, height: 32, borderRadius: 7, flex: 'none',
       display: 'grid', placeItems: 'center', color: '#fff',
-      background: cancelled ? 'var(--text-muted)' : chipTone(card),
-      fontFamily: 'var(--f-mono)', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+      background: cancelled ? 'var(--text-muted)' : chipTone(card), fontSize: 10, fontWeight: 700
     }}>{chipLabel(card)}</div>
   );
 }
@@ -131,9 +132,9 @@ function UtilBar({ pct, showTickLabel = false, height = 8 }) {
       }}>
         {showTickLabel && (
           <span style={{
+            fontWeight: 500,
             position: 'absolute', top: -15, left: '50%', transform: 'translateX(-50%)',
-            fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)',
-            letterSpacing: '0.05em', whiteSpace: 'nowrap',
+            fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--text-muted)', whiteSpace: 'nowrap'
           }}>30%</span>
         )}
       </div>
@@ -977,7 +978,7 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
       <Card>
         <CardHeader title="บัตรเครดิต" meta="รอติดตั้งตารางในฐานข้อมูล" />
         <EmptyState
-          icon="💳"
+          icon={<Icon name="card" size={20} />}
           title="ยังไม่ได้ติดตั้งตาราง credit_cards — รัน SQL migration ใน Supabase แล้วรีเฟรช"
           description="เปิด Supabase → SQL Editor → รัน supabase/migration_add_credit_cards.sql (ตั้งชื่อแท็บว่า loop_credit_cards) แล้วกลับมารีเฟรชหน้านี้ หน้าอื่นในแอปใช้งานได้ตามปกติ"
           compact
@@ -1018,7 +1019,7 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
             <Card>
               <CardHeader title="บัตรเครดิต" meta="เริ่มจากใบแรก" />
               <EmptyState
-                icon="💳"
+                icon={<Icon name="card" size={20} />}
                 title="ยังไม่มีบัตรในระบบ"
                 description="กรอกเอง: ชื่อบัตร · วงเงิน · วันสรุปยอด/ครบกำหนด · เงื่อนไขฟรีค่าธรรมเนียม — แล้วหน้านี้จะสรุป utilization ดอกเบี้ย และบิลถัดไปให้เอง"
                 actionLabel="+ เพิ่มบัตร"

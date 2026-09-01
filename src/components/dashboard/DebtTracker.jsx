@@ -4,6 +4,7 @@ import {
   summarizeDebts, forecastDebts, recordDebtPayment, deleteDebtPayment, deleteDebt,
   calculateDebtMath, simulatePayoff, archiveDebt,
 } from '../../lib/api/finance.js';
+import { Icon } from '../Icon.jsx';
 
 const TYPE_META = {
   loan:         { icon: '🏦', label: 'สินเชื่อ' },
@@ -91,7 +92,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`💳 หนี้สิน & ผ่อนชำระ · ${debts.length} รายการ`}
+        eyebrow={`หนี้สิน & ผ่อนชำระ · ${debts.length} รายการ`}
         title="Debt Tracker"
         meta={debts.length > 0
           ? `ภาระต่อเดือน ${fmt(summary.monthlyBurden)}`
@@ -102,12 +103,12 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {debts.length > 1 && (
               <Button variant="ghost" size="sm" onClick={() => setShowStrategy(s => !s)}>
-                {showStrategy ? '× Strategy' : '⚡ โปะหนี้'}
+                {showStrategy ? '× Strategy' : 'โปะหนี้'}
               </Button>
             )}
             {debts.length > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setShowForecast(s => !s)}>
-                {showForecast ? '× Forecast' : '📊 Forecast'}
+                {showForecast ? '× Forecast' : 'Forecast'}
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>+ เพิ่ม</Button>
@@ -139,7 +140,7 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
       {/* Empty state */}
       {debts.length === 0 && !showAdd ? (
         <EmptyState
-          icon="💳"
+          icon={<Icon name="card" size={20} />}
           title="ยังไม่มีรายการหนี้สิน"
           description="เพิ่มหนี้สินที่ผ่อนรายเดือน (บัตรเครดิต ผ่อนรถ บ้าน) เพื่อ track ว่าจ่ายหรือยัง และ forecast วันปลอดหนี้"
           actionLabel="เพิ่มหนี้สินแรก"
@@ -180,8 +181,8 @@ export function DebtTracker({ debts, payments, yearMonth, scope, onChange }) {
         <div style={{
           marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
         }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em', marginBottom: 8 }}>
-            📊 FORECAST · 12 เดือนข้างหน้า
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
+            <Icon name="chart" size={14} /> คาดการณ์ · 12 เดือนข้างหน้า
           </div>
           <ForecastChart data={forecast} />
         </div>
@@ -287,7 +288,7 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
           /* B8: nothing left to pay — offer to file it away instead of
              nagging for a payment that does not exist. */
           <Button variant="secondary" size="sm" onClick={onArchive}>
-            🗂 ผ่อนหมดแล้ว — เก็บเข้าคลัง
+            <Icon name="archive" size={14} /> ผ่อนหมดแล้ว — เก็บเข้าคลัง
           </Button>
         ) : status.status === 'upcoming' ? (
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', alignSelf: 'center' }}>
@@ -370,7 +371,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
       borderRadius: 'var(--radius-control)', padding: 14,
       display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12,
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {initial ? 'แก้ไขหนี้สิน' : 'เพิ่มหนี้สินใหม่'}
       </div>
 
@@ -448,7 +449,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
           borderRadius: 'var(--radius-control)', fontSize: 11, color: 'var(--accent-strong)',
           fontFamily: 'var(--f-mono)',
         }}>
-          💡 ใส่อย่างใดอย่างหนึ่งก็พอ — ถ้ามีดอกเบี้ย ระบบจะคำนวณเงินต้นและดอกเบี้ยรวมให้
+          <Icon name="bulb" size={13} /> ใส่อย่างใดอย่างหนึ่งก็พอ — ถ้ามีดอกเบี้ย ระบบจะคำนวณเงินต้นและดอกเบี้ยรวมให้
         </div>
       )}
 
@@ -475,7 +476,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>ยกเลิก</Button>
         <Button type="submit" variant="primary" size="sm" disabled={saving}>
-          {saving ? '...' : (initial ? '💾 บันทึก' : '+ เพิ่มหนี้สิน')}
+          {saving ? '...' : (initial ? 'บันทึก' : '+ เพิ่มหนี้สิน')}
         </Button>
       </div>
     </form>
@@ -489,8 +490,8 @@ function StatTile({ label, value, color, sub, small }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <div style={{
-        fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)',
-        letterSpacing: '0.14em', textTransform: 'uppercase',
+        fontVariantNumeric: 'tabular-nums',
+        fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
       }}>{label}</div>
       <div style={{
         fontFamily: 'var(--f-display)', fontSize: small ? 17 : 22, fontWeight: 600,
@@ -554,7 +555,7 @@ function ForecastChart({ data }) {
 function MiniStat({ label, value, color, sub }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+      <div style={{ fontWeight: 500, fontSize: 9, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontSize: 12, color, fontWeight: 600, fontVariantNumeric: 'tabular-nums', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -614,8 +615,8 @@ function DebtStrategyCard({ debts }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.16em' }}>
-            ⚡ STRATEGY · โปะหนี้
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
+            <Icon name="bolt" size={14} /> กลยุทธ์ · โปะหนี้
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
             {desc}
@@ -624,8 +625,8 @@ function DebtStrategyCard({ debts }) {
         {/* Strategy toggle */}
         <div style={{ display: 'flex', gap: 4, background: 'var(--background-soft)', padding: 3, borderRadius: 'var(--radius-pill)', border: '1px solid var(--hairline)' }}>
           {[
-            { id: 'snowball',  label: '⛄ Snowball'  },
-            { id: 'avalanche', label: '⛰ Avalanche' },
+            { id: 'snowball',  label: 'Snowball'  },
+            { id: 'avalanche', label: 'Avalanche' },
           ].map(s => (
             <button key={s.id} onClick={() => setStrategy(s.id)} className="focus-ring"
               style={{
@@ -648,7 +649,7 @@ function DebtStrategyCard({ debts }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            💵 โปะเพิ่มต่อเดือน
+            <Icon name="money" size={14} /> โปะเพิ่มต่อเดือน
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>฿</span>
@@ -675,9 +676,9 @@ function DebtStrategyCard({ debts }) {
         background: 'var(--accent-soft)', border: '1px solid var(--accent)',
         display: 'flex', alignItems: 'center', gap: 14,
       }}>
-        <span style={{ fontSize: 30, lineHeight: 1 }}>🎯</span>
+        <span style={{ color: 'var(--accent-strong)', lineHeight: 1 }}><Icon name="target" size={28} /></span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent-strong)' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)' }}>
             วันปลอดหนี้
           </div>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, fontWeight: 600, color: 'var(--accent-strong)', lineHeight: 1.15 }}>
@@ -709,7 +710,7 @@ function DebtStrategyCard({ debts }) {
 
       {/* Payoff order */}
       <div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.14em', marginBottom: 8 }}>
+        <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
           ลำดับการปลอดหนี้
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

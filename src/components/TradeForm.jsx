@@ -151,7 +151,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
             <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · A3'}</div>
             <div style={s.title}>{isEdit ? 'แก้ไข Trade' : 'บันทึก Trade ใหม่'}</div>
           </div>
-          <button type="button" onClick={onClose} style={s.close}>✕</button>
+          <button type="button" onClick={onClose} style={s.close}><Icon name="x" size={15} /></button>
         </div>
 
         <div style={s.body}>
@@ -217,7 +217,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
                 {rManual && (
                   <button type="button" onClick={() => setRManual(false)}
                     title="กลับไปคิดอัตโนมัติ"
-                    style={{ ...s.btnGhost, padding: '9px 10px', fontSize: 12, flexShrink: 0 }}>↻</button>
+                    style={{ ...s.btnGhost, padding: '9px 10px', fontSize: 12, flexShrink: 0 }}><Icon name="refresh" size={15} /></button>
                 )}
               </div>
             </Field>
@@ -315,8 +315,8 @@ function Field({ label, hint, children }) {
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{
-          fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em',
-          textTransform: 'uppercase', color: 'var(--ink-3)',
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'
         }}>{label}</span>
         {hint && <span style={{ fontSize: 10, color: 'var(--ink-4)' }}>{hint}</span>}
       </div>
@@ -342,8 +342,8 @@ const s = {
     padding: '24px 28px 18px', borderBottom: '1px solid var(--line)',
   },
   eyebrow: {
-    fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.22em',
-    textTransform: 'uppercase', color: 'var(--amber-2)', marginBottom: 6,
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 500, fontSize: 13, color: 'var(--amber-2)', marginBottom: 6
   },
   title: { fontFamily: 'var(--f-display)', fontSize: 24, color: 'var(--ink)' },
   close: {
@@ -365,11 +365,12 @@ const s = {
   },
   segGroup: { display: 'flex', gap: 6 },
   segBtn: {
+    fontVariantNumeric: 'tabular-nums',
+    fontWeight: 500,
     flex: 1, padding: '8px 10px',
     background: 'var(--bg-2)', border: '1px solid var(--line)',
-    borderRadius: 'var(--radius-pill)', color: 'var(--ink-2)',
-    fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.06em',
-    cursor: 'pointer', transition: 'all 120ms',
+    borderRadius: 'var(--radius-pill)', color: 'var(--ink-2)', fontSize: 13,
+    cursor: 'pointer', transition: 'all 120ms'
   },
   footer: {
     display: 'flex', gap: 10, padding: '18px 28px',

@@ -27,9 +27,9 @@ export function Badge({ children, tone = 'neutral', size = 'md', style }) {
       background: t.bg, color: t.color,
       border: '1px solid ' + t.border,
       borderRadius: 'var(--radius-pill)',
-      fontFamily: 'var(--f-mono)', letterSpacing: '0.04em',
+      fontFamily: 'var(--f-mono)',
       lineHeight: 1.4,
-      ...sz, ...style,
+      ...sz, ...style
     }}>
       {children}
     </span>

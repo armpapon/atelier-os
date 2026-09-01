@@ -19,6 +19,7 @@ import { parsePettyCash, deriveFlags, parseName, tabYear } from '../lib/pettyCas
 import { flattenSlides, parseDeck, compareRow, lineItems } from '../lib/pettySlides.js';
 import { parseFormResponses, reconcile, reconByPerson, destMatchInfo, payQueue, crossTabDups, formCoverage } from '../lib/pettyRecon.js';
 import { parseStatementText, matchStatement, txnCounterparty } from '../lib/pettyStatement.js';
+import { Icon } from '../components/Icon.jsx';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const gridFields = v => `sheets(properties(title,sheetId),data(rowData(values(${v}))))`;
@@ -85,7 +86,7 @@ const FLAG_TONE = t => (t === 'slideDup' || t === 'workDup' || t === 'noSource' 
 // UTC getters or evening submissions (after 17:00 UTC+7) show the next day.
 const fmtD = d => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
 const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
-const lbl = { fontFamily: 'var(--f-mono)', fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+const lbl = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
 
 // Slide-compare results persist in localStorage so they survive a reload (the
 // session cache is in-memory only) — Pat runs them once per person and expects
@@ -370,13 +371,13 @@ export function PettyCash() {
       )}
       {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
       <button onClick={() => load(sheetId, tab)} disabled={busy} title="รีเฟรช"
-        style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+        style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
       <button onClick={() => {
         setEditing(true);
         setUrlInput(integ?.meta?.pettycash_sheet_url || '');
         setFormUrlInput(integ?.meta?.pettycash_form_sheet_url || '');
       }} title="ตั้งค่าชีท"
-        style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
+        style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}><Icon name="gear" size={15} /></button>
     </div>
   );
 
@@ -487,13 +488,13 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         <Tile v={baht(totalOut)} l={`เบิกออก · ${month == null ? year : TH_MONTHS[month]}`} />
         <Tile v={shownRows.length} l={`รายการ · ${employees.length} คน`} />
-        <Tile v={flaggedCount} l="🔎 รายการมีจุดสังเกต" warn={flaggedCount > 0} />
+        <Tile v={flaggedCount} l="รายการมีจุดสังเกต" warn={flaggedCount > 0} />
         <Tile v={Object.keys(marks).length} l="✓ รีวิวแล้ว (รายการ)" />
       </div>
 
       {!hasSlides && (
         <div style={{ ...mono10, background: 'var(--surface-2)', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', padding: '9px 12px', color: 'var(--ink-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-          <span>💡 เชื่อม Google Slides เพิ่ม เพื่อให้ Loop เทียบยอดในสไลด์กับชีทอัตโนมัติ</span>
+          <span><Icon name="bulb" size={13} /> เชื่อม Google Slides เพิ่ม เพื่อให้ Loop เทียบยอดในสไลด์กับชีทอัตโนมัติ</span>
           <button className="btn btn--ghost" style={{ flexShrink: 0 }} onClick={onConnectSlides}>เชื่อมสไลด์</button>
         </div>
       )}
@@ -501,7 +502,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
       {/* People — grouped: observations first, all-clear below, office last */}
       {flagged.length > 0 && (
         <>
-          <SectionHead icon="🔎" text={`มีจุดสังเกต · ${flagged.length} คน`} tone="warn" />
+          <SectionHead icon={<Icon name="search" size={15} />} text={`มีจุดสังเกต · ${flagged.length} คน`} tone="warn" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {flagged.map(p => (
               <PersonCard key={p.code} p={p} open={openCode === p.code}
@@ -514,7 +515,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
       )}
       {clean.length > 0 && (
         <>
-          <SectionHead icon="✓" text={`เรียบร้อย ไม่มีจุดสังเกต · ${clean.length} คน`} tone="ok" />
+          <SectionHead icon={<Icon name="check" size={15} />} text={`เรียบร้อย ไม่มีจุดสังเกต · ${clean.length} คน`} tone="ok" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {clean.map(p => (
               <PersonCard key={p.code} p={p} open={openCode === p.code}
@@ -527,7 +528,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
       )}
       {seal && (
         <>
-          <SectionHead icon="🏢" text="บริษัท / ออฟฟิศ" />
+          <SectionHead icon={<Icon name="building" size={15} />} text="บริษัท / ออฟฟิศ" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             <PersonCard p={seal} open={openCode === seal.code}
               onToggle={() => setOpenCode(openCode === seal.code ? null : seal.code)}
@@ -540,7 +541,7 @@ function Board({ data, recon, month, setMonth, openCode, setOpenCode, slidesByCo
       <div style={{ fontSize: 12, color: 'var(--ink-3)', borderTop: '1px dashed var(--line-2)', paddingTop: 12, lineHeight: 1.7 }}>
         <b style={{ color: 'var(--ink-2)', fontWeight: 500 }}>Loop แค่ตรวจ ไม่จ่าย</b> · กดการ์ดคนเพื่อดูทุกการเบิก + หลักฐาน ·
         {recon?.coverage && <> เทียบกับใบเบิกฟอร์มอัตโนมัติ (ฟอร์มเริ่มใช้ {TH_MONTHS[recon.coverage.m]} {recon.coverage.y} — ก่อนหน้านั้นไม่ตัดสิน "ไม่ได้กรอกฟอร์ม") ·</>}
-        {' '}ปุ่ม ✓/✗ เก็บในเครื่องนี้ (ย้ายขึ้นฐานข้อมูลภายหลังได้)
+        {' '}ปุ่มถูก/ผิด เก็บในเครื่องนี้ (ย้ายขึ้นฐานข้อมูลภายหลังได้)
       </div>
     </div>
   );
@@ -657,13 +658,13 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
               : 'ให้ Loop อ่านเด็คของคนนี้แล้วเทียบยอดในสไลด์กับชีท'}
           </span>
           <button className="btn btn--ghost" disabled={comparing} onClick={() => compareDeck(p)} style={{ flexShrink: 0 }}>
-            {comparing ? 'กำลังอ่านสไลด์…' : (slides ? '↻ เทียบใหม่' : '🔍 เทียบกับสไลด์')}
+            {comparing ? 'กำลังอ่านสไลด์…' : (slides ? 'เทียบใหม่' : 'เทียบกับสไลด์')}
           </button>
         </div>
       )}
       {monthKeys.map(mk => (
         <div key={mk}>
-          <div style={{ padding: '5px 14px', background: 'var(--surface-2)', ...mono10, letterSpacing: '0.12em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ padding: '5px 14px', background: 'var(--surface-2)', ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
             <span>{mk === -1 ? 'ไม่ระบุเดือน' : TH_MONTHS[mk]} · {byMonth[mk].length} รายการ</span>
             <span>{baht(byMonth[mk].reduce((s, r) => s + r.amountOut, 0))}</span>
           </div>
@@ -680,8 +681,8 @@ function PersonDetail({ p, slides, comparing, compareDeck, hasSlides, byRow, par
       {/* Form-side observations — these have no sheet row to sit on */}
       {(p.formMissing?.length > 0 || p.formPending?.length > 0 || p.formDups?.length > 0) && (
         <div>
-          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, color: 'var(--danger)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-            🧾 ใบเบิกจากฟอร์มที่ยังไม่อยู่ในชีท
+          <div style={{ padding: '5px 14px', background: 'var(--danger-soft)', ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, color: 'var(--danger)'}}>
+            <Icon name="clipboard" size={14} /> ใบเบิกจากฟอร์มที่ยังไม่อยู่ในชีท
           </div>
           {p.formDups?.map(([a, b], i) => (
             <FormRow key={`d${i}`} tone="bad" tag="ส่งฟอร์มซ้ำ" help={FLAG_HELP.formDup}
@@ -767,7 +768,7 @@ function StatementPanel({ rows, sheetId, tab }) {
     <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', background: 'var(--surface)', overflow: 'hidden' }}>
       <button onClick={() => setOpen(v => !v)}
         style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-        <span style={{ fontSize: 14, fontWeight: 500 }}>🏦 เทียบ statement</span>
+        <span style={{ fontSize: 14, fontWeight: 500 }}><Icon name="bank" size={14} /> เทียบ statement</span>
         <span style={{ fontSize: 11.5, color: 'var(--ink-3)', flex: 1 }}>
           {R ? `${R.summary.rowsMatched}/${R.summary.rowsTotal} รายการชีทเจอเงินจริง · รอยืนยัน ${R.ask.length}` : 'อัปโหลด statement จากแอพ Make เพื่อพิสูจน์ว่าเงินจริงเดินตามชีท — ประมวลผลในเครื่อง ไม่ส่งขึ้นเซิร์ฟเวอร์'}
         </span>
@@ -801,7 +802,7 @@ function StatementPanel({ rows, sheetId, tab }) {
               {R.unmatchedRows.length > 0 && (
                 <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft)' }}>
                   <div style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
-                    ⚠ รายการในชีทที่ไม่พบเงินโอนใน statement นี้ — เงินยังไม่ออกจริง หรืออยู่นอกช่วงไฟล์</div>
+                    <Icon name="warning" size={13} /> รายการในชีทที่ไม่พบเงินโอนใน statement นี้ — เงินยังไม่ออกจริง หรืออยู่นอกช่วงไฟล์</div>
                   {R.unmatchedRows.map(r => (
                     <div key={r.rowNo} style={{ display: 'flex', gap: 12, padding: '8px 14px', borderTop: '1px dashed var(--line)', fontSize: 13 }}>
                       <span style={{ flex: 1 }}>แถว {r.rowNo} · {r.nick || r.code || 'SEAL'} · {(r.work || '').split('\n')[0].slice(0, 60)}</span>
@@ -815,10 +816,10 @@ function StatementPanel({ rows, sheetId, tab }) {
               {R.ask.length > 0 && (
                 <div style={{ border: '1px solid var(--danger)', borderLeft: '4px solid var(--danger)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--danger-soft)' }}>
                   <div style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, color: 'var(--danger)' }}>
-                    ❓ เงินออกที่ไม่มีใบเบิกรองรับ — ถ้าเป็นเรื่องส่วนตัวติ๊กเก็บได้ ระบบจะจำคู่โอนนี้ไว้</div>
+                    <Icon name="help" size={13} /> เงินออกที่ไม่มีใบเบิกรองรับ — ถ้าเป็นเรื่องส่วนตัวติ๊กเก็บได้ ระบบจะจำคู่โอนนี้ไว้</div>
                   {R.ask.map(t => (
                     <TxnLine key={t.id} t={t} action={
-                      <button className="btn btn--ghost" style={{ flexShrink: 0 }} onClick={() => markPersonal(t)}>👤 ส่วนตัว</button>
+                      <button className="btn btn--ghost" style={{ flexShrink: 0 }} onClick={() => markPersonal(t)}><Icon name="user" size={13} /> ส่วนตัว</button>
                     } />
                   ))}
                 </div>
@@ -826,7 +827,7 @@ function StatementPanel({ rows, sheetId, tab }) {
 
               {/* matched */}
               <div style={{ border: '1px solid var(--line)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
-                <div style={{ padding: '8px 14px', background: 'var(--surface-2)', ...mono10, letterSpacing: '0.12em' }}>
+                <div style={{ padding: '8px 14px', background: 'var(--surface-2)', ...mono10}}>
                   จับคู่สำเร็จ · {R.matched.length} รายการ
                 </div>
                 {R.matched.map((m, i) => (
@@ -851,7 +852,7 @@ function StatementPanel({ rows, sheetId, tab }) {
               {(R.probablyPersonal.length + R.personal.length + R.depositsLeft.length) > 0 && (
                 <details>
                   <summary style={{ fontSize: 12.5, color: 'var(--ink-3)', cursor: 'pointer' }}>
-                    👤 รายการส่วนตัว/นอกขอบเขต {R.probablyPersonal.length + R.personal.length + R.depositsLeft.length} รายการ
+                    <Icon name="user" size={13} /> รายการส่วนตัว/นอกขอบเขต {R.probablyPersonal.length + R.personal.length + R.depositsLeft.length} รายการ
                   </summary>
                   <div style={{ opacity: 0.65 }}>
                     {[...R.depositsLeft, ...R.probablyPersonal, ...R.personal].map(t => <TxnLine key={t.id} t={t} />)}
@@ -872,7 +873,7 @@ function PayQueue({ pay }) {
     <div style={{ border: '1px solid var(--warning)', borderLeft: '3px solid var(--warning)', borderRadius: '0 var(--r-md) var(--r-md) 0', background: 'var(--warning-soft)', overflow: 'hidden' }}>
       <button onClick={() => setOpen(v => !v)}
         style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
-        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent-strong)' }}>🕐 รอทำจ่าย</span>
+        <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--accent-strong)' }}><Icon name="clock" size={14} /> รอทำจ่าย</span>
         <span style={{ fontFamily: 'var(--f-mono)', fontSize: 13, color: 'var(--accent-strong)' }}>{pay.count} ใบ · {baht(pay.total)}</span>
         <span style={{ fontSize: 11.5, color: 'var(--ink-3)', flex: 1 }}>— ยังไม่ติ๊ก "ทำจ่ายแล้ว" ในฟอร์ม · ไปทำจ่ายใน Make</span>
         <span style={{ color: 'var(--accent-strong)', fontSize: 12 }}>{open ? '▴' : '▾'}</span>
@@ -881,7 +882,7 @@ function PayQueue({ pay }) {
         <div style={{ borderTop: '1px solid var(--warning)', background: 'var(--surface)' }}>
           {pay.groups.map(g => (
             <div key={g.code}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', background: 'var(--background-soft)', ...mono10, letterSpacing: '0.1em' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', background: 'var(--background-soft)', ...mono10}}>
                 <span>{parseName(g.who).label} · {g.claims.length} ใบ</span>
                 <span>{baht(g.total)}</span>
               </div>
@@ -1008,7 +1009,7 @@ function ClaimRow({ r, flagsSet, partners, cmp, formMatch, crossInfo, mark, setM
         {!isSeal && (
           <div style={{ display: 'flex', gap: 5 }}>
             <button onClick={() => setMark(r.rowNo, 'ok')} style={markBtn(mark === 'ok', 'ok')}>✓ ตรง</button>
-            <button onClick={() => setMark(r.rowNo, 'no')} style={markBtn(mark === 'no', 'no')}>✗ ไม่ตรง</button>
+            <button onClick={() => setMark(r.rowNo, 'no')} style={markBtn(mark === 'no', 'no')}><Icon name="x" size={13} /> ไม่ตรง</button>
           </div>
         )}
       </div>
@@ -1021,11 +1022,11 @@ function compareView(cmp) {
   switch (cmp.status) {
     case 'match': return { tone: 'ok', text: '✓ ยอดตรงสไลด์', help: 'ยอดที่เขียนในสไลด์หลักฐาน ตรงกับยอดที่เบิกในชีท (ต่างกันไม่เกิน 1 บาท)' };
     case 'match_multi': return { tone: 'ok', text: `✓ ยอดตรงสไลด์ (รวม ${cmp.count} ใบ)`, help: 'แถวนี้รวมหลายรายการไว้ในบรรทัดเดียว — Loop จับคู่ยอดย่อยแต่ละอันกับสไลด์คนละใบในเด็คแล้ว ผลรวมตรงกับยอดที่เบิก · กดดูสไลด์แต่ละใบได้ทางขวา' };
-    case 'wrong_link': return { tone: 'bad', text: '🔗 ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว', help: 'ลิงก์ที่กรอกในชีทเปิดไปเจอสไลด์ที่ไม่ใช่ของรายการนี้ — Loop ไล่หาในเด็คแล้วเจอสไลด์ที่ชื่องานและยอดตรงกัน กดปุ่ม "สไลด์ที่ใช่" เพื่อไปดูใบจริง' };
+    case 'wrong_link': return { tone: 'bad', text: 'ลิงก์ในชีทชี้ผิดจุด — Loop หาสไลด์ที่ใช่ให้แล้ว', help: 'ลิงก์ที่กรอกในชีทเปิดไปเจอสไลด์ที่ไม่ใช่ของรายการนี้ — Loop ไล่หาในเด็คแล้วเจอสไลด์ที่ชื่องานและยอดตรงกัน กดปุ่ม "สไลด์ที่ใช่" เพื่อไปดูใบจริง' };
     case 'content_match': return { tone: 'ok', text: '✓ เจอสไลด์จากเนื้อหา (ลิงก์เดิมไม่เจาะจง)', help: 'ลิงก์ในชีทชี้แค่ไฟล์เด็คทั้งใบ ไม่ได้เจาะจงสไลด์ — Loop หาสไลด์ที่ตรงจากชื่องาน+ยอดให้แล้ว กด "สไลด์ที่ใช่" ได้เลย' };
-    case 'amount_mismatch': return { tone: 'bad', text: `⚠ สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}`, help: 'ยอดที่เขียนในสไลด์หลักฐาน ไม่ตรงกับยอดที่เบิกจริงในชีท — เปิดสไลด์เทียบว่าฝั่งไหนถูก' };
+    case 'amount_mismatch': return { tone: 'bad', text: `สไลด์ ${baht2(cmp.slideAmount)} ≠ ชีท ${baht2(cmp.sheetAmount)}`, help: 'ยอดที่เขียนในสไลด์หลักฐาน ไม่ตรงกับยอดที่เบิกจริงในชีท — เปิดสไลด์เทียบว่าฝั่งไหนถูก' };
     case 'no_amount': return { tone: 'warn', text: 'อ่านยอดในสไลด์ไม่ได้', help: 'เจอสไลด์ของรายการนี้แล้ว แต่ Loop อ่านตัวเลขยอดในสไลด์ไม่ออก (อาจเป็นรูปภาพหรือเขียนคนละรูปแบบ) — ต้องเปิดดูเอง' };
-    case 'not_found': return { tone: 'warn', text: '⛔ หาสไลด์ของรายการนี้ไม่เจอ', help: 'ไล่ทั้งเด็คของคนนี้แล้วไม่เจอสไลด์ที่ตรงกับรายการนี้ — อาจยังไม่ได้ทำสไลด์ หรือเขียนชื่องาน/ยอดต่างจากในชีทมาก' };
+    case 'not_found': return { tone: 'warn', text: 'หาสไลด์ของรายการนี้ไม่เจอ', help: 'ไล่ทั้งเด็คของคนนี้แล้วไม่เจอสไลด์ที่ตรงกับรายการนี้ — อาจยังไม่ได้ทำสไลด์ หรือเขียนชื่องาน/ยอดต่างจากในชีทมาก' };
     default: return null;
   }
 }
@@ -1037,7 +1038,7 @@ function ConnectPanel() {
       <div style={{ fontSize: 13, color: 'var(--ink-3)', marginBottom: 14, lineHeight: 1.6 }}>
         เชื่อม Google เพื่ออ่านชีท Petty Cash + สไลด์หลักฐานของทีม (อ่านอย่างเดียว)
       </div>
-      <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}>📋 เชื่อม Google</button>
+      <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}><Icon name="clipboard" size={14} /> เชื่อม Google</button>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
+import { Icon } from '../Icon.jsx';
 
 /**
  * CashboxCard — รายงานเงินไหลผ่าน Cashbox เดือนนั้น
@@ -32,9 +33,9 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
   if (!hasData) {
     return (
       <Card>
-        <CardHeader eyebrow="💰 CASHBOX · กล่องกลาง" title="เงินไหลผ่าน Cashbox" />
+        <CardHeader eyebrow="Cashbox · กล่องกลาง" title="เงินไหลผ่าน Cashbox" />
         <EmptyState
-          icon="💰"
+          icon={<Icon name="money" size={20} />}
           title="ยังไม่มีกระเป๋า Cashbox"
           description="Import CSV จาก Make → ระบบจะสร้างบัญชี Cashbox ให้อัตโนมัติ"
           compact
@@ -51,7 +52,7 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`💰 CASHBOX · กล่องกลาง · ${monthLabel(yearMonth)}`}
+        eyebrow={`Cashbox · กล่องกลาง · ${monthLabel(yearMonth)}`}
         title="เงินไหลผ่าน Cashbox"
         meta="เงินเดือน → กระจายไปกองทุน · ที่เหลือใช้รายวัน"
         action={cashboxAcc && <Badge tone="accent" size="lg">฿{balance.toLocaleString('th', { maximumFractionDigits: 0 })}</Badge>}
@@ -68,8 +69,10 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
       {/* Flow bar visualization */}
       <div style={{ marginTop: 4 }}>
         <div style={{
-          display: 'flex', fontFamily: 'var(--f-mono)', fontSize: 10,
-          color: 'var(--text-muted)', letterSpacing: '0.12em', marginBottom: 6,
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500,
+          display: 'flex', fontSize: 13,
+          color: 'var(--text-muted)', marginBottom: 6
         }}>
           <span>เงินเข้า {fmt(inflow)}</span>
           <span style={{ marginLeft: 'auto' }}>แบ่งออก {fmt(totalOut)}</span>
@@ -112,7 +115,7 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
             border: '1px solid var(--warning)', borderRadius: 'var(--radius-control)',
             fontSize: 12,
           }}>
-            ⚠️ มี <strong>{fmt(remaining)}</strong> ใน Cashbox ที่ยังไม่ได้แบ่งงบ — พิจารณาโอนเข้ากองทุนครอบครัวหรือ savings
+            <Icon name="warning" size={14} /> มี <strong>{fmt(remaining)}</strong> ใน Cashbox ที่ยังไม่ได้แบ่งงบ — พิจารณาโอนเข้ากองทุนครอบครัวหรือ savings
           </div>
         )}
       </div>
@@ -126,7 +129,7 @@ function Stat({ label, value, color, sub }) {
       padding: '10px 12px', background: 'var(--background-soft)',
       border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--text-muted)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color, fontWeight: 500, lineHeight: 1.2, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>

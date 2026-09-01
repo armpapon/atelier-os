@@ -170,14 +170,15 @@ function MemberModal({ initial, onSave, onClose }) {
             style={{ cursor: 'pointer', position: 'relative' }}>
             <Avatar member={previewMember} size={88} />
             <div style={{
+              fontVariantNumeric: 'tabular-nums',
+              fontWeight: 500,
               position: 'absolute', inset: 0, borderRadius: '50%',
               background: 'var(--dim)',
               // Fixed white: sits on the always-dark scrim above, independent of theme
               // (var(--text-inverse) assumes an accent-coloured surface, not this scrim).
               color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              opacity: 0, transition: 'opacity 130ms', fontSize: 11,
-              fontFamily: 'var(--f-mono)', letterSpacing: '0.1em',
+              opacity: 0, transition: 'opacity 130ms', fontSize: 11
             }}
             onMouseEnter={e => e.currentTarget.style.opacity = 1}
             onMouseLeave={e => e.currentTarget.style.opacity = 0}>
@@ -191,7 +192,7 @@ function MemberModal({ initial, onSave, onClose }) {
                 border: 0, borderRadius: 'var(--radius-pill)', fontSize: 12,
                 fontFamily: 'var(--f-body)', cursor: 'pointer',
               }}>
-              📸 {photoPreview ? 'เปลี่ยนรูป' : 'เพิ่มรูปภาพ'}
+              <Icon name="camera" size={14} /> {photoPreview ? 'เปลี่ยนรูป' : 'เพิ่มรูปภาพ'}
             </button>
             {photoPreview && (
               <button type="button" onClick={handleRemovePhoto}
@@ -208,18 +209,18 @@ function MemberModal({ initial, onSave, onClose }) {
         </div>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ชื่อ *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>ชื่อ *</span>
           <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="ชื่อสมาชิก" autoFocus required />
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ความสัมพันธ์</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>ความสัมพันธ์</span>
           <input className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} placeholder="แม่, ภรรยา, ลูกสาว, ลูกชาย" />
         </label>
 
         {/* Color picker — used as fallback when no photo */}
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
             สี Avatar <span style={{ color: 'var(--text-muted)' }}>· ใช้เมื่อไม่มีรูป</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -235,12 +236,12 @@ function MemberModal({ initial, onSave, onClose }) {
         </div>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>วันเกิด</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>วันเกิด</span>
           <input className="input" type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
         </label>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>โน้ต (ไม่บังคับ)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>โน้ต (ไม่บังคับ)</span>
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="ข้อมูลเพิ่มเติม" />
         </label>
 
@@ -254,7 +255,7 @@ function MemberModal({ initial, onSave, onClose }) {
         <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
           <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
           <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>
-            {saving ? '...' : (isEdit ? '💾 บันทึก' : '+ เพิ่มสมาชิก')}
+            {saving ? '...' : (isEdit ? 'บันทึก' : '+ เพิ่มสมาชิก')}
           </button>
         </div>
       </form>
@@ -306,16 +307,16 @@ function AddEventModal({ members, onSave, onClose }) {
       }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 20 }}>เพิ่มเหตุการณ์</div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อเหตุการณ์ *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อเหตุการณ์ *</span>
           <input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น วันเกิด, นัดหมอ, ท่องเที่ยว" autoFocus required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันที่ *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>วันที่ *</span>
           <input className="input" type="date" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} required />
         </label>
         {members.length > 0 && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เกี่ยวกับใคร</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เกี่ยวกับใคร</span>
             <select className="input" value={form.member_id} onChange={e => setForm(f => ({ ...f, member_id: e.target.value }))}>
               <option value="">ทุกคน</option>
               {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -323,13 +324,13 @@ function AddEventModal({ members, onSave, onClose }) {
           </label>
         )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>โน้ต</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>โน้ต</span>
           <input className="input" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} placeholder="รายละเอียดเพิ่มเติม" />
         </label>
 
         {/* Memory photos (optional, multiple) */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รูปภาพ (ใส่ได้หลายรูป)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>รูปภาพ (ใส่ได้หลายรูป)</span>
           {photos.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
               {photos.map((p, i) => (
@@ -345,7 +346,7 @@ function AddEventModal({ members, onSave, onClose }) {
           )}
           <button type="button" onClick={() => fileRef.current?.click()}
             style={{ padding: '9px 14px', background: 'var(--accent-soft)', color: 'var(--accent-strong)', border: 0, borderRadius: 'var(--r-md)', fontSize: 12.5, cursor: 'pointer', fontFamily: 'var(--f-body)' }}>
-            📸 {photos.length ? 'เพิ่มรูปอีก' : 'เพิ่มรูปภาพความทรงจำ'}
+            <Icon name="camera" size={14} /> {photos.length ? 'เพิ่มรูปอีก' : 'เพิ่มรูปภาพความทรงจำ'}
           </button>
           <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
             onChange={e => handlePhotoPick(e.target.files)} />
@@ -388,20 +389,20 @@ function AddNoteDrawer({ onSave, onClose }) {
           <button type="button" onClick={onClose} style={{ color: 'var(--ink-3)', fontSize: 18 }}>×</button>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เขียนโดย</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เขียนโดย</span>
           <input className="input" value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} placeholder="ชื่อคุณ" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>หัวข้อ (ไม่บังคับ)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>หัวข้อ (ไม่บังคับ)</span>
           <input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น เรื่องที่อยากบอก" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เนื้อหา *</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เนื้อหา *</span>
           <textarea className="input" rows={8} value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))} placeholder="เขียนอะไรก็ได้ให้กับคนที่รัก..." required style={{ resize: 'vertical' }} />
         </label>
         <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
           <button type="button" className="btn btn--ghost" onClick={onClose} style={{ flex: 1 }}>ยกเลิก</button>
-          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : '💌 บันทึกโน้ต'}</button>
+          <button type="submit" disabled={saving} className="btn btn--primary" style={{ flex: 2 }}>{saving ? '...' : 'บันทึกโน้ต'}</button>
         </div>
       </form>
     </div>
@@ -501,7 +502,7 @@ function EventDetail({ event, members, onChange, onClose }) {
     onChange(); onClose();
   };
 
-  const labelStyle = { fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+  const labelStyle = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 550, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -580,7 +581,7 @@ function EventDetail({ event, members, onChange, onClose }) {
             <button onClick={() => fileRef.current?.click()} disabled={uploading}
               style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--accent-strong)', cursor: 'pointer',
                 border: '1px solid var(--border-strong)', borderRadius: 'var(--r-sm)', padding: '4px 10px' }}>
-              {uploading ? 'กำลังอัปโหลด...' : '📸 เพิ่มรูป'}
+              {uploading ? 'กำลังอัปโหลด...' : 'เพิ่มรูป'}
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
               onChange={e => addPhotos(e.target.files)} />
@@ -623,7 +624,7 @@ function OnThisDayCard({ events, onOpen }) {
   return (
     <div className="card" style={{ marginBottom: 18, background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
       <div className="card__head">
-        <div className="card__title">⭐ วันนี้เมื่อก่อน</div>
+        <div className="card__title"><Icon name="star" size={16} /> วันนี้เมื่อก่อน</div>
         <span className="card__label" style={{ color: 'var(--accent-strong)' }}>ความทรงจำวันนี้</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -637,7 +638,7 @@ function OnThisDayCard({ events, onOpen }) {
                 background: 'var(--surface)', border: '1px solid var(--line)' }}>
               {pics.length > 0
                 ? <img src={pics[0]} alt="" loading="lazy" style={{ width: 44, height: 44, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
-                : <span style={{ fontSize: 24, flexShrink: 0, width: 44, textAlign: 'center' }}>🗓️</span>}
+                : <span style={{ flexShrink: 0, width: 44, textAlign: 'center', color: 'var(--text-muted)' }}><Icon name="calendar" size={22} /></span>}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: 'var(--f-display)', fontStyle: 'italic', fontSize: 14, color: 'var(--accent-strong)' }}>
                   {yearsAgo === 1 ? 'ปีที่แล้ววันนี้' : `${yearsAgo} ปีที่แล้ววันนี้`}
@@ -672,7 +673,7 @@ function KidQuotesCard({ quotes, members, onChange }) {
   return (
     <div className="card">
       <div className="card__head">
-        <div className="card__title">💬 คำพูดของลูก</div>
+        <div className="card__title"><Icon name="journal" size={16} /> คำพูดของลูก</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span className="card__label">{quotes.length} คำ</span>
           <button className="btn btn--ghost btn--sm" onClick={() => setAdding(a => !a)}>{adding ? 'ยกเลิก' : '+ เพิ่มคำพูด'}</button>
@@ -697,7 +698,7 @@ function KidQuotesCard({ quotes, members, onChange }) {
 
       {quotes.length === 0 && !adding ? (
         <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '28px 0', fontSize: 13 }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>💬</div>
+          <div style={{ marginBottom: 8, color: 'var(--text-muted)' }}><Icon name="journal" size={22} /></div>
           จดคำน่ารักที่ลูกพูด — ของแบบนี้หายแล้วย้อนกลับไม่ได้
         </div>
       ) : (
@@ -814,7 +815,7 @@ export function Family() {
           {/* Birthday reminder */}
           {birthdayMembers.length > 0 && (
             <div style={{ marginTop: 20, padding: '10px 14px', background: 'var(--accent-tint)', border: '1px solid var(--accent-soft)', borderRadius: 'var(--r-md)' }}>
-              <span style={{ color: 'var(--accent-strong)', fontSize: 13 }}>🎂 วันเกิดเดือนนี้: </span>
+              <span style={{ color: 'var(--accent-strong)', fontSize: 13 }}><Icon name="gift" size={12} /> วันเกิดเดือนนี้: </span>
               <span style={{ color: 'var(--paper-ink)', fontSize: 13, fontFamily: 'var(--f-display)' }}>
                 {birthdayMembers.map(m => `${m.name} (${new Date(m.birth_date + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })})`).join(', ')}
               </span>
@@ -855,7 +856,7 @@ export function Family() {
                     <Avatar member={m} size={48} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontFamily: 'var(--f-display)', fontSize: 16, color: 'var(--text-primary)' }}>
-                        {m.name} {isBirthdayMonth && '🎂'}
+                        {m.name} {isBirthdayMonth && <Icon name="gift" size={12} />}
                       </div>
                       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {m.role}{age != null ? ` · ${age} ปี` : ''}{m.note ? ` · ${m.note}` : ''}
@@ -866,7 +867,7 @@ export function Family() {
                         style={{ background: 'transparent', border: 0, color: 'var(--text-muted)', fontSize: 14, padding: '4px 6px', cursor: 'pointer', borderRadius: 6 }}
                         onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-muted)'; e.currentTarget.style.color = 'var(--accent-strong)'; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
-                        ✎
+                        <Icon name="edit" size={14} />
                       </button>
                       <button onClick={() => { if (confirm(`ลบ ${m.name} ออกจากครอบครัว?`)) { deleteMember(m.id).then(refresh); } }}
                         title="ลบ" aria-label="ลบ"
@@ -911,7 +912,7 @@ export function Family() {
                         fontFamily: 'var(--f-mono)',
                       }}>
                         {/* text-inverse flips correctly here since the badge bg is the accent/amber surface */}
-                        <div style={{ fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)', letterSpacing: '0.1em' }}>
+                        <div style={{ fontWeight: 500, fontSize: 9, color: days === 0 ? 'var(--text-inverse)' : 'var(--ink-3)'}}>
                           {days === 0 ? 'วันนี้' : days === 1 ? 'พรุ่งนี้' : days < 0 ? 'ผ่านมา' : 'อีก'}
                         </div>
                         {days > 1 && <div style={{ fontSize: 16, fontWeight: 600, color: days <= 7 ? 'var(--amber-2)' : 'var(--ink)', lineHeight: 1 }}>{days}</div>}
@@ -926,7 +927,7 @@ export function Family() {
                           <img src={pics[0]} alt="" loading="lazy"
                             style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', objectFit: 'cover', border: '1px solid var(--line)', display: 'block' }} />
                           {pics.length > 1 && (
-                            <span style={{ position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-mono)', fontSize: 8.5, padding: '1px 5px' }}>📷{pics.length}</span>
+                            <span style={{ position: 'absolute', bottom: -3, right: -3, background: 'var(--accent-strong)', color: 'var(--text-inverse)', borderRadius: 'var(--radius-pill)', fontFamily: 'var(--f-mono)', fontSize: 8.5, padding: '1px 5px' }}><Icon name="camera" size={9} />{pics.length}</span>
                           )}
                         </div>
                       )}
@@ -959,7 +960,7 @@ export function Family() {
                               style={{ width: 32, height: 32, borderRadius: 'var(--r-sm)', objectFit: 'cover', flexShrink: 0, border: '1px solid var(--line)' }} />
                           )}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 12.5 }}>{ev.title}{pics.length > 1 ? ` · 📷${pics.length}` : ''}</div>
+                            <div style={{ fontSize: 12.5 }}>{ev.title}{pics.length > 1 ? ` · ${pics.length} รูป` : ''}</div>
                             <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{formatEventDate(ev.event_date)}</div>
                           </div>
                           <button onClick={(e) => { e.stopPropagation(); if (confirm('ลบ?')) { eventPhotos(ev).forEach(deleteEventPhotoByUrl); deleteEvent(ev.id).then(refresh); } }}
@@ -986,7 +987,7 @@ export function Family() {
 
           {notes.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '32px 0', fontSize: 13 }}>
-              <div style={{ fontSize: 24, marginBottom: 10 }}>💌</div>
+              <div style={{ marginBottom: 10, color: 'var(--text-muted)' }}><Icon name="mail" size={22} /></div>
               ยังไม่มีโน้ต — เขียนอะไรบางอย่างให้คนที่รักอ่าน
               <br />
               <button className="btn btn--ghost" style={{ marginTop: 12 }} onClick={() => setShowNoteDrawer(true)}>+ เขียนโน้ตแรก</button>
@@ -1009,7 +1010,7 @@ export function Family() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--hairline)' }}>
                     <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
-                      {note.author ? `✍ ${note.author} · ` : ''}{new Date(note.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {note.author ? `${note.author} · ` : ''}{new Date(note.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </div>
                     <button onClick={() => { if (confirm('ลบโน้ตนี้?')) { deleteFamilyNote(note.id).then(refresh); } }}
                       style={{ color: 'var(--ink-4)', fontSize: 13, padding: '2px 6px' }}>×</button>

@@ -378,12 +378,12 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>
-            {isEdit ? '✎ แก้ไขรายการ' : 'บันทึกรายการ'}
+            {isEdit ? 'แก้ไขรายการ' : 'บันทึกรายการ'}
           </div>
           <button type="button" onClick={onClose} style={{ color: 'var(--text-secondary)', fontSize: 18, background: 'none', border: 0, cursor: 'pointer', width: 28, height: 28, borderRadius: '50%' }}>×</button>
         </div>
         <div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)', marginBottom: 8 }}>ประเภท</div>
           {isTransferEdit ? (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -391,7 +391,7 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
               background: 'var(--fill)', color: 'var(--text-secondary)',
               fontSize: 12.5, fontWeight: 500,
             }}>
-              🔒 โอนภายใน — เปลี่ยนประเภท/เครื่องหมายไม่ได้ (กันยอดสอง scope เพี้ยน)
+              <Icon name="lock" size={13} /> โอนภายใน — เปลี่ยนประเภท/เครื่องหมายไม่ได้ (กันยอดสอง scope เพี้ยน)
             </div>
           ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -420,11 +420,11 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           )}
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>รายการ</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>รายการ</span>
           <input ref={firstInputRef} className="input" value={form.title} onChange={e => set('title', e.target.value)} placeholder="เช่น ข้าวกลางวัน, ค่าน้ำมัน" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>
             จำนวน (บาท) {isTransferEdit
               ? (Number(initialTxn.amount) < 0 ? '— โอนออก (-)' : '— รับโอน (+)')
               : (isIncome ? '— รายรับ (+)' : '— รายจ่าย (-)')}
@@ -441,19 +441,19 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
               <span>฿{Math.abs(Number(initialTxn.amount)).toLocaleString('th', { maximumFractionDigits: 2 })}</span>
-              <span style={{ fontSize: 11 }}>🔒 ล็อกให้สองฝั่งตรงกัน</span>
+              <span style={{ fontSize: 11 }}><Icon name="lock" size={11} /> ล็อกให้สองฝั่งตรงกัน</span>
             </div>
           ) : (
             <input className="input" type="number" min="0" step="0.01" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0.00" required />
           )}
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>วันที่</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>วันที่</span>
           <input className="input" type="date" value={form.occurred_at} onChange={e => set('occurred_at', e.target.value)} />
         </label>
         {accounts.length > 0 && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>บัญชี</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>บัญชี</span>
             <select className="input" value={form.account_id} onChange={e => set('account_id', e.target.value)}>
               <option value="">ไม่ระบุ</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -461,13 +461,13 @@ function TxnForm({ accounts, scope, initialTxn, onSave, onClose, categories = DE
           </label>
         )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>โน้ต</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>โน้ต</span>
           <input className="input" value={form.note} onChange={e => set('note', e.target.value)} placeholder="หมายเหตุเพิ่มเติม" />
         </label>
         {error && <div style={{ padding: '10px 12px', background: 'var(--danger-soft)', color: 'var(--danger)', border: 'none', borderRadius: 'var(--radius-field)', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
           <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
-          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : (isEdit ? '💾 บันทึกการแก้ไข' : '💾 บันทึก')}</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : (isEdit ? 'บันทึกการแก้ไข' : 'บันทึก')}</Button>
         </div>
       </form>
     </div>
@@ -530,13 +530,13 @@ function AccountModal({ scope, initial = null, accounts = [], onSave, onClose })
     } catch (err) { alert(err.message); } finally { setSaving(false); }
   };
 
-  const labelStyle = { fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' };
+  const labelStyle = { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' };
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'var(--dim)' }} />
       <form onSubmit={handleSubmit} style={{ position: 'relative', background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)', padding: 30, width: 360, maxHeight: '88vh', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>
-          {isEdit ? '✎ แก้ไขบัญชี' : 'เพิ่มบัญชี'}
+          {isEdit ? 'แก้ไขบัญชี' : 'เพิ่มบัญชี'}
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={labelStyle}>ชื่อบัญชี</span>
@@ -576,7 +576,7 @@ function AccountModal({ scope, initial = null, accounts = [], onSave, onClose })
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
           <Button type="button" variant="outline" onClick={onClose} fullWidth>ยกเลิก</Button>
-          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : (isEdit ? '💾 บันทึก' : '+ เพิ่มบัญชี')}</Button>
+          <Button type="submit" disabled={saving} variant="primary" fullWidth>{saving ? '...' : (isEdit ? 'บันทึก' : '+ เพิ่มบัญชี')}</Button>
         </div>
 
         {isEdit && (
@@ -594,7 +594,7 @@ function AccountModal({ scope, initial = null, accounts = [], onSave, onClose })
               </select>
             )}
             <Button type="button" variant="danger" size="sm" onClick={handleArchive} disabled={saving}>
-              🗂 เก็บบัญชีนี้
+              <Icon name="archive" size={13} /> เก็บบัญชีนี้
             </Button>
           </div>
         )}
@@ -621,19 +621,19 @@ function GoalModal({ scope, onSave, onClose }) {
       <form onSubmit={handleSubmit} style={{ position: 'relative', background: 'var(--surface)', border: 'none', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-pop)', padding: 30, width: 360, display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em' }}>ตั้งเป้าหมาย</div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>ชื่อเป้าหมาย</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>ชื่อเป้าหมาย</span>
           <input className="input" value={form.title} onChange={e => setForm(f => ({...f, title: e.target.value}))} placeholder="เงินดาวน์บ้าน, กองทุนฉุกเฉิน" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>เป้าหมาย (บาท)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>เป้าหมาย (บาท)</span>
           <input className="input" type="number" min="1" value={form.target_amount} onChange={e => setForm(f => ({...f, target_amount: e.target.value}))} placeholder="500000" required />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>มีอยู่แล้ว (บาท)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>มีอยู่แล้ว (บาท)</span>
           <input className="input" type="number" min="0" value={form.current_amount} onChange={e => setForm(f => ({...f, current_amount: e.target.value}))} placeholder="0" />
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>กำหนด (ถ้ามี)</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>กำหนด (ถ้ามี)</span>
           <input className="input" type="date" value={form.deadline} onChange={e => setForm(f => ({...f, deadline: e.target.value}))} />
         </label>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -1036,7 +1036,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         + '\n\n(ลบข้างเดียวไม่ได้ — จะทำให้ยอดอีก scope เพี้ยน)';
     } else if (isTransfer(t)) {
       message = 'ลบขาโอนนี้?\n'
-        + '⚠️ รายการนี้เป็นเงินโอนรุ่นเก่าที่ยังไม่ได้จับคู่ไว้ — อีกฝั่งจะไม่ถูกลบ\n'
+        + 'รายการนี้เป็นเงินโอนรุ่นเก่าที่ยังไม่ได้จับคู่ไว้ — อีกฝั่งจะไม่ถูกลบ\n'
         + 'ต้องไปลบเองที่ scope อีกฝั่ง ไม่งั้นยอดจะเพี้ยน';
     }
     if (!confirm(message)) return;
@@ -1133,10 +1133,10 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {/* Import button only shown on Personal scope — auto-imports both scopes */}
             {scope === 'personal' && (
-              <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}><Icon name="import" size={14} /> Import</Button>
             )}
             <Button variant="ghost" size="sm" onClick={() => setShowTransfer(true)} title="โอนระหว่าง scope">
-              💸 โอน scope
+              <Icon name="transfer" size={14} /> โอน scope
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ บัญชี</Button>
             <Button variant="primary" size="md" onClick={() => setShowTxnForm(true)}>
@@ -1150,7 +1150,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
             padding: '12px 16px', background: 'var(--danger-soft)', color: 'var(--danger)',
             border: 'none', borderRadius: 'var(--radius-field)', fontSize: 13,
           }}>
-            ⚠️ {error}
+            <Icon name="warning" size={14} /> {error}
           </div>
         )}
         {!error && loadWarning && (
@@ -1159,8 +1159,8 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
             border: 'none', borderRadius: 'var(--radius-field)', fontSize: 13,
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           }}>
-            <span style={{ flex: 1 }}>⚠️ {loadWarning}</span>
-            <Button variant="ghost" size="sm" onClick={refresh}>↻ ลองใหม่</Button>
+            <span style={{ flex: 1 }}><Icon name="warning" size={13} /> {loadWarning}</span>
+            <Button variant="ghost" size="sm" onClick={refresh}><Icon name="refresh" size={13} /> ลองใหม่</Button>
           </div>
         )}
         {/* Audit B4 — the post-anchor ledger could not be read. Say it. */}
@@ -1171,17 +1171,18 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
           }}>
             <span style={{ flex: 1 }}>
-              ⚠️ คำนวณยอดคงเหลือปัจจุบันไม่สำเร็จ — ตัวเลขบัญชี, Net Worth และกองทุนฉุกเฉิน
+              <Icon name="warning" size={13} /> คำนวณยอดคงเหลือปัจจุบันไม่สำเร็จ — ตัวเลขบัญชี, Net Worth และกองทุนฉุกเฉิน
               ที่แสดงอยู่เป็น “ยอด ณ วันตั้งต้น” ยังไม่รวมรายการหลังจากนั้น ถือว่ายังไม่ยืนยัน
             </span>
-            <Button variant="ghost" size="sm" onClick={refresh}>↻ ลองใหม่</Button>
+            <Button variant="ghost" size="sm" onClick={refresh}><Icon name="refresh" size={13} /> ลองใหม่</Button>
           </div>
         )}
         {loading && (
           <div style={{
+            fontVariantNumeric: 'tabular-nums',
+            fontWeight: 500,
             padding: '8px 14px', background: 'var(--fill)', color: 'var(--text-secondary)',
-            borderRadius: 'var(--radius-field)', fontSize: 11, fontFamily: 'var(--f-mono)',
-            letterSpacing: '0.1em', textAlign: 'center',
+            borderRadius: 'var(--radius-field)', fontSize: 13, textAlign: 'center'
           }}>
             กำลังโหลดข้อมูล…
           </div>
@@ -1286,7 +1287,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                             width: 16, height: 16, borderRadius: 999, border: 0, padding: 0,
                             background: 'transparent', color: 'inherit', cursor: 'pointer',
                             fontFamily: 'inherit', fontSize: 11, lineHeight: 1,
-                          }}>✕</button>
+                          }}><Icon name="x" size={15} /></button>
                       </span>
                     )}
                   </div>
@@ -1296,7 +1297,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {scope === 'personal' && (
-                    <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}>📂 Import</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setShowImporter(true)}><Icon name="import" size={14} /> Import</Button>
                   )}
                   <Button variant="secondary" size="sm" onClick={() => setShowTxnForm(true)}>+ เพิ่ม</Button>
                   {txns.length > 0 && (
@@ -1306,7 +1307,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                         try { await deleteTransactionsInMonth(yearMonth, scope); refresh(); }
                         catch (e) { alert('ลบไม่สำเร็จ: ' + e.message); }
                       }}>
-                      🗑 ล้างเดือนนี้
+                      <Icon name="trash" size={13} /> ล้างเดือนนี้
                     </Button>
                   )}
                 </div>
@@ -1314,12 +1315,12 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
 
               {txns.length === 0 ? (
                 <EmptyState
-                  icon="📋"
+                  icon={<Icon name="clipboard" size={20} />}
                   title="ยังไม่มีรายการเดือนนี้"
                   description={scope === 'personal'
                     ? 'บันทึกรายการเอง หรือ import จาก Make — ระบบจะ auto-split ทั้ง ส่วนตัว + ครอบครัว ให้พร้อม'
                     : 'รายการครอบครัวจะมาจาก: (1) Import CSV ที่หน้า "การเงินส่วนตัว" — ระบบ auto-split scope · (2) บันทึกเองที่นี่'}
-                  actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ เพิ่มเอง'}
+                  actionLabel={scope === 'personal' ? 'Import จาก Make' : '+ เพิ่มเอง'}
                   onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowTxnForm(true)}
                   secondaryLabel={scope === 'personal' ? '+ เพิ่มเอง' : null}
                   onSecondary={scope === 'personal' ? () => setShowTxnForm(true) : null}
@@ -1385,7 +1386,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                                     fontSize: 12, color: 'var(--text-muted)', padding: '1px 6px',
                                     background: 'var(--fill)', borderRadius: 6, whiteSpace: 'nowrap',
                                   }}>
-                                  🔒 โอนภายใน
+                                  <Icon name="lock" size={11} /> โอนภายใน
                                 </span>
                               ) : (
                               <InlineSelect
@@ -1487,7 +1488,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                               }}
                               onMouseEnter={e => { e.currentTarget.style.background = 'var(--fill-2)'; }}
                               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-                              🔁
+                              <Icon name="refresh" size={13} />
                             </button>
                             <button onClick={(e) => {
                               // Anchor to the whole ROW (not just the button) so the popup
@@ -1590,7 +1591,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
               </div>
               {goals.length === 0 ? (
                 <EmptyState
-                  icon="◎"
+                  icon={<Icon name="target" size={20} />}
                   title="ยังไม่มีเป้าหมายการเงิน"
                   description="เริ่มจาก 1 เป้าหมาย เช่น 'ออมเงินดาวน์บ้าน' หรือ 'ลดหนี้บัตรเครดิต'"
                   actionLabel="เพิ่มเป้าหมายแรก"
@@ -1612,7 +1613,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                             <div style={{ fontSize: 14.5, fontWeight: 500, color: 'var(--text-primary)' }}>{g.title}</div>
                             {g.deadline && (
                               <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
-                                ⌛ {new Date(g.deadline).toLocaleDateString('th-TH')}
+                                <Icon name="hourglass" size={12} /> {new Date(g.deadline).toLocaleDateString('th-TH')}
                               </div>
                             )}
                           </div>
@@ -1653,7 +1654,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                       ฿{accounts.reduce((s, a) => s + Number(a.balance || 0), 0).toLocaleString('th', { maximumFractionDigits: 0 })}
                     </strong>
                     {balancesUnconfirmed && (
-                      <span style={{ color: 'var(--warning)', fontFamily: 'var(--f-mono)', fontSize: 10, letterSpacing: '0.12em', marginLeft: 6 }}>
+                      <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: 'var(--warning)', fontSize: 13, marginLeft: 6 }}>
                         · ยังไม่ยืนยัน
                       </span>
                     )}
@@ -1666,19 +1667,19 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                   {/* Same modal the header button opens — account moves belong
                       in the accounts room too, not only up in the toolbar. */}
                   <Button variant="ghost" size="sm" onClick={() => setShowTransfer(true)} title="โอนระหว่าง scope">
-                    💸 โอน scope
+                    <Icon name="transfer" size={14} /> โอน scope
                   </Button>
                   <Button variant="secondary" size="sm" onClick={() => setShowAccForm(true)}>+ เพิ่ม</Button>
                 </div>
               </div>
               {accounts.length === 0 ? (
                 <EmptyState
-                  icon="💼"
+                  icon={<Icon name="work" size={20} />}
                   title="ยังไม่มีบัญชี"
                   description={scope === 'personal'
                     ? 'import CSV จาก Make จะสร้างบัญชี (Cloud Pockets) ให้อัตโนมัติ พร้อมยอดล่าสุด'
                     : 'บัญชีครอบครัว (เช่น "กองทุนครอบครัว", "เงินเพื่อน้องอคิน") จะถูกสร้างอัตโนมัติเมื่อ Import CSV ที่หน้าการเงินส่วนตัว'}
-                  actionLabel={scope === 'personal' ? '📂 Import จาก Make' : '+ สร้างเอง'}
+                  actionLabel={scope === 'personal' ? 'Import จาก Make' : '+ สร้างเอง'}
                   onAction={scope === 'personal' ? () => setShowImporter(true) : () => setShowAccForm(true)}
                   secondaryLabel={scope === 'personal' ? '+ สร้างเอง' : null}
                   onSecondary={scope === 'personal' ? () => setShowAccForm(true) : null}
@@ -1727,7 +1728,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                             title={a._balance_unconfirmed ? 'ยังไม่ยืนยัน — อ่านรายการหลังวันตั้งต้นไม่สำเร็จ' : undefined}>
                             ฿{Number(a.balance).toLocaleString('th', { maximumFractionDigits: 0 })}
                             {a._balance_unconfirmed && (
-                              <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, fontWeight: 500, letterSpacing: '0.1em', marginLeft: 5 }}>
+                              <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 500, marginLeft: 5 }}>
                                 ยังไม่ยืนยัน
                               </span>
                             )}
@@ -1737,7 +1738,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                               and destroyed the balance with no undo. */}
                           <button onClick={(e) => { e.stopPropagation(); setEditingAccount(a); }}
                             aria-label={`แก้ไขบัญชี ${a.name}`} title="แก้ไข / ตั้งยอด / เก็บบัญชี"
-                            style={{ color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}>✎</button>
+                            style={{ color: 'var(--text-muted)', fontSize: 13, background: 'none', border: 0, cursor: 'pointer', padding: 4 }}><Icon name="edit" size={14} /></button>
                         </div>
                       </div>
                     );
@@ -1749,9 +1750,9 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
 
         {/* Footer */}
         <div style={{
-          marginTop: 4, padding: '10px 16px', borderTop: '1px solid var(--hairline)',
-          fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
-          letterSpacing: '0.1em', textAlign: 'center',
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 500,
+          marginTop: 4, padding: '10px 16px', borderTop: '1px solid var(--hairline)', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center'
         }}>
           {txns.length} รายการ · {accounts.length} บัญชี · {budgets.length} งบ · {goals.length} เป้าหมาย
           {!isSupabaseConfigured && ' · DEMO MODE'}

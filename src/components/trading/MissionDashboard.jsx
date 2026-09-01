@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Card, CardHeader, Badge } from '../ui/index.js';
+import { Icon } from '../Icon.jsx';
 
 /**
  * MissionDashboard — A3 mission tracker
@@ -66,7 +67,7 @@ export function MissionDashboard({ trades = [] }) {
   return (
     <Card>
       <CardHeader
-        eyebrow="🎯 A3 MISSION"
+        eyebrow="ภารกิจ A3"
         title="ภารกิจ 30 ไม้แรกของ A3 — บอทเทรด คนคุมวินัย"
         meta="XAUUSD · 1h · MACD(12,26,9) + EMA200 · SL 1.5×ATR14 · GoldMacdTrendBot"
       />
@@ -78,7 +79,7 @@ export function MissionDashboard({ trades = [] }) {
           border: '1px solid var(--warning)', borderRadius: 'var(--radius-control)',
           fontSize: 12.5, lineHeight: 1.6,
         }}>
-          ⏳ รอ migration — ยังไม่ได้รัน <code>supabase/migration_add_trades_ha50.sql</code> ใน Supabase
+          <Icon name="clock" size={13} /> รอ migration — ยังไม่ได้รัน <code>supabase/migration_add_trades_ha50.sql</code> ใน Supabase
           ตัวเลขจะเริ่มนับหลังรัน SQL แล้วบันทึกไม้ใหม่
         </div>
       )}
@@ -86,7 +87,7 @@ export function MissionDashboard({ trades = [] }) {
       {/* Progress */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
             ความคืบหน้า
           </span>
           <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 500 }}>
@@ -120,7 +121,7 @@ export function MissionDashboard({ trades = [] }) {
       </div>
 
       {/* Pass criteria */}
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
         เกณฑ์ผ่านภารกิจ
       </div>
       <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -144,7 +145,7 @@ function Stat({ label, value, sub, color = 'var(--text-primary)' }) {
       padding: '12px 14px', background: 'var(--background-soft)',
       border: '1px solid var(--border)', borderRadius: 'var(--radius-control)',
     }}>
-      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
         {label}
       </div>
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color, marginTop: 4, fontWeight: 600, lineHeight: 1.1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
@@ -156,9 +157,9 @@ function Stat({ label, value, sub, color = 'var(--text-primary)' }) {
 }
 
 const STATE_STYLE = {
-  pass:    { icon: '✅', tone: 'success', label: 'ผ่าน',   color: 'var(--success)' },
-  pending: { icon: '⏳', tone: 'neutral', label: 'รออยู่', color: 'var(--text-muted)' },
-  fail:    { icon: '❌', tone: 'danger',  label: 'ไม่ผ่าน', color: 'var(--danger)' },
+  pass:    { icon: 'check', tone: 'success', label: 'ผ่าน',   color: 'var(--success)' },
+  pending: { icon: 'clock', tone: 'neutral', label: 'รออยู่', color: 'var(--text-muted)' },
+  fail:    { icon: 'x',     tone: 'danger',  label: 'ไม่ผ่าน', color: 'var(--danger)' },
 };
 
 function CriterionRow({ label, detail, state, isLast }) {
@@ -169,7 +170,7 @@ function CriterionRow({ label, detail, state, isLast }) {
       minHeight: 40, padding: '6px 2px',
       borderBottom: isLast ? 'none' : '1px solid var(--border)',
     }}>
-      <span style={{ fontSize: 14, flexShrink: 0 }}>{st.icon}</span>
+      <span style={{ flexShrink: 0 }}><Icon name={st.icon} size={14} /></span>
       <span style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1, minWidth: 120 }}>{label}</span>
       <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>{detail}</span>
       <Badge tone={st.tone} size="sm" style={{ marginLeft: 'auto' }}>{st.label}</Badge>

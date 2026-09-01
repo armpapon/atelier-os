@@ -138,9 +138,8 @@ export function Sidebar({ active, onChange, user, financeTabs = {}, onToggleColl
         {items.map((group, gi) => (
           <div key={gi} style={{ marginBottom: 18 }}>
             <div style={{
-              fontFamily: 'var(--f-mono)', fontSize: 9.5,
-              letterSpacing: '0.18em', textTransform: 'uppercase',
-              color: 'var(--text-muted)', padding: '0 10px 7px', fontWeight: 500,
+              fontVariantNumeric: 'tabular-nums', fontSize: 13,
+              color: 'var(--text-muted)', padding: '0 10px 7px', fontWeight: 500
             }}>{group.group}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {group.children.map(item => {
