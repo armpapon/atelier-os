@@ -61,6 +61,7 @@ import {
 import {
   cashflowWindow, cashflowSeries, savingsRate, pctDelta, monthReadout,
   resolveSelection, filterToMonths, compactBaht, chartGeometry, barPath,
+  averageMonthlyNet,
 } from '../src/lib/cashflow.js';
 import {
   normalizeCategory, categoryKey, sortNewestFirst, sumExpense, leakDateLabel,
@@ -3109,6 +3110,55 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     compactBaht(87000) === '87K' && compactBaht(1200000) === '1.2M'
     && compactBaht(1000000) === '1M' && compactBaht(940) === '940' && compactBaht(0) === '0',
     [87000, 1200000, 940].map(compactBaht).join(' / '));
+
+  // ── v4.61 · A12 Major 3 — the chart header's average, and its denominator ──
+  // The readout divides by the months that HAVE a figure, not by the 12-slot
+  // window (Loop's ledger starts mid-2569, so a window average would divide
+  // real months by months the household never lived through). That is a
+  // legitimate statistic and a misleading label, so the maths moved here and
+  // the component's copy became "เฉลี่ยเดือนที่มีรายการ". These cases pin the
+  // boundary behaviour the audit asked for: all-zero, single month, full window.
+  {
+    const win = (rows) => cashflowWindow(TODAY).map((ym, i) => ({
+      ym, income: rows[i]?.income || 0, expense: rows[i]?.expense || 0,
+    }));
+
+    const allZero = averageMonthlyNet(win([]));
+    check('A12·3 หน้าต่างว่างทั้ง 12 เดือน — avg/total เป็น 0 ที่นิยามไว้ชัด และนับได้ 0 เดือน (คอมโพเนนต์จึงไม่ต้องโชว์ค่าเฉลี่ย)',
+      allZero.avg === 0 && allZero.total === 0
+      && allZero.monthsCounted === 0 && allZero.windowMonths === 12,
+      JSON.stringify(allZero));
+
+    // ONE active month of ฿30,000 net in a 12-slot window. The window average
+    // would be ฿2,500 — this function says ฿30,000 and reports monthsCounted 1,
+    // so the label can name which denominator it used.
+    const single = averageMonthlyNet(win(
+      Object.assign([], { 11: { income: 30000, expense: 0 } })));
+    check('A12·3 มีข้อมูลเดือนเดียวใน 12 ช่อง — เฉลี่ยเป็น ฿30,000 (เดือนที่มีรายการ) ไม่ใช่ ฿2,500 (หารทั้งหน้าต่าง) และบอกว่านับ 1 เดือน',
+      single.avg === 30000 && single.monthsCounted === 1
+      && single.total === 30000 && single.windowMonths === 12,
+      `avg ${single.avg} · นับ ${single.monthsCounted}/${single.windowMonths}`);
+
+    // Every slot active: the two denominators agree, so the number is the same
+    // one a naive window average would have produced.
+    const full = averageMonthlyNet(win(Array.from({ length: 12 }, () => ({ income: 10000, expense: 4000 }))));
+    check('A12·3 มีข้อมูลครบทั้ง 12 เดือน — ตัวหารสองแบบตรงกัน เฉลี่ย ฿6,000',
+      full.avg === 6000 && full.monthsCounted === 12 && full.total === 72000,
+      `avg ${full.avg} · นับ ${full.monthsCounted}/${full.windowMonths}`);
+
+    // A month with expense only is ACTIVE (it is data), and drags the average
+    // negative — the component flips the wording to "ขาด", never hides it.
+    const negative = averageMonthlyNet(win(
+      Object.assign([], { 10: { income: 0, expense: 8000 }, 11: { income: 10000, expense: 2000 } })));
+    check('A12·3 เดือนที่มีแต่รายจ่ายก็นับเป็นเดือนที่มีรายการ และค่าเฉลี่ยติดลบได้',
+      negative.monthsCounted === 2 && negative.avg === 0 && negative.total === 0
+      && averageMonthlyNet(win(Object.assign([], { 11: { income: 0, expense: 5000 } }))).avg === -5000,
+      `นับ ${negative.monthsCounted} · avg ${negative.avg}`);
+
+    check('A12·3 null-safe เหมือนฟังก์ชันอื่นในไฟล์ — ไม่มี series ก็ไม่ throw',
+      averageMonthlyNet().monthsCounted === 0 && averageMonthlyNet([]).avg === 0
+      && averageMonthlyNet([{ ym: '2026-08' }]).monthsCounted === 0);
+  }
 
   const p = barPath(10, 100, 16, 50);
   check('แท่งมนหัวบน แบนที่ฐาน — เส้นเริ่มและจบที่เส้นฐาน',

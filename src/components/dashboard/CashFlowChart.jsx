@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { EmptyState } from '../ui/index.js';
-import { chartGeometry, barPath, monthReadout, resolveSelection } from '../../lib/cashflow.js';
+import { chartGeometry, barPath, monthReadout, resolveSelection, averageMonthlyNet } from '../../lib/cashflow.js';
 import { Icon } from '../Icon.jsx';
 import { SectionCaption } from './InsetList.jsx';
 
@@ -77,11 +77,10 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
     if (d) onMonthClick?.(d.ym);
   };
 
-  // The headline the axis labels used to carry: what an average month leaves.
-  const months = data.filter(d => (d.income || 0) > 0 || (d.expense || 0) > 0);
-  const avgNet = months.length
-    ? months.reduce((s, d) => s + ((Number(d.income) || 0) - (Number(d.expense) || 0)), 0) / months.length
-    : 0;
+  // The headline the axis labels used to carry. The maths lives in cashflow.js
+  // and the label says which months it divided by — a bare "เฉลี่ย/เดือน" over
+  // a 12-slot window would have been a different number (audit A12 · 3).
+  const avgNet = averageMonthlyNet(data);
 
   return (
     <div>
@@ -91,9 +90,15 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
           gap: 12, flexWrap: 'wrap', marginBottom: 4,
         }}>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', ...NUM }}>
-            {avgNet >= 0 ? 'เฉลี่ยเหลือ ' : 'เฉลี่ยขาด '}{baht(avgNet)}/เดือน
-          </span>
+          {avgNet.monthsCounted > 0 && (
+            <span data-avg-readout style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', ...NUM }}>
+              {avgNet.avg >= 0 ? 'เฉลี่ยเดือนที่มีรายการ เหลือ ' : 'เฉลี่ยเดือนที่มีรายการ ขาด '}
+              {baht(avgNet.avg)}/เดือน
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>
+                {' '}({avgNet.monthsCounted} จาก {avgNet.windowMonths} เดือน)
+              </span>
+            </span>
+          )}
           <span style={{ display: 'flex', gap: 14 }}>
             <Legend color="var(--chart-income)"  label="รายรับ" />
             <Legend color="var(--chart-expense)" label="รายจ่าย" />

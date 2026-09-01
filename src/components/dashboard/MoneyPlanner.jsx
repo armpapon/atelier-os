@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   planDebts, comparePayoff, paymentBelowInterest, MONTH_CAP,
 } from '../../lib/moneyPlanner.js';
 import { currentYearMonth } from '../../lib/api/finance.js';
 import { formatThaiMonth } from './MonthNav.jsx';
 import { Icon } from '../Icon.jsx';
-import { SectionCaption, NUM } from './InsetList.jsx';
+import { SectionCaption, Pill, NUM } from './InsetList.jsx';
 
 // ── Month OFFSET → Thai Buddhist-year label ──────────────────────────────────
 // The engine speaks in offsets from the current month (1 = next month). The
@@ -22,6 +22,47 @@ export function monthOffsetLabel(offset) {
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 const baht = (n) => '฿' + fmt(Math.round(Number(n || 0)));
+
+/**
+ * How much of the household's real debt the simulator can actually speak for
+ * (audit A12 · 1).
+ *
+ * `planDebts()` silently drops any active debt with no readable rate — and when
+ * it drops ALL of them `simulatePayoff` returns monthsToAllClear: 0, which the
+ * หนี้ hero used to print as "หมดหนี้ <this month>" while ฿120,000 was still
+ * owed. Nothing downstream may render a payoff DATE unless this says complete.
+ *
+ * An "outstanding" debt is an ACTIVE debt that still owes something, measured
+ * the same way summarizeDebts measures it: a stored remaining_balance when there
+ * is one, otherwise the instalments left × the monthly payment.
+ *
+ * Returns { planned, outstanding, missing: [rows], complete }:
+ *   · complete is TRUE only when there is at least one outstanding debt and the
+ *     plan covers every one of them. No debt at all → complete: false, because
+ *     "หมดหนี้ <date>" is not a claim to make about an empty ledger either.
+ * Pure read over the rows the page already loaded — no fetch, no Date.
+ */
+export function payoffCoverage(debts = []) {
+  const owed = (d) => {
+    const bal = Number(d?.remaining_balance);
+    if (d?.remaining_balance != null && Number.isFinite(bal)) return Math.max(0, bal);
+    const total = Number(d?.total_months);
+    if (Number.isFinite(total) && total > 0) {
+      const left = Math.max(0, total - (Number(d?.months_paid) || 0));
+      return left * (Number(d?.monthly_payment) || 0);
+    }
+    return 0;
+  };
+  const outstanding = (debts || []).filter(d => d && d.is_active !== false && owed(d) > 0);
+  const plannedIds = new Set(planDebts(debts).map(d => d.id));
+  const missing = outstanding.filter(d => !plannedIds.has(d.id));
+  return {
+    planned: outstanding.length - missing.length,
+    outstanding: outstanding.length,
+    missing,
+    complete: outstanding.length > 0 && missing.length === 0,
+  };
+}
 
 // prefers-reduced-motion — checked once, guarded for jsdom (no matchMedia).
 const REDUCE_MOTION =
@@ -55,10 +96,15 @@ export function MoneyPlanner({ debts, extra: extraProp, onExtraChange }) {
   // hero's "หมดหนี้" stat and this slider read one number; with neither prop
   // the card keeps its own state exactly as it did in v4.48.
   const [localExtra, setLocalExtra] = useState(DEFAULT_EXTRA);
-  const extra = extraProp ?? localExtra;
-  const setExtra = (v) => { setLocalExtra(v); onExtraChange?.(v); };
+  // Which mode this instance is in is decided ONCE, on the first render. Letting
+  // it flip mid-life would drop the card back onto a stale local value the user
+  // never chose (audit A12 · A12.2 latent note).
+  const controlled = useRef(extraProp !== undefined).current;
+  const extra = controlled ? extraProp : localExtra;
+  const setExtra = (v) => { if (!controlled) setLocalExtra(v); onExtraChange?.(v); };
 
   const plan = useMemo(() => planDebts(debts), [debts]);
+  const coverage = useMemo(() => payoffCoverage(debts), [debts]);
   const cmp = useMemo(() => comparePayoff(debts, extra), [debts, extra]);
   const belowInterest = useMemo(() => paymentBelowInterest(debts), [debts]);
 
@@ -95,7 +141,14 @@ export function MoneyPlanner({ debts, extra: extraProp, onExtraChange }) {
 
   return (
     <div data-money-planner style={{ marginBottom: 14 }}>
-      <SectionCaption>ลองวางแผนโปะ</SectionCaption>
+      <SectionCaption
+        action={!coverage.complete ? (
+          <span data-plan-scope style={{ fontSize: 12.5, color: 'var(--accent-strong)', ...NUM }}>
+            เฉพาะหนี้ที่กรอกครบ {coverage.planned} จาก {coverage.outstanding} ก้อน
+          </span>
+        ) : null}>
+        ลองวางแผนโปะ
+      </SectionCaption>
       <div style={{
         background: 'var(--surface)', border: 'none',
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)',
@@ -180,6 +233,19 @@ export function MoneyPlanner({ debts, extra: extraProp, onExtraChange }) {
             )}
           </div>
         </div>
+
+        {/* The scope of BOTH figures above and the chips below. Without this the
+            grid reads as "หมดหนี้ทุกก้อน" while a debt is missing from the run
+            entirely (audit A12 · 1). */}
+        {!coverage.complete && (
+          <div data-plan-scope-note style={{
+            fontSize: 12.5, color: 'var(--accent-strong)', marginTop: 10, lineHeight: 1.5, ...NUM,
+          }}>
+            <Pill tone="info">กรอกเพิ่ม</Pill>
+            ตัวเลขและวันข้างบนนับเฉพาะหนี้ที่กรอกครบ {coverage.planned} จาก {coverage.outstanding} ก้อน
+            {coverage.missing.length > 0 && ` — ยังไม่รวม ${coverage.missing.map(d => d.name).join(', ')}`}
+          </div>
+        )}
 
         {/* Per-debt timeline — one chip per debt, in the order they clear */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>

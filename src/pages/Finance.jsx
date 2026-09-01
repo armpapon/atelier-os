@@ -30,7 +30,7 @@ import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { DebtAdvice } from '../components/dashboard/DebtAdvice.jsx';
-import { MoneyPlanner, monthOffsetLabel, DEFAULT_EXTRA } from '../components/dashboard/MoneyPlanner.jsx';
+import { MoneyPlanner, monthOffsetLabel, payoffCoverage, DEFAULT_EXTRA } from '../components/dashboard/MoneyPlanner.jsx';
 import { HeroCard, SectionCaption, InsetGroup, InsetRow, RowBar, Pill, NUM } from '../components/dashboard/InsetList.jsx';
 import { CreditCards } from '../components/dashboard/CreditCards.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
@@ -857,7 +857,11 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   // Credit cards are read on this page too since v4.59 — the สุขภาพการเงิน row
   // on ภาพรวม reports the same utilisation the บัตรเครดิต room does, and two
   // fetches of the same table are how the two numbers would drift apart.
+  // ONE credit-card fetch per page load, owned here (audit A12 · 2). Both the
+  // สุขภาพการเงิน utilisation row and the บัตรเครดิต tab render from this state,
+  // and CRUD in that tab calls refresh() — so the two can never drift apart.
   const [cards, setCards]       = useState([]);
+  const [cardsMissing, setCardsMissing] = useState(false);
   // The หนี้ hero's "หมดหนี้" date is the Money Planner's CURRENT simulation,
   // not a second one — the slider lives here so both read one value (v4.59).
   const [payoffExtra, setPayoffExtra] = useState(DEFAULT_EXTRA);
@@ -946,7 +950,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setTxns([]); setPrevTxns([]); setTrend12([]); setAccounts([]); setBudgets([]); setGoals([]);
-      setCards([]);
+      setCards([]); setCardsMissing(false);
       setLoading(false);
       return;
     }
@@ -996,10 +1000,15 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         // the RPC migration hasn't been run; trendData falls back below.
         financeMonthSummary({ scope, fromYm: rangeFrom, toYm: rangeTo })
           .catch(() => null),
-        // A missing credit_cards table is production before the migration ran —
-        // the utilisation row simply does not render, exactly as the บัตรเครดิต
-        // room degrades. Never a page-level error.
-        listCreditCards(scope).catch(() => ({ cards: [] })),
+        // A missing credit_cards table is production before the migration ran:
+        // the API reports it as { missing: true } WITHOUT throwing, and that is
+        // the one graceful empty state. Any other rejection (network, auth,
+        // RLS) is a real failure and must be SAID — swallowing it made the
+        // utilisation row vanish while reading as "no risk" (audit A12 · 4).
+        listCreditCards(scope).catch(() => {
+          failedParts.push('บัตรเครดิต');
+          return { cards: [], missing: false, failed: true };
+        }),
       ]);
 
       // Displayed balance = anchor + ledger after the anchor (accounts
@@ -1019,6 +1028,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
       setDebts(d || []); setDebtPayments(dp || []);
       setRecurring(rec || []);
       setCards(cc?.cards || []);
+      setCardsMissing(!!cc?.missing);
       setLoadWarning(failedParts.length
         ? `โหลดข้อมูล ${failedParts.join(' / ')} ไม่สำเร็จ — ตัวเลขส่วนนั้นอาจไม่ครบ ลองรีเฟรชอีกครั้ง`
         : null);
@@ -1136,13 +1146,33 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   );
   // The หนี้ hero's payoff date — the SAME simulatePayoff run the Money Planner
   // slider drives, so moving the slider moves the hero.
+  //
+  // ⚠️ It may only be shown when the simulator actually covers every outstanding
+  // debt (audit A12 · 1). simulatePayoff quietly drops any debt with no readable
+  // rate, and returns monthsToAllClear: 0 when it drops them ALL — which the
+  // hero used to print as "หมดหนี้ <this month>" over a ฿120,000 balance. With
+  // anything missing the stat is "—" plus a prompt naming what to fill in.
   const payoffRun = useMemo(
     () => simulatePayoff(debts, payoffExtra),
     [debts, payoffExtra],
   );
-  const payoffLabel = payoffRun.monthsToAllClear != null
-    ? (monthOffsetLabel(payoffRun.monthsToAllClear) || 'นานเกิน 60 ปี')
-    : 'นานเกิน 60 ปี';
+  const coverage = useMemo(() => payoffCoverage(debts), [debts]);
+  const payoffStat = useMemo(() => {
+    if (!coverage.complete) {
+      return {
+        v: '—',
+        sub: coverage.outstanding === 0
+          ? 'ยังไม่มียอดค้างให้คำนวณ'
+          : `ข้อมูลไม่ครบ · กรอกดอกเบี้ยอีก ${coverage.missing.length} ก้อน`,
+        subTone: 'var(--accent-strong)',
+      };
+    }
+    return {
+      v: payoffRun.monthsToAllClear != null
+        ? (monthOffsetLabel(payoffRun.monthsToAllClear) || 'นานเกิน 60 ปี')
+        : 'นานเกิน 60 ปี',
+    };
+  }, [coverage, payoffRun]);
 
   // รายการล่าสุด — the newest five rows of the month already loaded.
   const recentTxns = useMemo(
@@ -1665,7 +1695,8 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
             {/* `debts` is the list this page already loaded — a card linked to a
                 debt row reads its balance from there, never from a second
                 fetch, so the two can never disagree on screen. */}
-            <CreditCards scope={scope} debts={debts} isMobile={isMobile} />
+            <CreditCards scope={scope} debts={debts} isMobile={isMobile}
+              cards={cards} missing={cardsMissing} loading={loading} onChange={refresh} />
         </TabPanel>
 
         <TabPanel id="debt" active={tab === 'debt'} tabbed={isMobile}>
@@ -1679,7 +1710,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                 stats={[
                   { k: 'ดอกเบี้ย/เดือน', v: baht(interestBurn.perMonth), tone: 'var(--danger)' },
                   { k: 'ผ่อนรวม/เดือน', v: baht(debtSummary.monthlyBurden) },
-                  { k: 'หมดหนี้', v: payoffLabel },
+                  { k: 'หมดหนี้', ...payoffStat },
                 ]}
               />
             )}

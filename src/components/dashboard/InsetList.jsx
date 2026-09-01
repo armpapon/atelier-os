@@ -63,6 +63,14 @@ export function HeroCard({ caption, amount, tone, stats = [], aside, compact, ..
                 fontSize: 17, fontWeight: 600, marginTop: 2,
                 color: s.tone || 'var(--text-primary)', ...NUM,
               }}>{s.v}</div>
+              {/* A stat that cannot be measured says why, right under itself —
+                  an unexplained "—" is just as opaque as a wrong number. */}
+              {s.sub != null && (
+                <div style={{
+                  fontSize: 12, fontWeight: 500, marginTop: 2, maxWidth: 190, lineHeight: 1.4,
+                  color: s.subTone || 'var(--text-muted)', ...NUM,
+                }}>{s.sub}</div>
+              )}
             </div>
           ))}
         </div>
