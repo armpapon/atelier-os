@@ -53,11 +53,13 @@ describe('Money Planner · ตัวจำลองโปะหนี้บน�
     const slider = container.querySelector('[data-extra-slider]');
     const savedAt5k = container.querySelector('[data-interest-saved]').textContent;
     const valueAt5k = container.querySelector('[data-extra-value]').textContent;
-    expect(valueAt5k).toBe('+5,000฿');
+    // v4.59 — the big number reads "+฿5,000 /เดือน" (the phase-3 headline
+    // format). Same claim, same element: the slider's value is on screen.
+    expect(valueAt5k).toBe('+฿5,000 /เดือน');
 
     fireEvent.change(slider, { target: { value: '15000' } });
 
-    expect(container.querySelector('[data-extra-value]').textContent).toBe('+15,000฿');
+    expect(container.querySelector('[data-extra-value]').textContent).toBe('+฿15,000 /เดือน');
     // More money down → strictly more interest saved than at +5,000.
     const savedAt15k = container.querySelector('[data-interest-saved]').textContent;
     expect(savedAt15k).not.toBe(savedAt5k);

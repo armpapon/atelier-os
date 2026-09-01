@@ -130,7 +130,10 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
     render(<FinanceView scope="personal" />);
     await openTab('รายการ');
 
-    await screen.findByText('โอนไปครอบครัว');
+    // v4.59 — the title also appears in ภาพรวม's รายการล่าสุด list (every panel
+    // stays mounted), so this asks for ALL of them, exactly as the plain-row
+    // case below already does. The claim is unchanged: the row is on screen.
+    await screen.findAllByText('โอนไปครอบครัว');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
@@ -148,7 +151,10 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
     render(<FinanceView scope="personal" />);
     await openTab('รายการ');
 
-    await screen.findByText('โอนไปครอบครัว');
+    // v4.59 — the title also appears in ภาพรวม's รายการล่าสุด list (every panel
+    // stays mounted), so this asks for ALL of them, exactly as the plain-row
+    // case below already does. The claim is unchanged: the row is on screen.
+    await screen.findAllByText('โอนไปครอบครัว');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
@@ -167,7 +173,10 @@ describe('B5 · deleting one leg of a transfer takes the pair', () => {
     render(<FinanceView scope="personal" />);
     await openTab('รายการ');
 
-    await screen.findByText('โอนไปครอบครัว');
+    // v4.59 — the title also appears in ภาพรวม's รายการล่าสุด list (every panel
+    // stays mounted), so this asks for ALL of them, exactly as the plain-row
+    // case below already does. The claim is unchanged: the row is on screen.
+    await screen.findAllByText('โอนไปครอบครัว');
     fireEvent.click(screen.getByRole('button', { name: 'ลบ' }));
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
