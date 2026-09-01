@@ -11,11 +11,16 @@ import {
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
   deleteTransactionsInMonth, financeMonthSummary,
-  listDebts, listDebtPayments,
+  listDebts, listDebtPayments, summarizeDebts,
   listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
   monthlyRecurringTotal,
   bangkokDate, bangkokTime, isTransfer,
 } from '../lib/api/finance.js';
+import { listCreditCards } from '../lib/api/creditCards.js';
+import { summarizeCards, HEALTHY_UTILIZATION } from '../lib/creditCards.js';
+import { totalInterestBurn } from '../lib/debtAdvice.js';
+import { buildLeakInsights } from '../lib/moneyLeaks.js';
+import { simulatePayoff } from '../lib/moneyPlanner.js';
 import { cashflowWindow, cashflowSeries, filterToMonths } from '../lib/cashflow.js';
 import { isSupabaseConfigured } from '../lib/supabase.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
@@ -25,7 +30,8 @@ import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { DebtAdvice } from '../components/dashboard/DebtAdvice.jsx';
-import { MoneyPlanner } from '../components/dashboard/MoneyPlanner.jsx';
+import { MoneyPlanner, monthOffsetLabel, DEFAULT_EXTRA } from '../components/dashboard/MoneyPlanner.jsx';
+import { HeroCard, SectionCaption, InsetGroup, InsetRow, RowBar, Pill, NUM } from '../components/dashboard/InsetList.jsx';
 import { CreditCards } from '../components/dashboard/CreditCards.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
 import { ScopeTransferModal } from '../components/dashboard/ScopeTransferModal.jsx';
@@ -48,6 +54,15 @@ const CUSTOM_CATS_KEY = 'loop:custom-categories';
 // "ดอกเบี้ยหนี้ที่ยังต้องจ่าย" is a set of loans, and the Debt Tracker on this
 // same page already renders them properly. Jump there instead of duplicating it.
 export const DEBT_TRACKER_ANCHOR = 'loop-debt-tracker';
+// The สุขภาพการเงิน row for เงินรั่ว is a jump, not a duplicate: the เงินรั่ว
+// card lower down this same room already breaks the number apart, so the row
+// hands the keyboard to it instead of re-rendering its contents (v4.59).
+export const MONEY_LEAKS_ANCHOR = 'loop-money-leaks';
+
+/** '฿12,345' — the page's one baht formatter for the phase-3 lists. */
+function baht(n) {
+  return '฿' + Math.round(Math.abs(Number(n) || 0)).toLocaleString('th');
+}
 
 function loadCustomCats() {
   try { return JSON.parse(localStorage.getItem(CUSTOM_CATS_KEY) || '[]'); }
@@ -693,30 +708,6 @@ function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
   );
 }
 
-// One income/expense line under the hero balance: circled arrow + label + amount.
-function FlowLine({ tone, label, amount, sub }) {
-  const isIn = tone === 'in';
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 500 }}>
-      <span style={{
-        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 12, lineHeight: 1,
-        background: isIn ? 'var(--success-soft)' : 'var(--danger-soft)',
-        color: isIn ? 'var(--success)' : 'var(--danger)',
-      }}>{isIn ? '↓' : '↑'}</span>
-      <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-      <span style={{
-        fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-        color: isIn ? 'var(--success)' : 'var(--text-primary)',
-      }}>
-        ฿{Math.abs(Number(amount) || 0).toLocaleString('th', { maximumFractionDigits: 0 })}
-      </span>
-      {sub && <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{sub}</span>}
-    </div>
-  );
-}
-
 // ── Sub-tabs (v4.35 · lifted in v4.38) ───────────────────────────────────────
 // One page, six rooms. Every panel reads the SAME state (yearMonth, txns,
 // accounts…) held by FinanceView — switching tabs never reloads data.
@@ -863,6 +854,13 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   const [goals, setGoals]       = useState([]);
   const [debts, setDebts]       = useState([]);
   const [debtPayments, setDebtPayments] = useState([]);
+  // Credit cards are read on this page too since v4.59 — the สุขภาพการเงิน row
+  // on ภาพรวม reports the same utilisation the บัตรเครดิต room does, and two
+  // fetches of the same table are how the two numbers would drift apart.
+  const [cards, setCards]       = useState([]);
+  // The หนี้ hero's "หมดหนี้" date is the Money Planner's CURRENT simulation,
+  // not a second one — the slider lives here so both read one value (v4.59).
+  const [payoffExtra, setPayoffExtra] = useState(DEFAULT_EXTRA);
   const [recurring, setRecurring] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
@@ -917,6 +915,17 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
     }, 0);
   }, [setTab]);
 
+  // Same contract as scrollToDebts, minus the room change: the เงินรั่ว card is
+  // already in this room, so the row only hands the keyboard over and scrolls.
+  const scrollToLeaks = useCallback(() => {
+    const el = typeof document !== 'undefined' && document.getElementById(MONEY_LEAKS_ANCHOR);
+    if (!el) return;
+    if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
   const removeCategory = useCallback((id) => {
     setCustomCats(prev => {
       const next = prev.filter(c => c.id !== id);
@@ -937,6 +946,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   const refresh = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setTxns([]); setPrevTxns([]); setTrend12([]); setAccounts([]); setBudgets([]); setGoals([]);
+      setCards([]);
       setLoading(false);
       return;
     }
@@ -972,7 +982,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
       const softly = (promise, label) =>
         promise.catch(() => { failedParts.push(label); return []; });
 
-      const [t, p, r12, a, b, g, d, dp, rec, ms] = await Promise.all([
+      const [t, p, r12, a, b, g, d, dp, rec, ms, cc] = await Promise.all([
         listTransactions({ yearMonth, scope, limit: 20000 }),
         listTransactions({ yearMonth: prev, scope, limit: 20000 }),
         listTransactionsRange({ startDate: startTrend, endDate: endTrend, scope }),
@@ -986,6 +996,10 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         // the RPC migration hasn't been run; trendData falls back below.
         financeMonthSummary({ scope, fromYm: rangeFrom, toYm: rangeTo })
           .catch(() => null),
+        // A missing credit_cards table is production before the migration ran —
+        // the utilisation row simply does not render, exactly as the บัตรเครดิต
+        // room degrades. Never a page-level error.
+        listCreditCards(scope).catch(() => ({ cards: [] })),
       ]);
 
       // Displayed balance = anchor + ledger after the anchor (accounts
@@ -1004,6 +1018,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
       setBudgets(b || []); setGoals(g || []);
       setDebts(d || []); setDebtPayments(dp || []);
       setRecurring(rec || []);
+      setCards(cc?.cards || []);
       setLoadWarning(failedParts.length
         ? `โหลดข้อมูล ${failedParts.join(' / ')} ไม่สำเร็จ — ตัวเลขส่วนนั้นอาจไม่ครบ ลองรีเฟรชอีกครั้ง`
         : null);
@@ -1102,6 +1117,45 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
     return computeEmergencyFundCoverage(accounts, avgExpense);
   }, [accounts, history12, thisSum.expense]);
 
+  // ── Phase 3 · the three สุขภาพการเงิน figures + the หนี้ hero ───────────────
+  // Every one of these is a READ of an existing engine — nothing new is
+  // computed here, the rows just show what the libs already return.
+  const cardSummary  = useMemo(() => summarizeCards({ cards, debts }), [cards, debts]);
+  const interestBurn = useMemo(() => totalInterestBurn(debts), [debts]);
+  const ratedDebts   = useMemo(
+    () => debts.filter(d => d.is_active !== false && Number(d.interest_rate) > 0).length,
+    [debts],
+  );
+  const leaks = useMemo(
+    () => buildLeakInsights({ txns, prevTxns, trend12: history12, debts, yearMonth }),
+    [txns, prevTxns, history12, debts, yearMonth],
+  );
+  const debtSummary = useMemo(
+    () => summarizeDebts(debts, debtPayments, yearMonth),
+    [debts, debtPayments, yearMonth],
+  );
+  // The หนี้ hero's payoff date — the SAME simulatePayoff run the Money Planner
+  // slider drives, so moving the slider moves the hero.
+  const payoffRun = useMemo(
+    () => simulatePayoff(debts, payoffExtra),
+    [debts, payoffExtra],
+  );
+  const payoffLabel = payoffRun.monthsToAllClear != null
+    ? (monthOffsetLabel(payoffRun.monthsToAllClear) || 'นานเกิน 60 ปี')
+    : 'นานเกิน 60 ปี';
+
+  // รายการล่าสุด — the newest five rows of the month already loaded.
+  const recentTxns = useMemo(
+    () => [...txns]
+      .sort((a, b) => String(b.occurred_at || '').localeCompare(String(a.occurred_at || '')))
+      .slice(0, 5),
+    [txns],
+  );
+  const accountNameOf = useCallback(
+    (id) => accounts.find(a => a.id === id)?.name || null,
+    [accounts],
+  );
+
   const deltas = useMemo(() => {
     const pct = (cur, prev) => prev > 0 ? ((cur - prev) / prev) * 100 : (cur > 0 ? 100 : 0);
     return {
@@ -1195,54 +1249,123 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         {isMobile && <FinanceTabs value={tab} onChange={setTab} />}
 
         <TabPanel id="overview" active={tab === 'overview'} tabbed={isMobile}>
-            {/* Hero balance — คงเหลือสุทธิ + flows */}
-            <div style={{ marginBottom: isMobile ? 6 : 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>คงเหลือสุทธิ</span>
-                <MonthNav value={yearMonth} onChange={setYearMonth} />
-              </div>
-              <div style={{
-                fontSize: isMobile ? 42 : 56, fontWeight: 700, letterSpacing: '-0.035em',
-                lineHeight: 1.08, marginTop: 2, fontVariantNumeric: 'tabular-nums',
-                color: thisSum.net >= 0 ? 'var(--text-primary)' : 'var(--danger)',
-              }}>
-                {(thisSum.net >= 0 ? '' : '-') + '฿' + Math.abs(thisSum.net).toLocaleString('th', { maximumFractionDigits: 0 })}
-              </div>
-              <div style={{ display: 'flex', gap: 26, marginTop: 12, flexWrap: 'wrap' }}>
-                <FlowLine
-                  tone="in" label="รายรับ"
-                  amount={thisSum.income}
-                  sub={`${txns.filter(t => t.amount > 0).length} ครั้ง`}
-                />
-                <FlowLine
-                  tone="out" label="รายจ่าย"
-                  amount={thisSum.expense}
-                  sub={`${txns.filter(t => t.amount < 0).length} ครั้ง`}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 500 }}>
-                  <span style={{
-                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, background: 'var(--fill)', color: 'var(--text-secondary)',
-                  }}>%</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>อัตราการออม</span>
-                  <span style={{
-                    fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-                    color: thisSum.savingsRate >= 20 ? 'var(--success)' : thisSum.savingsRate >= 0 ? 'var(--text-primary)' : 'var(--danger)',
-                  }}>
-                    {isFinite(thisSum.savingsRate) ? thisSum.savingsRate.toFixed(1) + '%' : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
+            {/* Hero — one number is the headline; the flows support it (v4.59) */}
+            <HeroCard
+              data-overview-hero
+              caption="คงเหลือเดือนนี้"
+              aside={<MonthNav value={yearMonth} onChange={setYearMonth} />}
+              amount={(thisSum.net >= 0 ? '' : '−') + baht(thisSum.net)}
+              tone={thisSum.net >= 0 ? undefined : 'var(--danger)'}
+              stats={[
+                { k: 'เข้า', v: '+' + baht(thisSum.income), tone: 'var(--success)' },
+                { k: 'ออก', v: '−' + baht(thisSum.expense), tone: 'var(--danger)' },
+                {
+                  k: 'อัตราออม',
+                  v: isFinite(thisSum.savingsRate) ? Math.round(thisSum.savingsRate) + '%' : '—',
+                  tone: thisSum.savingsRate >= 20 ? 'var(--success)'
+                      : thisSum.savingsRate >= 0 ? undefined : 'var(--danger)',
+                },
+              ]}
+            />
 
             {/* Cash Flow chart */}
             <CashFlowChart data={trendData} selectedYm={yearMonth} currentYm={todayYm} onMonthClick={setYearMonth} />
 
-            {/* Money Leaks / Insights */}
-            <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
-              allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts}
-              yearMonth={yearMonth} />
+            {/* สุขภาพการเงิน — three computed rows, each one a jump to its room */}
+            {(cardSummary.utilization != null || interestBurn.perMonth > 0 || leaks.recurringTotal > 0) && (
+              <div data-health-group>
+                <SectionCaption>สุขภาพการเงิน</SectionCaption>
+                <InsetGroup>
+                  {cardSummary.utilization != null && (
+                    <InsetRow
+                      data-health-row="utilization"
+                      first
+                      icon="card" iconBg="var(--accent)"
+                      title="ใช้วงเงินบัตรรวม"
+                      subtitle={`${baht(cardSummary.measuredBalance)} / ${baht(cardSummary.limit)} · เกณฑ์บูโร ${HEALTHY_UTILIZATION}%`}
+                      below={<RowBar
+                        pct={cardSummary.utilization}
+                        color={cardSummary.utilization <= HEALTHY_UTILIZATION ? 'var(--success)' : 'var(--warning)'} />}
+                      value={`${cardSummary.utilization.toFixed(1)}%`}
+                      valueSub={cardSummary.utilization <= HEALTHY_UTILIZATION ? 'ต่ำกว่าเกณฑ์' : 'สูงกว่าเกณฑ์'}
+                      valueSubTone={cardSummary.utilization <= HEALTHY_UTILIZATION ? 'var(--success)' : 'var(--warning)'}
+                      chevron
+                      onActivate={() => setTab('cards')}
+                    />
+                  )}
+                  {interestBurn.perMonth > 0 && (
+                    <InsetRow
+                      data-health-row="interest"
+                      first={cardSummary.utilization == null}
+                      icon="trade" iconBg="var(--danger)"
+                      title="ดอกเบี้ยที่เผาอยู่"
+                      subtitle={`หนี้ ${ratedDebts} ก้อนที่รู้อัตรา`}
+                      value={baht(interestBurn.perMonth)}
+                      valueTone="var(--danger)"
+                      valueSub="ต่อเดือน"
+                      chevron
+                      onActivate={scrollToDebts}
+                    />
+                  )}
+                  {leaks.recurringTotal > 0 && (
+                    <InsetRow
+                      data-health-row="leaks"
+                      first={cardSummary.utilization == null && interestBurn.perMonth <= 0}
+                      icon="clock" iconBg="var(--warning)"
+                      title="เงินรั่วรายเดือน"
+                      subtitle={`สมัครสมาชิก ${leaks.recurring.length} รายการ`}
+                      value={baht(leaks.recurringTotal)}
+                      valueSub="ต่อเดือน"
+                      chevron
+                      onActivate={scrollToLeaks}
+                    />
+                  )}
+                </InsetGroup>
+              </div>
+            )}
+
+            {/* รายการล่าสุด — the newest five of the month. A โอน row carries no
+                +/− colour: moving your own money is neither income nor spend. */}
+            {recentTxns.length > 0 && (
+              <div data-recent-group>
+                <SectionCaption
+                  action={
+                    <Button variant="ghost" size="sm" onClick={() => setTab('txns')}>ดูทั้งหมด</Button>
+                  }>
+                  รายการล่าสุด
+                </SectionCaption>
+                <InsetGroup>
+                  {recentTxns.map((t, i) => {
+                    const transfer = isTransfer(t);
+                    const income   = !transfer && isIncomeTxn(t);
+                    const acc      = accountNameOf(t.account_id);
+                    const meta = [
+                      transfer ? 'โอน · ไม่นับเป็นรายจ่าย' : (t.category || 'อื่น ๆ'),
+                      acc,
+                      txDate(t.occurred_at),
+                    ].filter(Boolean).join(' · ');
+                    return (
+                      <InsetRow
+                        key={t.id} data-recent-row first={i === 0}
+                        title={t.title || '(ไม่มีชื่อรายการ)'}
+                        subtitle={meta}
+                        value={(transfer ? '' : income ? '+' : '−') + baht(t.amount)}
+                        valueTone={transfer ? 'var(--text-muted)'
+                          : income ? 'var(--success)' : 'var(--danger)'}
+                      />
+                    );
+                  })}
+                </InsetGroup>
+              </div>
+            )}
+
+            {/* Money Leaks / Insights — the detail behind the เงินรั่ว row above.
+                tabIndex -1 makes the anchor a legal focus target for that jump. */}
+            <div id={MONEY_LEAKS_ANCHOR} tabIndex={-1} style={{ outline: 'none' }}>
+              <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
+                allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts}
+                yearMonth={yearMonth} />
+            </div>
 
             {/* Cash Flow Forecast 3 เดือนข้างหน้า */}
             <CashFlowForecastCard forecast={forecast} />
@@ -1546,6 +1669,20 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         </TabPanel>
 
         <TabPanel id="debt" active={tab === 'debt'} tabbed={isMobile}>
+            {/* Hero — the one number this room is about. Its หมดหนี้ stat is the
+                Money Planner's live simulation, so the slider below moves it. */}
+            {debts.length > 0 && (
+              <HeroCard
+                data-debt-hero
+                caption="หนี้คงเหลือรวม"
+                amount={baht(debtSummary.totalRemaining)}
+                stats={[
+                  { k: 'ดอกเบี้ย/เดือน', v: baht(interestBurn.perMonth), tone: 'var(--danger)' },
+                  { k: 'ผ่อนรวม/เดือน', v: baht(debtSummary.monthlyBurden) },
+                  { k: 'หมดหนี้', v: payoffLabel },
+                ]}
+              />
+            )}
             {/* Debt Tracker — the เงินรั่ว debt row jumps to this anchor (v4.34).
                 tabIndex -1 makes the anchor a legal focus target so the jump can
                 hand the keyboard over (A1); it stays out of the tab order. */}
@@ -1554,8 +1691,10 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                   renders nothing when there is no computable signal (v4.46). */}
               <DebtAdvice debts={debts} />
               {/* Payoff simulator — slide the extra to see how much sooner all
-                  filled-in debts clear and how much interest is saved (v4.48). */}
-              <MoneyPlanner debts={debts} />
+                  filled-in debts clear and how much interest is saved (v4.48).
+                  v4.59: the slider value is lifted so the hero above reads the
+                  same run. Without the props it still owns its own state. */}
+              <MoneyPlanner debts={debts} extra={payoffExtra} onExtraChange={setPayoffExtra} />
               <DebtTracker
                 debts={debts}
                 payments={debtPayments}

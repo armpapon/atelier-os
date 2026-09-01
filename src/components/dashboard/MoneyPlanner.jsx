@@ -5,12 +5,13 @@ import {
 import { currentYearMonth } from '../../lib/api/finance.js';
 import { formatThaiMonth } from './MonthNav.jsx';
 import { Icon } from '../Icon.jsx';
+import { SectionCaption, NUM } from './InsetList.jsx';
 
 // ── Month OFFSET → Thai Buddhist-year label ──────────────────────────────────
 // The engine speaks in offsets from the current month (1 = next month). The
 // calendar lives HERE: anchor on the current Bangkok month, add the offset,
 // hand the resulting YYYY-MM to formatThaiMonth (which adds the +543 BE year).
-function monthOffsetLabel(offset) {
+export function monthOffsetLabel(offset) {
   if (offset == null) return null;
   const [by, bm] = currentYearMonth().split('-').map(Number);
   const t = (bm - 1) + offset;                 // 0-indexed month + offset
@@ -30,13 +31,18 @@ const REDUCE_MOTION =
 
 const SLIDER_MAX = 20000;
 const SLIDER_STEP = 500;
-const DEFAULT_EXTRA = 5000;
+export const DEFAULT_EXTRA = 5000;
 
-const MONO_LBL = {
-  fontVariantNumeric: 'tabular-nums',
-  fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'
-};
 const HAIRLINE = '1px solid var(--hairline)';
+
+// ── Phase 3 chrome: two result cells side by side, hairline-split ────────────
+const CELL     = { background: 'var(--background-soft)', padding: '12px 14px' };
+const CELL_K   = { fontSize: 12.5, fontWeight: 500, color: 'var(--text-secondary)' };
+const CELL_V   = {
+  fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', marginTop: 3,
+  fontVariantNumeric: 'tabular-nums',
+};
+const CELL_SUB = { fontSize: 12, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.45 };
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Money Planner — payoff simulator on the หนี้ tab, between DebtAdvice and
@@ -44,8 +50,13 @@ const HAIRLINE = '1px solid var(--hairline)';
 //  rollover over ALL filled-in debts. Renders nothing when there is nothing to
 //  plan (no debt has both a rate and a balance).
 // ════════════════════════════════════════════════════════════════════════════
-export function MoneyPlanner({ debts }) {
-  const [extra, setExtra] = useState(DEFAULT_EXTRA);
+export function MoneyPlanner({ debts, extra: extraProp, onExtraChange }) {
+  // Optionally CONTROLLED (v4.59). FinanceView passes the value so the หนี้
+  // hero's "หมดหนี้" stat and this slider read one number; with neither prop
+  // the card keeps its own state exactly as it did in v4.48.
+  const [localExtra, setLocalExtra] = useState(DEFAULT_EXTRA);
+  const extra = extraProp ?? localExtra;
+  const setExtra = (v) => { setLocalExtra(v); onExtraChange?.(v); };
 
   const plan = useMemo(() => planDebts(debts), [debts]);
   const cmp = useMemo(() => comparePayoff(debts, extra), [debts, extra]);
@@ -80,152 +91,116 @@ export function MoneyPlanner({ debts }) {
         ? `ใน ${planRun.monthsToAllClear} เดือน`
         : 'ยังไม่ปลดภายใน 60 ปี';
 
-  // Timeline scale — baseline months is the widest the bars ever need to span.
-  const maxMonths = Math.max(baseline.monthsToAllClear ?? MONTH_CAP, 1);
   const barTransition = REDUCE_MOTION ? 'none' : 'width 260ms ease';
 
   return (
-    <div
-      data-money-planner
-      style={{
-        background: 'var(--surface)', border: '1px solid var(--border)',
+    <div data-money-planner style={{ marginBottom: 14 }}>
+      <SectionCaption>ลองวางแผนโปะ</SectionCaption>
+      <div style={{
+        background: 'var(--surface)', border: 'none',
         borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-card)',
-        padding: 22, marginBottom: 14,
-      }}
-    >
-      {/* Focus note — what's being simulated */}
-      <div style={{ ...MONO_LBL, marginBottom: 6 }}>วางแผนโปะหนี้</div>
-      <div style={{
-        fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.55,
-        background: 'var(--background-soft)', border: HAIRLINE,
-        borderRadius: 12, padding: '10px 13px', marginBottom: 4,
+        padding: '18px 18px 20px',
       }}>
-        รวม <b style={{ color: 'var(--text-primary)' }}>หนี้ที่กรอกครบ {plan.length} ก้อน</b> ·
-        จ่ายรวม <b style={{ color: 'var(--text-primary)' }}>{baht(poolFloor)}/เดือน</b> —
-        วิธี avalanche: โปะก้อนดอกสูงสุดก่อน พอจบทบเงินงวดไปก้อนถัดไป (การ์ดคำแนะนำด้านบนใช้ลำดับเดียวกัน)
-      </div>
+        {/* What is being simulated — the facts, not a lecture */}
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+          เพิ่มเงินโปะต่อเดือน
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.5, ...NUM }}>
+          โปะก้อนดอกแพงสุดก่อน แล้วหมุนค่างวดที่ว่างลงก้อนถัดไป ·
+          {' '}หนี้ที่กรอกครบ {plan.length} ก้อน · จ่ายรวม {baht(poolFloor)}/เดือน
+        </div>
 
-      {/* Slider */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-        margin: '20px 0 8px',
-      }}>
-        <label htmlFor="mp-extra-slider" style={MONO_LBL}>เพิ่มเงินโปะต่อเดือน</label>
-        <span data-extra-value style={{
-          fontFamily: 'var(--f-body)', fontSize: 17, fontWeight: 800,
-          color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums',
-        }}>{(extra > 0 ? '+' : '') + fmt(extra)}฿</span>
-      </div>
-      <input
-        id="mp-extra-slider" type="range" data-extra-slider
-        aria-label="เพิ่มเงินโปะต่อเดือน"
-        min={0} max={SLIDER_MAX} step={SLIDER_STEP} value={extra}
-        onChange={(e) => setExtra(Number(e.target.value))}
-        style={{ width: '100%', accentColor: 'var(--accent)', height: 26 }}
-      />
-
-      {/* Preset chips */}
-      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}>
-        {presets.map((p) => {
-          const on = p.v === extra;
-          return (
-            <button
-              key={p.label} data-preset={p.v}
-              onClick={() => setExtra(p.v)}
-              style={{
-                border: `1px solid ${on ? 'var(--text-primary)' : 'var(--border-strong)'}`,
-                background: on ? 'var(--text-primary)' : 'var(--surface)',
-                color: on ? 'var(--text-inverse)' : 'var(--text-secondary)',
-                borderRadius: 999, padding: '5px 13px', fontSize: 12, fontWeight: 600,
-                cursor: 'pointer', fontFamily: 'var(--f-body)',
-              }}
-            >{p.label}</button>
-          );
-        })}
-      </div>
-
-      {/* Result tiles */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 22,
-      }}>
-        <div data-tile-clear style={{
-          background: 'var(--background-soft)', border: HAIRLINE,
-          borderRadius: 14, padding: '15px 16px',
+        {/* The slider and its one big number */}
+        <div data-extra-value style={{
+          fontSize: 34, fontWeight: 700, letterSpacing: '-0.02em',
+          color: 'var(--accent-strong)', margin: '12px 0 2px', ...NUM,
         }}>
-          <div style={{ ...MONO_LBL, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>ปลดหนี้ทุกก้อนหมด</div>
-          <div data-clear-date style={{
-            fontSize: 23, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
-            color: 'var(--success)',
-          }}>{freeLabel}</div>
-          <div data-clear-sub style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-            {freeSub}
+          {(extra > 0 ? '+' : '') + baht(extra)}
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-secondary)' }}> /เดือน</span>
+        </div>
+        {/* The visible heading above IS the slider's label; aria-label repeats
+            it on the control itself so the name survives any reflow (A9·Minor 7). */}
+        <input
+          id="mp-extra-slider" type="range" data-extra-slider
+          aria-label="เพิ่มเงินโปะต่อเดือน"
+          min={0} max={SLIDER_MAX} step={SLIDER_STEP} value={extra}
+          onChange={(e) => setExtra(Number(e.target.value))}
+          style={{ width: '100%', accentColor: 'var(--accent)', height: 26, margin: '10px 0 4px' }}
+        />
+
+        {/* The scale under the rail doubles as the preset stops */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+          {presets.map((p) => {
+            const on = p.v === extra;
+            return (
+              <button
+                key={p.label} data-preset={p.v} type="button" className="focus-ring"
+                onClick={() => setExtra(p.v)}
+                style={{
+                  border: 0, background: 'transparent', cursor: 'pointer',
+                  padding: '2px 4px', font: 'inherit', fontSize: 11.5,
+                  fontWeight: on ? 700 : 500,
+                  color: on ? 'var(--accent-strong)' : 'var(--text-muted)',
+                  ...NUM,
+                }}
+              >{p.label}</button>
+            );
+          })}
+        </div>
+
+        {/* Two results, and only two */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1,
+          background: 'var(--hairline)', borderRadius: 12, overflow: 'hidden',
+          marginTop: 15,
+        }}>
+          <div data-tile-clear style={CELL}>
+            <div style={CELL_K}>หมดหนี้ทุกก้อน</div>
+            <div data-clear-date style={{ ...CELL_V, color: 'var(--success)' }}>{freeLabel}</div>
+            <div data-clear-sub style={CELL_SUB}>{freeSub}</div>
+          </div>
+          <div data-tile-saved style={CELL}>
+            <div style={CELL_K}>ประหยัดดอกเบี้ย</div>
+            {censored ? (
+              <>
+                <div data-interest-saved style={{ ...CELL_V, fontSize: 16, color: 'var(--text-muted)' }}>
+                  เทียบไม่ได้
+                </div>
+                <div style={CELL_SUB}>แผนนี้ใช้เวลานานเกิน 60 ปี</div>
+              </>
+            ) : (
+              <>
+                <div data-interest-saved style={{ ...CELL_V, color: 'var(--accent-strong)' }}>
+                  {baht(interestSaved)}
+                </div>
+                <div style={CELL_SUB}>
+                  จ่ายดอกรวม {baht(planRun.totalInterest)} (ขั้นต่ำ {baht(baseline.totalInterest)})
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        <div data-tile-saved style={{
-          background: 'var(--background-soft)', border: HAIRLINE,
-          borderRadius: 14, padding: '15px 16px',
-        }}>
-          <div style={{ ...MONO_LBL, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13}}>ประหยัดดอกเบี้ย</div>
-          {censored ? (
-            <>
-              <div data-interest-saved style={{
-                fontSize: 18, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
-                color: 'var(--text-muted)',
-              }}>เทียบไม่ได้</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-                แผนนี้ใช้เวลานานเกิน 60 ปี
-              </div>
-            </>
-          ) : (
-            <>
-              <div data-interest-saved style={{
-                fontSize: 23, fontWeight: 800, letterSpacing: '-0.01em', marginTop: 6,
-                color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums',
-              }}>{baht(interestSaved)}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-                จ่ายดอกรวม {baht(planRun.totalInterest)} (ขั้นต่ำ {baht(baseline.totalInterest)})
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Per-debt timeline */}
-      <div style={{ marginTop: 20 }}>
-        {planRun.perDebt.map((d) => {
-          const when = d.clearedMonth;                 // null → not cleared within cap
-          const cleared = when != null;
-          const pct = cleared ? Math.max(6, 100 - (when / maxMonths * 100)) : 6;
-          return (
-            <div key={d.id} data-timeline-row style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '9px 0', borderBottom: HAIRLINE,
-            }}>
-              <div style={{
-                fontSize: 13.5, fontWeight: 700, width: 130, flex: 'none',
-                color: 'var(--text-primary)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{d.name}</div>
-              <div style={{
-                flex: 1, height: 9, background: 'var(--surface-muted)',
-                borderRadius: 999, overflow: 'hidden',
+        {/* Per-debt timeline — one chip per debt, in the order they clear */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
+          {planRun.perDebt.map((d) => {
+            const cleared = d.clearedMonth != null;
+            return (
+              <span key={d.id} data-timeline-row style={{
+                fontSize: 12.5, fontWeight: 600, borderRadius: 999,
+                background: 'var(--fill)', color: 'var(--text-secondary)',
+                padding: '4px 11px', transition: barTransition,
               }}>
-                <div style={{
-                  height: '100%', width: `${pct}%`, background: 'var(--accent)',
-                  borderRadius: 999, transition: barTransition,
-                }} />
-              </div>
-              <div data-timeline-when style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700,
-                color: cleared ? 'var(--success)' : 'var(--text-muted)',
-                whiteSpace: 'nowrap', width: 96, textAlign: 'right', flex: 'none'
-              }}>{cleared ? monthOffsetLabel(when) : 'เกิน 60 ปี'}</div>
-            </div>
-          );
-        })}
-      </div>
+                {d.name} หมด{' '}
+                <b data-timeline-when style={{
+                  color: cleared ? 'var(--text-primary)' : 'var(--text-muted)', ...NUM,
+                }}>{cleared ? monthOffsetLabel(d.clearedMonth) : 'เกิน 60 ปี'}</b>
+              </span>
+            );
+          })}
+        </div>
 
-      {/* Data-observation note — payment(s) below their monthly interest */}
+  {/* Data-observation note — payment(s) below their monthly interest */}
       {belowInterest.length > 0 && (
         <div data-below-interest style={{
           marginTop: 18, paddingTop: 14, borderTop: HAIRLINE,
@@ -243,6 +218,7 @@ export function MoneyPlanner({ debts }) {
           {' '}· ถ้าค่างวด/อัตราดอกจริงไม่ตรง แก้ในหน้าหนี้ให้ตรง แล้วแผนจะแม่นขึ้น
         </div>
       )}
+      </div>
     </div>
   );
 }
