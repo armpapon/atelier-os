@@ -179,7 +179,7 @@ section('R1 · Blocker 4 · Bangkok date in transaction edit/display');
 
 section('R1 · Blocker 2 · getFinancePulse (Bangkok bounds + transfers excluded)');
 {
-  // v4.56: this used to build `ym` from the DEVICE clock
+  // 2026-09-01: this used to build `ym` from the DEVICE clock
   //   const now = new Date();
   //   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   // …while getFinancePulse() filters by BANGKOK month bounds. The two agree for
@@ -202,14 +202,15 @@ section('R1 · Blocker 2 · getFinancePulse (Bangkok bounds + transfers excluded
   __tables.transactions = __tables.transactions.filter(t => !['p1','p2','p3','p4'].includes(t.id));
 }
 
-section('v4.56 · harness clock discipline — fixture ต้องใช้นาฬิกาเดียวกับโค้ด');
+section('2026-09-01 harness hardening · fixture ต้องใช้นาฬิกาเดียวกับโค้ด');
 {
   // Why this section exists: on 2026-09-01 three cases failed under TZ=UTC and
   // TZ=America/New_York and nothing in the suite explained why. The cause was
   // never the app — it was a fixture that built its month from the DEVICE
   // clock while the code under test filtered by the BANGKOK calendar. Between
-  // 00:00 and 07:00 Bangkok those are different months, so the harness's own
-  // "runs in any timezone" claim was false for a seven-hour window each day.
+  // 00:00 and 07:00 Bangkok on the FIRST day of a month those are different
+  // months, so the harness's own "runs in any timezone" claim was false for
+  // that seven-hour window once a month, not every day.
   //
   // These cases are the guard. They are deterministic in every zone because
   // they pin the instant rather than reading the wall clock.
@@ -221,7 +222,7 @@ section('v4.56 · harness clock discipline — fixture ต้องใช้น�
   check('currentYearMonth() คือเดือนตามปฏิทินกรุงเทพจริง (ไม่ใช่ของเครื่อง)',
     currentYearMonth() === bangkokNow, `${currentYearMonth()} · TZ=${TZ}`);
 
-  // The seven-hour window, pinned: 2026-09-01 00:30 Bangkok is still
+  // The window, pinned: 2026-09-01 00:30 Bangkok is still
   // 2026-08-31 in UTC and New York. Whatever zone this process runs in, the
   // helper the fixtures must use has to answer September.
   withFrozenNow('2026-08-31T17:30:00.000Z', () => {
@@ -1988,7 +1989,7 @@ section('C · B8 · a debt has a life: upcoming → active → completed');
   const sum = summarizeDebts([done, future, running], [], THIS);
   check('a completed loan is out of the monthly burden — only the live one counts',
     sum.monthlyBurden === 8000 + 5000, `฿${sum.monthlyBurden}`);
-  // v4.56: this used to read
+  // 2026-09-01: this used to read
   //   check('a completed loan is out of the overdue total and its count',
   //     sum.overdue === 8000 && sum.overdueCount === 1);
   // against the REAL clock. `running` is due on the 5th, so "overdue" only
