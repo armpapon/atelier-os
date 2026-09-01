@@ -83,7 +83,7 @@ export function PnLCalendar({ trades = [] }) {
       {/* Weekday header */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr) 0.9fr', gap: 5, marginBottom: 5 }}>
         {WEEKDAYS.map((w, i) => (
-          <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>{w}</div>
+          <div key={i} style={{ textAlign: 'center', fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>{w}</div>
         ))}
         <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>สัปดาห์</div>
       </div>
@@ -109,7 +109,7 @@ export function PnLCalendar({ trades = [] }) {
                       <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, fontWeight: 600, color: pos ? 'var(--profit)' : 'var(--loss)' }}>
                         {money(info.pnl)}
                       </div>
-                      <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>{info.count} trade</div>
+                      <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 9, color: 'var(--ink-4)' }}>{info.count} trade</div>
                     </div>
                   )}
                 </div>

@@ -138,7 +138,7 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
 
               <text x={b.cx} y={g.labelY} textAnchor="middle" fontSize="10.5"
                 fill={isSel ? 'var(--accent-strong)' : 'var(--text-secondary)'}
-                fontFamily="var(--f-mono)" fontWeight={isSel ? 700 : 400}>
+                fontWeight={isSel ? 700 : 400}>
                 {fmtYM(b.ym)}
               </text>
               {/* current-month tick */}

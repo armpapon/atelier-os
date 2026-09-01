@@ -16,14 +16,34 @@
 //   4. TradeForm's close button is reachable as "ปิดฟอร์ม Trade".
 //   5. The importer's PDF-password reveal is named for the state it moves TO,
 //      and that name + aria-pressed both flip on click.
-import { describe, it, expect, afterEach } from 'vitest';
+//   6. The Tweaks launcher in the app shell has EXACTLY ONE name (v4.58): the
+//      r1 sweep added a second aria-label without removing the first, which
+//      made the build warn and left the source ambiguous about which wins.
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { render, cleanup, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
+
+// The app shell renders behind an auth gate and asks the platform for a media
+// query; both are stubbed so the Tweaks launcher is actually reachable.
+vi.mock('../../src/lib/useAuth.js', () => ({
+  useAuth: () => ({
+    user: { id: 'u1', email: 'armpapon@gmail.com' },
+    loading: false, passwordRecovery: false, clearPasswordRecovery: () => {},
+  }),
+}));
+beforeAll(() => {
+  window.matchMedia = window.matchMedia || (q => ({
+    matches: false, media: q, onchange: null,
+    addEventListener() {}, removeEventListener() {},
+    addListener() {}, removeListener() {}, dispatchEvent() { return false; },
+  }));
+});
 
 import { Icon } from '../../src/components/Icon.jsx';
 import { TweaksPanel } from '../../src/components/TweaksPanel.jsx';
 import { TradeForm } from '../../src/components/TradeForm.jsx';
 import { CSVImporter } from '../../src/components/CSVImporter.jsx';
+import App from '../../src/App.jsx';
 
 afterEach(cleanup);
 
@@ -80,5 +100,13 @@ describe('ไอคอน · การเข้าถึงด้วย screen r
     expect(hide.getAttribute('aria-pressed')).toBe('true');
     // and the old name is gone — the control renamed itself, it did not duplicate
     expect(screen.queryByRole('button', { name: 'แสดงรหัส' })).toBeNull();
+  });
+
+  it('names the Tweaks launcher exactly once, with the name we chose', async () => {
+    render(<App />);
+    // pinned: r1 shipped BOTH "เปิดแผง Tweaks" and "เปิด Tweaks" on this button
+    const btn = await screen.findByRole('button', { name: 'เปิดแผง Tweaks' });
+    expect(btn.getAttribute('aria-label')).toBe('เปิดแผง Tweaks');
+    expect(screen.queryByRole('button', { name: 'เปิด Tweaks' })).toBeNull();
   });
 });

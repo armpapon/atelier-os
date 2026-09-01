@@ -1799,7 +1799,7 @@ export function CSVImporter({ scope: defaultScope = 'personal', debts = [], onIm
                     }}>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-primary)' }}>
                         {describeGroups(s)}
-                        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                        <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 10, color: 'var(--text-muted)' }}>
                           {sessionWhen(s)}
                         </div>
                       </div>

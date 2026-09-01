@@ -102,7 +102,7 @@ afterEach(() => {
 async function mountWithTweaks() {
   const view = render(<App />);
   await screen.findByRole('button', { name: 'การเงินส่วนตัว' });
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'เปิด Tweaks' })); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'เปิดแผง Tweaks' })); });
   return view;
 }
 

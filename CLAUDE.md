@@ -97,10 +97,17 @@
   toggle's name follows the state it moves to, plus `aria-pressed`.
 - **The style rules above are enforced, not aspirational.** `audit/cases.mjs`
   scans `src/` on every harness run: zero uppercase, zero positive tracking, a
-  per-file `--f-mono` allowlist WITH ceilings, an emoji-as-data allowlist, no
-  `✓`/`✗` glyphs, and every icon-only button named. Adding mono or an emoji to
-  a new file fails the build's harness — update the allowlist deliberately, with
-  a reason, or don't add it.
+  per-file `--f-mono` allowlist WITH ceilings, an emoji allowlist keyed to the
+  exact `file::BINDING` that holds it, no `✓`/`✗` glyphs, and every icon-only
+  control named. Adding mono or an emoji to a new file fails the harness —
+  update the allowlist deliberately, with a reason, or don't add it.
+- **The scans are AST-based, not regex** (`audit/style-scan.mjs`, v4.58). A
+  proximity regex reported a false PASS while four real violations sat in HEAD,
+  so the scanner now parses with `@babel/parser` and resolves what an element
+  ACTUALLY paints: JSX expression children, text arriving from a constant or a
+  local function, SVG written as a template string, and styles reached through
+  a variable or spread. Negative cases inject each shape in memory and assert
+  it is caught — if you simplify the scanner, they go red.
 - All copy is **Thai**. Commit messages and code comments stay English.
 
 ### Data model conventions
