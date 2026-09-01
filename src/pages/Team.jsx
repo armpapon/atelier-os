@@ -16,7 +16,7 @@ const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const FIELDS = 'sheets(properties(title),data(rowData(values(formattedValue,effectiveValue))))';
 
 const baht = n => '฿' + Math.round(n).toLocaleString('en-US');
-const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
+const mono10 = { fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' };
 
 export function Team() {
   const [integ, setInteg] = useState(undefined);
@@ -97,8 +97,8 @@ export function Team() {
 
   const actions = connected && sheetId && (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-      {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-      <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรช"
+      {lastSync && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+      <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรช" aria-label="รีเฟรชข้อมูลทีม"
         style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
     </div>
   );
@@ -141,7 +141,7 @@ export function Team() {
                   <span style={{ minWidth: 0 }}>
                     <span style={{ fontSize: 13.5, color: 'var(--ink)' }}>{e.fullName}</span>
                     {e.nick && <span style={{ fontSize: 12, color: 'var(--ink-3)' }}> ({e.nick})</span>}
-                    {!e.inMaster && <span style={{ marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--accent-strong)', background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 99, padding: '1px 7px' }}>ยังไม่ลงทะเบียน</span>}
+                    {!e.inMaster && <span style={{ fontVariantNumeric: 'tabular-nums', marginLeft: 6, fontSize: 9, color: 'var(--accent-strong)', background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 99, padding: '1px 7px' }}>ยังไม่ลงทะเบียน</span>}
                   </span>
                   <span style={{ textAlign: 'right', fontFamily: 'var(--f-mono)', fontSize: 12, color: e.claims ? 'var(--ink)' : 'var(--ink-4)' }}>
                     {e.claims ? `${e.claims} · ${baht(e.total)}` : '—'}

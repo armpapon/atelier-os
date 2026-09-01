@@ -80,7 +80,9 @@ import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 // ── Palette acceptance (v4.53 · A10 finding 4) ────────────────────────────
 // Pure colour maths + a literal read of src/styles.css. No DOM, no network.
 import { readFileSync as paletteRead } from 'node:fs';
-import { join as paletteJoin, basename as paletteBase } from 'node:path';
+import { join as paletteJoin, basename as paletteBase, relative as paletteRelative } from 'node:path';
+const paletteRel = (p) => paletteRelative(paletteJoin(__LOOP_ROOT__, 'src'), p).split(paletteSep).join('/');
+import { sep as paletteSep } from 'node:path';
 import { readdirSync as paletteReaddir } from 'node:fs';
 import {
   contrast as paletteContrast,
@@ -4929,6 +4931,230 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
       check(`${hex} ปรากฏเฉพาะที่ audit ยอมรับ (${why})`,
         stray.length === 0, stray.length ? `หลุดไปที่ ${stray.join(',')}` : hits.join(',') || 'ไม่มี');
     }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v4.57 · TYPOGRAPHY + ICON ACCEPTANCE (A11 · Major 2, Minor 3, Minor 4)
+//
+// A10 shipped the *claim* that the app is sentence-case with mono only on
+// digits; A11 found the claim was half-true because nothing enforced it. These
+// cases are the enforcement. They read src/ literally — no DOM, no network —
+// and they FAIL if a future change reintroduces the warm-era patterns.
+//
+// THE DECLARED RULE, stated once so the allowlists below are auditable:
+//   --f-mono (and tabular figures) belong to content that is NUMERIC or
+//   CODE-LIKE: amounts, percentages, dates and times rendered as digits,
+//   counters and ratios, and identifiers the user reads as a token (trade
+//   symbols like XAUUSD, employee codes, order ids, tag names, version
+//   strings, file names, chart axis ticks). Everything a reader reads as
+//   WORDS — Thai or English — is the body face at the 13/500 caption scale.
+// ════════════════════════════════════════════════════════════════════════════
+{
+  const typoFiles = paletteSrcFiles(paletteJoin(__LOOP_ROOT__, 'src'));
+  const typo = typoFiles.map(f => [paletteRel(f), paletteRead(f, 'utf8')]);
+  const isChangelog = (rel) => rel.endsWith('VersionHistory.jsx');
+  // A comment may quote the old pattern to explain why it is gone.
+  const stripComments = (t) => t
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+
+  section('v4.57 · A11 Major 2 — ป้ายเป็น sentence case ทั้งแอป (สแกน src/ จริง)');
+  {
+    const upper = typo.filter(([, t]) =>
+      /textTransform:\s*['"]uppercase['"]/.test(stripComments(t)) ||
+      /text-transform:\s*uppercase/.test(stripComments(t)));
+    check('ไม่มี textTransform / text-transform: uppercase เหลือใน src/',
+      upper.length === 0, upper.map(([f]) => f).join(', ') || 'สะอาด');
+
+    // Negative tracking is the iOS display idiom and stays; positive tracking
+    // is the stencil look this redesign removed.
+    const tracked = [];
+    for (const [rel, t] of typo) {
+      const body = stripComments(t);
+      const hits = [
+        ...body.matchAll(/letterSpacing:\s*['"](\.\d+|0?\.\d+|[1-9][\d.]*)em['"]/g),
+        ...body.matchAll(/letter-spacing:\s*(\.\d+|0?\.\d+|[1-9][\d.]*)em/g),
+      ].filter(m => parseFloat(m[1]) > 0);
+      if (hits.length) tracked.push(`${rel}×${hits.length}`);
+    }
+    check('ไม่มี letter-spacing เป็นบวกเหลือใน src/ (ของติดลบคือ iOS display จึงอยู่ได้)',
+      tracked.length === 0, tracked.join(', ') || 'สะอาด');
+  }
+
+  section('v4.57 · A11 Major 2 — --f-mono อยู่เฉพาะเนื้อหาที่เป็นตัวเลข/รหัส');
+  {
+    // file → [ceiling, why it is legitimately monospaced]. The ceiling is the
+    // teeth: mono may stay where the audit accepted it, but it may not grow,
+    // and it may not appear in a file that is not on this list at all.
+    const MONO_ALLOW = new Map([
+      ['components/AsanaHours.jsx',                [3,  'ชั่วโมงงาน + ช่อง PAT token']],
+      ['components/CSVImporter.jsx',               [8,  'ยอด/วันที่ในตารางพรีวิว · ชื่อไฟล์ · รหัส PDF']],
+      ['components/DayCountdown.jsx',              [2,  'นาฬิกานับถอยหลังในวงแหวน']],
+      ['components/MobileNav.jsx',                 [1,  'เลขเวอร์ชัน']],
+      ['components/SheetTimeline.jsx',             [2,  'ตัวเลขในไทล์ + ช่อง URL ชีท']],
+      ['components/Sidebar.jsx',                   [1,  'เลขเวอร์ชัน']],
+      ['components/TradeForm.jsx',                 [1,  'ช่องกรอกค่า R']],
+      ['components/VersionHistory.jsx',            [1,  'เลขเวอร์ชันในหัวรายการ']],
+      ['components/dashboard/CashFlowChart.jsx',   [2,  'แกนตัวเลขของกราฟ']],
+      ['components/dashboard/Charts.jsx',          [3,  'ลำดับ · วันที่ · ตัวเลขในกราฟ']],
+      ['components/dashboard/CreditCards.jsx',     [8,  'ยอด/วงเงิน/ดอกเบี้ย + ช่องกรอกตัวเลข']],
+      ['components/dashboard/DebtAdvice.jsx',      [1,  'ลำดับการปลดหนี้']],
+      ['components/dashboard/DebtTracker.jsx',     [10, 'ยอดหนี้ + ช่องกรอกตัวเลข/วันที่']],
+      ['components/dashboard/FinanceWidgets.jsx',  [4,  'ยอดรายเดือน + ช่องกรอกตัวเลข']],
+      ['components/dashboard/KPICard.jsx',         [1,  'ลูกศร + เดลตาเป็นตัวเลข']],
+      ['components/dashboard/LifeOSWidgets.jsx',   [8,  'ตัวเลขเป้าหมาย + ช่องกรอกตัวเลข/วันที่']],
+      ['components/dashboard/MoneyLeaks.jsx',      [4,  'ยอด · วันที่ · อัตราการออม']],
+      ['components/dashboard/MonthNav.jsx',        [1,  'ปี พ.ศ.']],
+      ['components/dashboard/ScopeTransferModal.jsx', [2, 'ช่องกรอกจำนวนเงินและวันที่']],
+      ['components/family/MemberDetail.jsx',       [17, 'ส่วนสูง/น้ำหนัก/วันที่ + แกนกราฟการเติบโต']],
+      ['components/learning/StudyDrawer.jsx',      [13, 'นาฬิกาจับเวลา · คะแนน · ช่องกรอกตัวเลข']],
+      ['components/trading/PlaybookA3Doc.jsx',     [12, 'ตัวเลข R และป้ายในไดอะแกรม (EMA 200 · ATR)']],
+      ['components/trading/PnLCalendar.jsx',       [7,  'กำไร/ขาดทุนรายวันในปฏิทิน']],
+      ['components/trading/TradingPlaybook.jsx',   [2,  'ช่วงเวลาเทรด + ลำดับข้อ']],
+      ['pages/Dashboard.jsx',                      [2,  'ตัวเลขสรุป + เวลานัด']],
+      ['pages/Family.jsx',                         [2,  'เปอร์เซ็นต์อัปโหลด + ลำดับรูป']],
+      ['pages/Finance.jsx',                        [1,  'วันครบกำหนดเป้าหมาย']],
+      ['pages/Journal.jsx',                        [2,  'เลขออเดอร์ + ช่องวางตารางดิบ']],
+      ['pages/Learning.jsx',                       [3,  'วันที่ + เปอร์เซ็นต์ความคืบหน้า']],
+      ['pages/PettyCash.jsx',                      [10, 'ยอดเบิก/ยอดโอนในตารางกระทบยอด']],
+      ['pages/SecondBrain.jsx',                    [5,  'ชื่อแท็ก · เวลาที่แก้ล่าสุด']],
+      ['pages/TaxPlanner.jsx',                     [1,  'สไตล์ตัวเลขกลางของหน้าภาษี']],
+      ['pages/Team.jsx',                           [3,  'รหัสพนักงาน + ยอดเบิก']],
+      ['pages/Trading.jsx',                        [14, 'สัญลักษณ์คู่เงิน (XAUUSD) · R · P&L · ยอดพอร์ต']],
+      ['styles.css',                               [11, 'นิยามโทเคน + คลาสตัวเลข (.mono · .stat__value--mono · .txn-row__amount · .trade-symbol)']],
+    ]);
+    const monoCount = new Map();
+    for (const [rel, t] of typo) {
+      const n = (t.match(/--f-mono/g) || []).length;
+      if (n) monoCount.set(rel, n);
+    }
+    const strays = [...monoCount.keys()].filter(f => !MONO_ALLOW.has(f));
+    check('--f-mono ไม่โผล่ในไฟล์นอก allowlist',
+      strays.length === 0, strays.join(', ') || `อยู่ใน ${monoCount.size} ไฟล์ตามที่ประกาศ`);
+
+    const grown = [];
+    for (const [rel, [ceiling]] of MONO_ALLOW) {
+      const n = monoCount.get(rel) || 0;
+      if (n > ceiling) grown.push(`${rel} ${n}>${ceiling}`);
+    }
+    check('จำนวน --f-mono ในแต่ละไฟล์ไม่เกินเพดานที่ audit ยอมรับ',
+      grown.length === 0, grown.join(', ') || 'ทุกไฟล์อยู่ในเพดาน');
+
+    const total = [...monoCount.values()].reduce((a, b) => a + b, 0);
+    check('--f-mono ทั้ง src/ ไม่เกิน 168 จุด (A11 นับได้ 346 ก่อนกวาด)',
+      total <= 168, `${total} จุด`);
+
+    // The point of the sweep: no Thai word may sit on the monospace face.
+    const thaiMono = [];
+    for (const [rel, t] of typo) {
+      if (isChangelog(rel) || rel.endsWith('.css')) continue;
+      const body = stripComments(t);
+      for (const m of body.matchAll(/var\(--f-mono\)/g)) {
+        // walk to the end of the style object, then to the end of the open tag
+        let b = m.index, d = 0;
+        for (; b < body.length; b++) {
+          const c = body[b];
+          if (c === '{') d++; else if (c === '}') { if (!d) break; d--; }
+        }
+        let j = b, dd = 0;
+        for (; j < body.length; j++) {
+          const c = body[j];
+          if (c === '{') dd++; else if (c === '}') dd--; else if (c === '>' && dd <= 0) break;
+        }
+        if (body[j - 1] === '/') continue;          // self-closing: renders no text
+        const firstTextNode = body.slice(j + 1, j + 260).split('<')[0];
+        if (/[฀-๿]/.test(firstTextNode)) thaiMono.push(rel);
+      }
+    }
+    check('ไม่มีข้อความไทยถูกเรนเดอร์ด้วยฟอนต์ mono',
+      thaiMono.length === 0, [...new Set(thaiMono)].join(', ') || 'สะอาด');
+  }
+
+  section('v4.57 · A11 Minor 3 — ไม่มี emoji/เครื่องหมายถูก เป็น UI chrome');
+  {
+    // Emoji that are DATA the owner picks, parses or has already saved. Each
+    // entry is a promise: the sweep will not convert these, and nothing else
+    // may hide behind the exemption.
+    const EMOJI_DATA = new Map([
+      ['components/VersionHistory.jsx', 'ข้อความ changelog ย้อนหลัง'],
+      ['components/CSVImporter.jsx',    'TYPE_ICONS — คำศัพท์หมวดเดียวกับที่ผู้ใช้เลือกเอง'],
+      ['components/AsanaHours.jsx',     'NEGATIVE_PREFIX — regex อ่าน emoji ที่มาจาก Asana จริง'],
+      ['components/dashboard/Charts.jsx',        'ไอคอนหมวดค่าใช้จ่าย'],
+      ['components/dashboard/DebtTracker.jsx',   'ไอคอนชนิดหนี้'],
+      ['components/dashboard/LifeOSWidgets.jsx', 'ไอคอนโมดูล'],
+      ['components/dashboard/MoneyLeaks.jsx',    'ไอคอนหมวด (fallback)'],
+      ['components/dashboard/ScopeTransferModal.jsx', 'ไอคอน scope'],
+      ['components/family/MemberDetail.jsx',     'ไอคอนชนิด milestone'],
+      ['components/learning/StudyDrawer.jsx',    'ไอคอนชนิด insight'],
+      ['pages/Dashboard.jsx',   'MOOD_EMOJI — อารมณ์ที่ผู้ใช้บันทึกไว้'],
+      ['pages/Journal.jsx',     'MOODS — ตัวเลือกอารมณ์ที่บันทึกลงฐานข้อมูล'],
+      ['pages/Finance.jsx',     'DEFAULT_CATEGORIES + emoji ที่ผู้ใช้พิมพ์เองใน prompt'],
+      ['pages/Learning.jsx',    'ไอคอนชนิดแหล่งเรียนรู้'],
+      ['pages/LifeCalendar.jsx','MILESTONE_EMOJIS — ตัวเลือกที่ผู้ใช้บันทึกไว้'],
+      ['pages/PettyCash.jsx',   "prefix '🟢' ของชื่อแท็บใน Google Sheet จริง"],
+      ['lib/noteTemplates.js',  'emoji ประจำเทมเพลตที่ติดไปกับโน้ตของผู้ใช้'],
+      ['lib/api/learning.js',   'ไอคอนของ hint ที่ lib ส่งกลับมา'],
+    ]);
+    const PICT = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{2B55}]/u;
+    const emojiFiles = [];
+    for (const [rel, t] of typo) {
+      if (rel.endsWith('.css')) continue;
+      const body = stripComments(t);
+      if (PICT.test(body) && !EMOJI_DATA.has(rel)) emojiFiles.push(rel);
+    }
+    check('emoji เหลือเฉพาะไฟล์ที่ประกาศว่าเป็น "ข้อมูล" เท่านั้น',
+      emojiFiles.length === 0, emojiFiles.join(', ') || `${EMOJI_DATA.size} ไฟล์ตามที่ประกาศ`);
+
+    // ✓ / ✗ are not in the pictographic ranges above, so they get their own
+    // scan — this is exactly the gap A11 Minor 3 found.
+    const checkGlyph = [];
+    for (const [rel, t] of typo) {
+      if (isChangelog(rel)) continue;
+      if (/[✓✔✗✕]/.test(stripComments(t))) checkGlyph.push(rel);
+    }
+    check('ไม่มีเครื่องหมาย ✓/✗ เป็น glyph ใน UI (ใช้ <Icon name="check"/> แทน)',
+      checkGlyph.length === 0, checkGlyph.join(', ') || 'สะอาด');
+  }
+
+  section('v4.57 · A11 Major 1 — ปุ่มที่มีแต่ไอคอนต้องมีชื่อให้ screen reader');
+  {
+    const iconSrc = typo.find(([rel]) => rel.endsWith('components/Icon.jsx'))[1];
+    check('Icon เป็น decorative โดยปริยาย (aria-hidden + focusable="false")',
+      /'aria-hidden':\s*'true'/.test(iconSrc) && /focusable:\s*'false'/.test(iconSrc));
+    check('Icon มี prop label ที่สลับไปเป็น role="img" + aria-label',
+      /role:\s*'img'/.test(iconSrc) && /'aria-label':\s*label/.test(iconSrc));
+
+    // Static sweep: a <button> whose only child is an <Icon> must carry a name.
+    const unnamed = [];
+    for (const [rel, t] of typo) {
+      if (!/\.jsx$/.test(rel)) continue;
+      for (const m of t.matchAll(/<button\b/g)) {
+        // end of the open tag, ignoring '>' inside handler bodies
+        let j = m.index, d = 0;
+        for (; j < t.length; j++) {
+          const c = t[j];
+          if (c === '{') d++; else if (c === '}') d--; else if (c === '>' && d <= 0) break;
+        }
+        const open = t.slice(m.index, j + 1);
+        if (open.endsWith('/>')) continue;
+        const k = t.indexOf('</button>', j);
+        if (k < 0) continue;
+        const kids = t.slice(j + 1, k);
+        if (!/<Icon\b/.test(kids)) continue;
+        if (/aria-label|aria-labelledby/.test(open)) continue;
+        if (/\blabel=/.test(kids)) continue;      // the Icon names itself
+        // A JSX expression that holds a string literal renders words.
+        const stripped = kids.replace(/<Icon\b[^>]*\/>/g, '');
+        if (/['"`][^'"`]*\S[^'"`]*['"`]/.test(stripped)) continue;
+        const text = stripped.replace(/\{[^{}]*\}/g, '')
+                             .replace(/<[^>]*>/g, '').replace(/\s|&nbsp;/g, '');
+        if (text) continue;                       // has its own visible label
+        unnamed.push(`${rel}:${t.slice(0, m.index).split('\n').length}`);
+      }
+    }
+    check('ทุกปุ่มที่มีแต่ไอคอนมี aria-label (หรือ Icon ที่มี label)',
+      unnamed.length === 0, unnamed.join(', ') || 'ตั้งชื่อครบ');
   }
 }
 

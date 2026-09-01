@@ -103,7 +103,7 @@ export default function App() {
         // Let any mounted integration UI (e.g. Journal's Google button) re-check
         // its connection status now that the token row is stored.
         window.dispatchEvent(new Event('loop:oauth-connected'));
-        alert(`เชื่อม ${provider} สำเร็จ ✓`);
+        alert(`เชื่อม ${provider} สำเร็จ`);
       }
     });
   }, []);
@@ -313,7 +313,7 @@ export default function App() {
       {!tweaksOpen && (
         <button
           onClick={() => setTweaksOpen(true)}
-          title="Tweaks"
+          title="Tweaks" aria-label="เปิดแผง Tweaks"
           aria-label="เปิด Tweaks"
           className="focus-ring"
           style={{

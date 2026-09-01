@@ -105,7 +105,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             <Badge tone="danger" size="sm" style={{ marginTop: 4 }}>
               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>-{fmt(amt)}</span>
             </Badge>
-            <div style={{ fontSize: 11, color: fromMeta.color, fontWeight: 500, marginTop: 4, fontFamily: 'var(--f-mono)' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: fromMeta.color, fontWeight: 500, marginTop: 4 }}>
               {fromMeta.label}
             </div>
           </div>
@@ -129,7 +129,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             <Badge tone="success" size="sm" style={{ marginTop: 4 }}>
               <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>+{fmt(amt)}</span>
             </Badge>
-            <div style={{ fontSize: 11, color: toMeta.color, fontWeight: 500, marginTop: 4, fontFamily: 'var(--f-mono)' }}>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: toMeta.color, fontWeight: 500, marginTop: 4 }}>
               {toMeta.label}
             </div>
           </div>
@@ -187,11 +187,11 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
 
         {/* Preview */}
         {amt > 0 && (
-          <div style={{
+          <div style={{ fontVariantNumeric: 'tabular-nums',
             padding: '10px 14px', background: 'var(--accent-soft)',
             border: '1px solid var(--accent)', borderRadius: 'var(--radius-control)',
-            fontSize: 11.5, color: 'var(--text-primary)', fontFamily: 'var(--f-mono)',
-            lineHeight: 1.7,
+            fontSize: 11.5, color: 'var(--text-primary)',
+            lineHeight: 1.7
           }}>
             <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)', marginBottom: 4 }}>
               จะสร้าง 2 รายการ:

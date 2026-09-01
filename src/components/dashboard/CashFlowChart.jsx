@@ -242,11 +242,11 @@ function Legend({ color, label }) {
 
 export function EmptyChart({ label, height = 200 }) {
   return (
-    <div style={{
+    <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
       background: 'var(--surface)', border: '1px dashed var(--hairline)',
       borderRadius: 'var(--radius-card)', padding: 20, height,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', fontSize: 11,
+      color: 'var(--text-muted)', fontSize: 13
     }}>{label}</div>
   );
 }

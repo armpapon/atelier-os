@@ -85,7 +85,7 @@ export function PnLCalendar({ trades = [] }) {
         {WEEKDAYS.map((w, i) => (
           <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>{w}</div>
         ))}
-        <div style={{ textAlign: 'center', fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>สัปดาห์</div>
+        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>สัปดาห์</div>
       </div>
 
       {/* Weeks */}

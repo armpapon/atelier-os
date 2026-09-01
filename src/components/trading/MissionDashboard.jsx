@@ -90,7 +90,7 @@ export function MissionDashboard({ trades = [] }) {
           <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
             ความคืบหน้า
           </span>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 500 }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-primary)', fontWeight: 500 }}>
             {m.n} / {TARGET_TRADES} ไม้ · {pct}%
           </span>
         </div>
@@ -151,7 +151,7 @@ function Stat({ label, value, sub, color = 'var(--text-primary)' }) {
       <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color, marginTop: 4, fontWeight: 600, lineHeight: 1.1, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
-      {sub && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
+      {sub && <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }
@@ -172,7 +172,7 @@ function CriterionRow({ label, detail, state, isLast }) {
     }}>
       <span style={{ flexShrink: 0 }}><Icon name={st.icon} size={14} /></span>
       <span style={{ fontSize: 13, color: 'var(--text-primary)', flex: 1, minWidth: 120 }}>{label}</span>
-      <span style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>{detail}</span>
+      <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)' }}>{detail}</span>
       <Badge tone={st.tone} size="sm" style={{ marginLeft: 'auto' }}>{st.label}</Badge>
     </div>
   );

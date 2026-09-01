@@ -304,7 +304,7 @@ export function AsanaHours({ date }) {
     width: '100%', padding: '7px 8px', fontSize: 12, color: 'var(--ink)',
     background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)',
   };
-  const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
+  const mono10 = { fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' };
   const linkBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--ink-3)', padding: 0 };
 
   // Team-wide totals for the overview strip. "full" counts each person against
@@ -323,10 +323,10 @@ export function AsanaHours({ date }) {
         <div className="card__title">ชั่วโมงทีม · Asana</div>
         {integ && ready && !picking && (
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-            <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
+            {lastSync && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้" aria-label="รีเฟรชชั่วโมงงาน Asana"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
-            <button onClick={openPicker} title="เปลี่ยนทีม / workspace"
+            <button onClick={openPicker} title="เปลี่ยนทีม / workspace" aria-label="เปลี่ยนทีม / workspace"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}><Icon name="gear" size={15} /></button>
           </span>
         )}
@@ -373,7 +373,7 @@ export function AsanaHours({ date }) {
                       style={{ ...inputStyle, width: 52, textAlign: 'right' }} />
                     <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>ชม.</span>
                     {roleDraft.length > 1 && (
-                      <button onClick={() => removeRole(r.id)} title="ลบบทบาท"
+                      <button onClick={() => removeRole(r.id)} title="ลบบทบาท" aria-label="ลบบทบาท"
                         style={{ ...linkBtn, fontSize: 13, color: 'var(--ink-4)' }}><Icon name="x" size={15} /></button>
                     )}
                   </div>
@@ -422,7 +422,7 @@ export function AsanaHours({ date }) {
                 </>
               )}
               <button className="btn btn--ghost" onClick={savePick} disabled={busy || !selected.size}>
-                {busy ? 'กำลังบันทึก...' : `✓ ใช้ทีมนี้ (${selected.size} คน)`}
+                {busy ? 'กำลังบันทึก...' : <><Icon name="check" size={14} /> ใช้ทีมนี้ ({selected.size} คน)</>}
               </button>
             </>
           )}
@@ -464,8 +464,8 @@ export function AsanaHours({ date }) {
                         <span style={{ minWidth: 0, fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {p.name}{p.roleName ? <span style={{ color: 'var(--ink-3)', fontSize: 11 }}> · {p.roleName}</span> : null}
                         </span>
-                        <span style={{ flexShrink: 0, fontFamily: 'var(--f-mono)', fontSize: 12, color: low ? 'var(--amber-deep)' : 'var(--profit)' }}>
-                          {fmtHr(p.total)} / {fmtHr(p.target)}{low ? ` · ขาด ${fmtHr(p.target - p.total)}` : ' ✓'}
+                        <span style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0, fontSize: 12, color: low ? 'var(--amber-deep)' : 'var(--profit)' }}>
+                          {fmtHr(p.total)} / {fmtHr(p.target)}{low ? ` · ขาด ${fmtHr(p.target - p.total)}` : ' · ครบ'}
                         </span>
                       </div>
                       <div style={{ height: 4, background: 'var(--fill)', borderRadius: 999, margin: '6px 0', overflow: 'hidden' }}>
@@ -495,7 +495,8 @@ export function AsanaHours({ date }) {
                               textDecoration: t.status === 'done' ? 'line-through' : 'none',
                             }}>{t.name}</span>
                             <span style={{ ...mono10, flexShrink: 0 }}>
-                              {t.hrs != null ? `${fmtHr(t.hrs)} Hr` : '—'}{' '}<Icon name={STATUSES.find(s => s.key === t.status)?.icon} size={13} />
+                              {t.hrs != null ? `${fmtHr(t.hrs)} Hr` : '—'}{' '}<Icon name={STATUSES.find(s => s.key === t.status)?.icon} size={13}
+                                label={STATUSES.find(s => s.key === t.status)?.label} />
                             </span>
                           </div>
                         ))}

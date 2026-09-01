@@ -1,8 +1,28 @@
-export function Icon({ name, size = 16, strokeWidth = 1.7, style }) {
+/**
+ * Monochrome line icon, 24×24, painted with `currentColor`.
+ *
+ * ACCESSIBILITY (v4.57, audit A11 Major 1)
+ * An icon is DECORATIVE by default: `aria-hidden` + `focusable="false"`, so the
+ * accessible name of whatever wraps it comes from its own text, and IE/Edge
+ * cannot tab into the SVG. That is the right default because almost every icon
+ * here sits beside a visible label that already says the same thing.
+ *
+ * Pass `label` when the icon is the ONLY thing conveying meaning — an icon-only
+ * button that has no `aria-label` of its own, or a status glyph with no text
+ * next to it. That flips the SVG to `role="img"` + `aria-label`, so it
+ * contributes a name instead of being skipped.
+ *
+ * Prefer `aria-label` on the <button> for icon-only CONTROLS (the name belongs
+ * to the control, not to its artwork); use `label` for standalone status icons.
+ */
+export function Icon({ name, size = 16, strokeWidth = 1.7, style, label }) {
   const props = {
     width: size, height: size, viewBox: '0 0 24 24',
     fill: 'none', stroke: 'currentColor', strokeWidth,
     strokeLinecap: 'round', strokeLinejoin: 'round',
+    ...(label
+      ? { role: 'img', 'aria-label': label }
+      : { 'aria-hidden': 'true', focusable: 'false' }),
     // Icons sit inline in prose as often as they sit in flex rows: the optical
     // shift keeps a glyph on the text baseline, and flex containers ignore it.
     style: { verticalAlign: '-0.15em', flex: 'none', ...style },

@@ -39,7 +39,7 @@ export function CategoryBreakdown({ data, totalExpense }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`หมวด · TOP ${top.length} จาก ${data.length}`}
+        eyebrow={`หมวด · ${top.length} อันดับแรก จาก ${data.length}`}
         title="รายจ่ายตามหมวด"
         meta={`รวม -${formatBaht(totalExpense, { compact: true })}`}
       />
@@ -55,11 +55,11 @@ export function CategoryBreakdown({ data, totalExpense }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12.5 }}>
                 <span style={{ color: 'var(--text-primary)' }}>
                   <span style={{ marginRight: 8 }}>{icon}</span>{row.category}
-                  <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', fontSize: 10.5, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontWeight: 500, marginLeft: 8, color: 'var(--text-muted)', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
                     {row.count} ครั้ง
                   </span>
                 </span>
-                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                   ฿{Math.round(row.amount).toLocaleString('th')}
                   <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: 10.5, fontWeight: 400 }}>
                     {ofTotal.toFixed(0)}%
@@ -116,11 +116,11 @@ export function TopExpenses({ data }) {
             </div>
             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
               {t.title}
-              <span style={{ marginLeft: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+              <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginLeft: 8, fontSize: 13, color: 'var(--text-muted)' }}>
                 {t.category}
               </span>
             </div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--danger)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--danger)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
               -฿{Math.abs(t.amount).toLocaleString('th', { maximumFractionDigits: 0 })}
             </div>
           </div>
@@ -178,7 +178,7 @@ export function BudgetProgress({ budgets, categoryActuals, onAddBudget }) {
                   {b.category}
                   {tone === 'danger' && <Badge tone="danger" size="sm" style={{ marginLeft: 8 }}>เกินงบ</Badge>}
                 </span>
-                <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                   ฿{Math.round(actual).toLocaleString('th')}
                   <span style={{ color: 'var(--text-muted)', margin: '0 4px', fontWeight: 400 }}>/</span>
                   ฿{Math.round(limit).toLocaleString('th')}
@@ -259,7 +259,7 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
         <NWRow label="หนี้สิน"    value={liabilities} color="var(--danger)" sign="-" />
         <div style={{ height: 1, background: 'var(--hairline)', margin: '4px 0' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--f-mono)'}}>DEBT RATIO</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)'}}>สัดส่วนหนี้</span>
           <Badge tone={debtRatio > 50 ? 'danger' : debtRatio > 30 ? 'warning' : 'success'} size="sm">
             {debtRatio.toFixed(1)}%
           </Badge>
@@ -276,9 +276,8 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
                 {a.name}
               </span>
               <span style={{
-                fontFamily: 'var(--f-mono)',
                 color: isDebt ? 'var(--danger)' : 'var(--text-primary)',
-                fontVariantNumeric: 'tabular-nums',
+                fontVariantNumeric: 'tabular-nums'
               }}>
                 {isDebt ? '-' : ''}฿{Math.abs(bal).toLocaleString('th', { maximumFractionDigits: 0 })}
               </span>
@@ -286,7 +285,7 @@ export function NetWorthCard({ accounts, unconfirmed = false }) {
           );
         })}
         {accounts.length > 4 && (
-          <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', textAlign: 'center', marginTop: 4 }}>
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', marginTop: 4 }}>
             +{accounts.length - 4} บัญชี
           </div>
         )}
@@ -299,7 +298,7 @@ function NWRow({ label, value, color, sign = '' }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
       <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--f-mono)', color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
         {sign}฿{value.toLocaleString('th', { maximumFractionDigits: 0 })}
       </span>
     </div>
@@ -384,7 +383,7 @@ export function DailyHeatmap({ dailyMap, yearMonth }) {
         })}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>
+      <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, fontSize: 13, color: 'var(--text-muted)' }}>
         <span>น้อย</span>
         {SHADES.map((c, i) => (
           <div key={i} style={{

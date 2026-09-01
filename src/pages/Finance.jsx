@@ -657,7 +657,7 @@ function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
       }}>
         <div style={{ marginBottom: 6 }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, fontWeight: 500 }}>นี่คือการจ่ายบิลประจำ?</div>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {txn.title}
           </div>
         </div>
@@ -677,7 +677,7 @@ function RecurringLinkMenu({ txn, recurring, onPick, onClose }) {
                 color: active ? 'var(--accent-strong)' : 'var(--text-primary)',
               }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-              {active && <span style={{ flexShrink: 0 }}>✓ ผูกอยู่</span>}
+              {active && <span style={{ flexShrink: 0 }}><Icon name="check" size={12} /> ผูกอยู่</span>}
             </button>
           );
         })}
@@ -1272,11 +1272,10 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                         lands here, so the filter has to say so where the rows
                         are — and be clearable without walking back a room. */}
                     {accountFilter && (
-                      <span data-account-filter-chip style={{
+                      <span data-account-filter-chip style={{ fontVariantNumeric: 'tabular-nums',
                         display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 10,
                         padding: '3px 5px 3px 10px', borderRadius: 999, verticalAlign: 'middle',
-                        background: 'var(--accent-tint)', color: 'var(--accent-strong)',
-                        fontFamily: 'var(--f-mono)', fontSize: 11, fontWeight: 500,
+                        background: 'var(--accent-tint)', color: 'var(--accent-strong)', fontSize: 11, fontWeight: 500
                       }}>
                         บัญชี: {accounts.find(a => a.id === accountFilter)?.name || 'ไม่พบบัญชี'}
                         <button type="button" className="focus-ring"
@@ -1715,7 +1714,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                           <span style={{ width: 4, height: 26, borderRadius: 2, background: toneColor(a.tone), flexShrink: 0 }} />
                           <div style={{ overflow: 'hidden', minWidth: 0 }}>
                             <div style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : 400 }}>{a.name}</div>
-                            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)' }}>
                               {a.type}{txCount > 0 && ` · ${txCount} txn เดือนนี้`}
                               {a.balance_anchor_at && (a._balance_unconfirmed
                                 ? ` · ยอด ณ ${txDate(a.balance_anchor_at)} · ยังไม่รวมรายการหลังจากนั้น`

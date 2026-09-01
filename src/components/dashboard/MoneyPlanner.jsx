@@ -216,10 +216,9 @@ export function MoneyPlanner({ debts }) {
                   borderRadius: 999, transition: barTransition,
                 }} />
               </div>
-              <div data-timeline-when style={{
-                fontFamily: 'var(--f-mono)', fontSize: 12, fontWeight: 700,
+              <div data-timeline-when style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700,
                 color: cleared ? 'var(--success)' : 'var(--text-muted)',
-                whiteSpace: 'nowrap', width: 96, textAlign: 'right', flex: 'none',
+                whiteSpace: 'nowrap', width: 96, textAlign: 'right', flex: 'none'
               }}>{cleared ? monthOffsetLabel(when) : 'เกิน 60 ปี'}</div>
             </div>
           );

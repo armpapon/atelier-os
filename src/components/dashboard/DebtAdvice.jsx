@@ -123,9 +123,8 @@ export function DebtAdvice({ debts }) {
             <PriorityRow key={p.debt.id} p={p} />
           ))}
           {overflowCount > 0 && (
-            <div style={{
-              fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)',
-              padding: '10px 0 2px',
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)',
+              padding: '10px 0 2px'
             }}>
               และอีก {overflowCount} ก้อน
             </div>
@@ -195,8 +194,7 @@ function PriorityRow({ p }) {
           <div data-prio-name style={{ fontSize: 14.5, fontWeight: 700, color: 'var(--text-primary)' }}>
             {p.debt.name}
           </div>
-          <div style={{
-            fontFamily: 'var(--f-mono)', fontSize: 12.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap',
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'nowrap'
           }}>
             {baht(p.balance)} · ดอก <b style={{ color: 'var(--danger)' }}>{baht(p.monthlyInterest)}/ด</b>
           </div>

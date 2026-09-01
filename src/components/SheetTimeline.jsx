@@ -119,7 +119,7 @@ export function SheetTimeline({ date }) {
   const monthDoing = sum.inMonth.filter(j => !j.posted);
   const monthShown = allMonth ? sum.inMonth : sum.inMonth.slice(0, 8);
 
-  const mono10 = { fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' };
+  const mono10 = { fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' };
   const inputStyle = {
     width: '100%', padding: '7px 8px', fontSize: 12, color: 'var(--ink)',
     background: 'var(--fill)', border: '1px solid transparent', borderRadius: 'var(--radius-field)',
@@ -158,13 +158,17 @@ export function SheetTimeline({ date }) {
         {open && (
           <div style={{ borderTop: '1px solid var(--hairline)', padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div style={{ ...mono10, color: 'var(--ink-2)' }}>
-              {j.steps.map(s => `${s.struck ? '✓' : '·'} ${s.label} ${fmtD(s.date)}`).join('  ')}
+              {j.steps.map((s, si) => (
+                <span key={si} style={{ marginRight: 10, whiteSpace: 'nowrap' }}>
+                  {s.struck ? <Icon name="check" size={11} /> : '·'} {s.label} {fmtD(s.date)}
+                </span>
+              ))}
             </div>
             <div style={{ ...mono10, color: j.posted ? 'var(--profit)' : 'var(--ink-3)' }}>
-              {j.posted ? `✓ โพสต์ ${fmtD(j.post.date)}` : `โพสต์ ${fmtD(j.post.date)}`}
+              {j.posted ? <><Icon name="check" size={11} /> โพสต์ {fmtD(j.post.date)}</> : `โพสต์ ${fmtD(j.post.date)}`}
               {j.payMissing.length
                 ? ` · รอ: ${j.payMissing.join(', ')}`
-                : (j.posted ? ' · เก็บเงินครบ ✓' : '')}
+                : (j.posted ? ' · เก็บเงินครบ' : '')}
             </div>
           </div>
         )}
@@ -178,10 +182,10 @@ export function SheetTimeline({ date }) {
         <div className="card__title">Working Timeline · ทีม AE</div>
         {connected && sheetId && !editing && (
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-            <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
+            {lastSync && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรชเดี๋ยวนี้" aria-label="รีเฟรชงานจาก Google Sheets"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
-            <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.timeline_sheet_url || ''); }} title="เปลี่ยนชีท"
+            <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.timeline_sheet_url || ''); }} title="เปลี่ยนชีท" aria-label="เปลี่ยนชีท"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}><Icon name="gear" size={15} /></button>
           </span>
         )}
@@ -208,7 +212,7 @@ export function SheetTimeline({ date }) {
             onKeyDown={e => e.key === 'Enter' && saveSheet()}
             style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
           <button className="btn btn--ghost" onClick={saveSheet} disabled={busy || !urlInput.trim()}>
-            {busy ? 'กำลังบันทึก...' : '✓ ใช้ชีทนี้'}
+            {busy ? 'กำลังบันทึก...' : <><Icon name="check" size={14} /> ใช้ชีทนี้</>}
           </button>
           {editing && (
             <button onClick={() => setEditing(false)} style={moreBtn}>‹ กลับ</button>

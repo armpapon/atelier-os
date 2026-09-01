@@ -45,7 +45,7 @@ export function DayCountdown() {
           transform="rotate(-90 33 33)"
           style={{ transition: 'stroke-dashoffset 950ms linear' }} />
         <text x="33" y="32" textAnchor="middle" style={{ fontFamily: 'var(--f-mono)', fontSize: 16, fontWeight: 600, fill: 'var(--accent-strong)' }}>{minLeft}</text>
-        <text x="33" y="44" textAnchor="middle" style={{ fontWeight: 500, fontFamily: 'var(--f-mono)', fontSize: 7.5, fill: 'var(--ink-3)'}}>นาที</text>
+        <text x="33" y="44" textAnchor="middle" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, fill: 'var(--ink-3)'}}>นาที</text>
       </svg>
 
       {/* Time text */}
@@ -56,7 +56,7 @@ export function DayCountdown() {
         <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.2 }}>
           {String(hh).padStart(2, '0')}<span style={{ color: 'var(--ink-4)' }}>:</span>{String(mm).padStart(2, '0')}<span style={{ color: 'var(--ink-4)' }}>:</span>{String(secLeft).padStart(2, '0')}
         </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>
+        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>
           จาก 1,440 นาที
         </div>
       </div>

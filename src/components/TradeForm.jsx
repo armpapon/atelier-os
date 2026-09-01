@@ -148,10 +148,10 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
       <form style={s.drawer} onClick={e => e.stopPropagation()} onSubmit={handleSubmit}>
         <div style={s.header}>
           <div>
-            <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · A3'}</div>
+            <div style={s.eyebrow}>{isEdit ? 'แก้ไขเทรด' : 'เทรดใหม่ · A3'}</div>
             <div style={s.title}>{isEdit ? 'แก้ไข Trade' : 'บันทึก Trade ใหม่'}</div>
           </div>
-          <button type="button" onClick={onClose} style={s.close}><Icon name="x" size={15} /></button>
+          <button type="button" onClick={onClose} aria-label="ปิดฟอร์ม Trade" title="ปิด" style={s.close}><Icon name="x" size={15} /></button>
         </div>
 
         <div style={s.body}>
@@ -216,7 +216,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
                   style={{ ...s.input, fontFamily: 'var(--f-mono)' }} />
                 {rManual && (
                   <button type="button" onClick={() => setRManual(false)}
-                    title="กลับไปคิดอัตโนมัติ"
+                    title="กลับไปคิดอัตโนมัติ" aria-label="กลับไปคิด R อัตโนมัติ"
                     style={{ ...s.btnGhost, padding: '9px 10px', fontSize: 12, flexShrink: 0 }}><Icon name="refresh" size={15} /></button>
                 )}
               </div>

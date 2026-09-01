@@ -48,10 +48,10 @@ function TxnList({ items = [], accountName, nested = false, extraMeta }) {
                     display: 'block', fontSize: 12.5, color: 'var(--text-primary)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>{t.title || '(ไม่มีชื่อรายการ)'}</span>
-                  <span style={{
-                    display: 'block', fontFamily: 'var(--f-mono)', fontSize: 10,
+                  <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+                    display: 'block', fontSize: 13,
                     color: 'var(--text-muted)', overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                   }}>
                     {normalizeCategory(t.category)}{acc ? ` · ${acc}` : ''}
                   </span>
@@ -91,10 +91,10 @@ function LeakRow({
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{title}</span>
         {detail && (
-          <span style={{
-            display: 'block', fontFamily: 'var(--f-mono)', fontSize: 10.5,
+          <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+            display: 'block', fontSize: 13,
             color: 'var(--text-muted)', marginTop: 2,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
           }}>{detail}</span>
         )}
       </span>
@@ -217,7 +217,7 @@ export function MoneyLeaks({
             {thisSum.savingsRate.toFixed(0)}%
           </div>
         </div>
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
           {srDelta >= 0 ? '▲' : '▼'} {Math.abs(srDelta).toFixed(0)}% จากเดือนก่อน
           <div style={{ marginTop: 2 }}>
             เข้า {formatBaht(thisSum.income)} · ออก {formatBaht(thisSum.expense)} · เหลือ {formatBaht(thisSum.net)}
@@ -309,7 +309,7 @@ export function MoneyLeaks({
         {/* Fallback: top categories if nothing flagged */}
         {nothingFlagged && (
           <>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', margin: '4px 0 6px' }}>หมวดที่ใช้มากสุดเดือนนี้</div>
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 6px' }}>หมวดที่ใช้มากสุดเดือนนี้</div>
             {topCats.map(c => {
               const id = 'top-' + c.key;
               return (

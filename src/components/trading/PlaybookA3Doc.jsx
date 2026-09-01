@@ -105,7 +105,7 @@ const s = {
   cap:{ fontSize: 12.5, color: 'var(--text-muted)', margin: '10px 6px 2px', lineHeight: 1.65 },
   grid:{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, margin: '4px 0 10px' },
   stat:{ border: '1px solid var(--border)', borderRadius: 'var(--radius-control)', padding: '12px 14px 10px', background: 'var(--surface)' },
-  statV:{ fontFamily: 'var(--f-mono)', fontSize: 21, color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums' },
+  statV:{ fontSize: 21, color: 'var(--accent-strong)', fontVariantNumeric: 'tabular-nums' },
   statL:{ fontSize: 12.5, color: 'var(--text-muted)' },
   table:{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 },
   th: { fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--border)' },

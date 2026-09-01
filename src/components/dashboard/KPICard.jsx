@@ -49,7 +49,7 @@ export function KPICard({ label, sub, value, valueColor = 'var(--text-primary)',
           fontVariantNumeric: 'tabular-nums', fontSize: 13,
           color: 'var(--text-muted)', fontWeight: 500
         }}>{label}</div>
-        {sub && <div style={{ fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>{sub}</div>}
+        {sub && <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)' }}>{sub}</div>}
       </div>
 
       <div style={{

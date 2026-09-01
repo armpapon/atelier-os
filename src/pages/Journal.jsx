@@ -191,7 +191,7 @@ function PasteScheduleModal({ date, onSave, onClose }) {
           placeholder={'09:30 [MKT] รวม Report\n13:30 โปรที่ชอบ Update\n17:00 Meeting AE'}
           className="input" style={{ resize: 'vertical', fontFamily: 'var(--f-mono)', fontSize: 12.5, lineHeight: 1.6 }} />
         {parsed.length > 0 && (
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>
             จะเพิ่ม {parsed.length} รายการ · มีเวลา {eventCount} · งาน {parsed.length - eventCount}
           </div>
         )}
@@ -606,9 +606,9 @@ function ShopeeOrders() {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <a href="https://seller.shopee.co.th/portal/sale/order?type=toship" target="_blank" rel="noopener noreferrer"
             style={{ fontSize: 11, color: 'var(--accent-strong)', textDecoration: 'none' }}>เปิด Seller Centre ↗</a>
-          {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>
+          {lastSync && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>
             {mode === 'shared' ? 'คิวร่วม · ' : ''}ซิงก์ {fmtSyncClock(lastSync)}</span>}
-          <button onClick={() => refresh(true)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
+          <button onClick={() => refresh(true)} disabled={busy} title="รีเฟรชเดี๋ยวนี้" aria-label="รีเฟรชคิว Shopee"
             style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
         </span>
       </div>
@@ -626,7 +626,7 @@ function ShopeeOrders() {
             <button onClick={e => handleShipped(e, o)}
               title="ส่งของแล้ว — เอาออกจากคิวของทั้งคู่"
               style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink-2)', cursor: 'pointer', fontSize: 11.5, padding: '4px 10px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              ส่งแล้ว ✓
+              ส่งแล้ว
             </button>
           </a>
         ))}
@@ -787,9 +787,9 @@ function GmailInbox() {
         {status === 'connected' && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             {busy && progress
-              ? <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>สแกน {progress.done}/{progress.total}…</span>
-              : lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
-            <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
+              ? <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>สแกน {progress.done}/{progress.total}…</span>
+              : lastSync && <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
+            <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้" aria-label="รีเฟรชเมลค้างตอบ"
               style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
           </span>
         )}
@@ -817,22 +817,22 @@ function GmailInbox() {
               <a key={m.id} href={`https://mail.google.com/mail/u/0/#inbox/${m.id}`}
                 target="_blank" rel="noopener noreferrer"
                 style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--line)', background: 'var(--surface-2)', textDecoration: 'none' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>
+                <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink-3)' }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
                   <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     ค้าง {waitingLabel(m.ts)}
                     <button onClick={e => handleDismiss(e, m)}
-                      title="จัดการแล้ว (เช่น โทรคุยแล้ว) — เอาออกจากลิสต์"
+                      title="จัดการแล้ว (เช่น โทรคุยแล้ว) — เอาออกจากลิสต์" aria-label={`จัดการแล้ว — เอา ${m.name} ออกจากลิสต์`}
                       style={{ background: 'none', border: '1px solid var(--line)', borderRadius: 'var(--r-sm)', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '2px 5px' }}
                       onMouseEnter={ev => { ev.currentTarget.style.color = 'var(--amber-deep)'; ev.currentTarget.style.borderColor = 'var(--amber)'; }}
                       onMouseLeave={ev => { ev.currentTarget.style.color = 'var(--ink-3)'; ev.currentTarget.style.borderColor = 'var(--line)'; }}>
-                      ✓
+                      <Icon name="check" size={13} />
                     </button>
                   </span>
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject}</div>
                 {m.to && (
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     ถึง: {m.to}
                   </div>
                 )}
@@ -919,9 +919,9 @@ function AddEntryForm({ date, onSave, onClose, partnerId }) {
         <div style={{ display: 'flex', gap: 10 }}>
           <input
             type="time" value={time} onChange={e => setTime(e.target.value)}
-            style={{
+            style={{ fontVariantNumeric: 'tabular-nums',
               background: 'var(--fill-2)', border: 'none', borderRadius: 'var(--radius-field)',
-              padding: '4px 8px', fontSize: 12, fontFamily: 'var(--f-mono)', color: 'var(--paper-ink)',
+              padding: '4px 8px', fontSize: 12, color: 'var(--paper-ink)'
             }}
           />
           <input
@@ -1047,10 +1047,9 @@ function EntryDetails({ entry, date, onUpdate, partnerId }) {
   };
 
   const isEvent = entry.bullet_type === 'event';
-  const fieldStyle = {
-    fontFamily: 'var(--f-mono)', fontSize: 12, padding: '6px 9px',
+  const fieldStyle = { fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '6px 9px',
     border: '1px solid transparent', borderRadius: 'var(--radius-field)',
-    background: 'var(--fill)', color: 'var(--ink)', outline: 'none',
+    background: 'var(--fill)', color: 'var(--ink)', outline: 'none'
   };
   const labelStyle = {
     fontVariantNumeric: 'tabular-nums',
@@ -1429,7 +1428,7 @@ export function Journal() {
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                           <button onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                            title="รายละเอียด"
+                            title="รายละเอียด" aria-label={isExpanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'} aria-expanded={isExpanded}
                             style={{ opacity: hasDetails ? 0.9 : 0.4, padding: '0 4px', color: 'var(--ink-2)', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex' }}>
                             <span style={{ display: 'inline-flex', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}>
                               <Icon name="chevron" size={12} />

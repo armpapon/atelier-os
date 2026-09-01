@@ -136,7 +136,7 @@ export function Dashboard({ onNav, user }) {
         }}>
           <Icon name="warning" size={14} /> {error}
           {error.includes('does not exist') && (
-            <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginTop: 6, fontSize: 13, color: 'var(--text-secondary)' }}>
               ต้องรัน <code>supabase/migration_add_lifeos.sql</code> ใน Supabase ก่อน
             </div>
           )}
@@ -265,15 +265,14 @@ function TodayHero({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontFamily: 'var(--f-display)', fontSize: 20, color: 'var(--ink)', fontWeight: 600 }}>วันนี้</div>
-          <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9.5, color: 'var(--accent-strong)', background: 'var(--accent-soft)', padding: '2px 8px', borderRadius: 999 }}>
+          <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 9.5, color: 'var(--accent-strong)', background: 'var(--accent-soft)', padding: '2px 8px', borderRadius: 999 }}>
             ↺ สดจาก Journal
           </span>
         </div>
         <button onClick={onOpenJournal} className="focus-ring"
-          style={{
-            fontFamily: 'var(--f-mono)', fontSize: 11.5, color: 'var(--accent-strong)',
+          style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11.5, color: 'var(--accent-strong)',
             border: '1px solid var(--accent-soft)', borderRadius: 999, padding: '6px 13px',
-            background: 'var(--background-soft)', cursor: 'pointer',
+            background: 'var(--background-soft)', cursor: 'pointer'
           }}>
           เปิด Journal เต็ม →
         </button>
@@ -318,7 +317,7 @@ function TodayHero({
                   background: f.done ? 'var(--accent)' : 'transparent',
                   color: 'var(--text-inverse)', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                {f.done ? '✓' : ''}
+                {f.done ? <Icon name="check" size={12} /> : ''}
               </button>
               <span style={{
                 flex: 1, fontSize: 14,

@@ -24,10 +24,10 @@ export function Badge({ children, tone = 'neutral', size = 'md', style }) {
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
+      fontVariantNumeric: 'tabular-nums',
       background: t.bg, color: t.color,
       border: '1px solid ' + t.border,
       borderRadius: 'var(--radius-pill)',
-      fontFamily: 'var(--f-mono)',
       lineHeight: 1.4,
       ...sz, ...style
     }}>

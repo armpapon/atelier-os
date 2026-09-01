@@ -138,8 +138,8 @@ function AddSourceForm({ onSave, onClose }) {
           <input className="input" type="url" value={form.url} onChange={e => handleUrlChange(e.target.value)}
             placeholder={form.type === 'youtube' ? 'https://youtube.com/watch?v=...' : 'https://...'} />
           {form.type === 'youtube' && extractVideoId(form.url) && (
-            <div style={{ fontSize: 11, color: 'var(--profit)', fontFamily: 'var(--f-mono)' }}>
-              ✓ พบ Video ID: {extractVideoId(form.url)}
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 11, color: 'var(--profit)' }}>
+              <Icon name="check" size={12} /> พบ Video ID: {extractVideoId(form.url)}
             </div>
           )}
         </label>
@@ -204,7 +204,7 @@ function AddSourceForm({ onSave, onClose }) {
                   × ลบรูป
                 </button>
               )}
-              <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--f-mono)' }}>
+              <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-4)' }}>
                 ระบบจะ resize ให้ ≤ 800px อัตโนมัติ
               </div>
             </div>
@@ -293,17 +293,16 @@ function NoteCard({ note, onDelete }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <select value={targetLang} onChange={e => { setTargetLang(e.target.value); setTranslation(null); }}
             onClick={e => e.stopPropagation()}
-            style={{ background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 4, padding: '2px 4px', fontSize: 10, color: 'var(--ink-3)', fontFamily: 'var(--f-mono)' }}>
+            style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 4, padding: '2px 4px', fontSize: 13, color: 'var(--ink-3)' }}>
             {TARGET_LANGS.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
           <button onClick={showTranslation && translation?.lang === targetLang ? () => setShowTranslation(false) : (translation?.lang !== targetLang ? handleRetranslate : handleTranslate)}
             disabled={translating}
-            style={{
-              padding: '3px 9px', borderRadius: 4, fontSize: 11,
+            style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+              padding: '3px 9px', borderRadius: 4, fontSize: 13,
               background: showTranslation ? 'var(--amber)' : 'var(--surface-3)',
               color: showTranslation ? 'var(--text-inverse)' : 'var(--ink-3)',
-              border: '1px solid var(--line)', cursor: 'pointer',
-              fontFamily: 'var(--f-mono)',
+              border: '1px solid var(--line)', cursor: 'pointer'
             }}>
             {translating ? '…' : 'แปล'}
           </button>
@@ -377,7 +376,7 @@ function StudyMode({ source, onBack, onUpdate }) {
           </button>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 18, color: 'var(--ink)', lineHeight: 1.3 }}>{source.title}</div>
-            {source.author && <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>โดย {source.author}</div>}
+            {source.author && <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)', marginTop: 2 }}>โดย {source.author}</div>}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             {source.category && <span className="tag tag--amber">{source.category}</span>}
@@ -409,7 +408,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         {/* Progress tracker */}
         <div style={{ marginTop: 20, padding: '16px 18px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>PROGRESS</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)'}}>ความคืบหน้า</div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: progress >= 100 ? 'var(--profit)' : 'var(--amber-2)', fontVariantNumeric: 'tabular-nums' }}>{progress}%</div>
           </div>
           <input type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))}
@@ -451,7 +450,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         <div style={{ padding: '24px 20px 14px', borderBottom: '1px solid var(--line)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 16 }}>โน้ต</div>
-            <span style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{notes.length} รายการ</span>
+            <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)' }}>{notes.length} รายการ</span>
           </div>
         </div>
 
@@ -528,7 +527,7 @@ function SourceCard({ source, onClick, onDelete }) {
         <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
           {source.category && <span className="tag tag--amber" style={{ fontSize: 9.5 }}>{source.category}</span>}
           <span className={`tag ${source.status === 'completed' ? 'tag--profit' : ''}`} style={{ fontSize: 9.5 }}>
-            {source.status === 'completed' ? '✓ เรียนจบ' : source.status === 'paused' ? 'หยุด' : source.progress > 0 ? 'กำลังเรียน' : 'ยังไม่เริ่ม'}
+            {source.status === 'completed' ? 'เรียนจบ' : source.status === 'paused' ? 'หยุด' : source.progress > 0 ? 'กำลังเรียน' : 'ยังไม่เริ่ม'}
           </span>
           <button onClick={e => { e.stopPropagation(); if (confirm('ลบแหล่งเรียนนี้?')) onDelete(); }}
             style={{ marginLeft: 'auto', color: 'var(--ink-4)', fontSize: 13, padding: '2px 4px' }}>×</button>
@@ -597,7 +596,7 @@ export function Learning() {
                   <em style={{ color: 'var(--amber)', fontStyle: 'italic' }}>{featured.title}</em>
                 </div>
                 {featured.author && (
-                  <div style={{ fontFamily: 'var(--f-mono)', fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>
+                  <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--ink-3)', marginTop: 6 }}>
                     โดย {featured.author}
                   </div>
                 )}
@@ -616,7 +615,7 @@ export function Learning() {
                 <div className="budget-bar" style={{ marginTop: 22, height: 3 }}>
                   <div className="budget-bar__fill" style={{ width: `${featured.progress}%` }} />
                 </div>
-                <div className="row row--between" style={{ marginTop: 10, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-3)' }}>
+                <div className="row row--between" style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginTop: 10, fontSize: 13, color: 'var(--ink-3)' }}>
                   <span>เริ่มแล้ว</span>
                   <span>เหลือ {Math.round((featured.duration_min || 60) * (1 - (featured.progress || 0) / 100))} นาที</span>
                 </div>

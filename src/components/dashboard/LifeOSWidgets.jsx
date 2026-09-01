@@ -244,7 +244,7 @@ function GoalRow({ goal, onUpdate, onDelete }) {
           </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11.5, color: 'var(--text-secondary)' }}>
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)' }}>
             {Number(goal.current_value).toLocaleString('th')}{goal.unit && ` ${goal.unit}`}
             <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
             {Number(goal.target_value).toLocaleString('th')}
@@ -307,7 +307,7 @@ function GoalForm({ initial, onSubmit, onCancel }) {
         <input className="input" type="number" value={form.current_value} onChange={e => set('current_value', e.target.value)} placeholder="มีอยู่" min="0" step="any"
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11 }} />
         <input className="input" type="number" value={form.target_value} onChange={e => set('target_value', e.target.value)} placeholder="เป้า" min="0" step="any" required
-          style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11 }} />
+          style={{ fontVariantNumeric: 'tabular-nums', ...inputStyle, fontSize: 11 }} />
         <input className="input" type="text" value={form.unit} onChange={e => set('unit', e.target.value)} placeholder="หน่วย"
           style={{ ...inputStyle, fontFamily: 'var(--f-mono)', fontSize: 11 }} />
         <input className="input" type="date" value={form.deadline} onChange={e => set('deadline', e.target.value)}
@@ -316,12 +316,11 @@ function GoalForm({ initial, onSubmit, onCancel }) {
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {Object.entries(CATEGORY_META).map(([k, m]) => (
           <button key={k} type="button" onClick={() => set('category', k)} className="focus-ring"
-            style={{
-              padding: '3px 10px', borderRadius: 'var(--radius-pill)', fontSize: 10.5, cursor: 'pointer',
+            style={{ fontVariantNumeric: 'tabular-nums',
+              padding: '3px 10px', borderRadius: 'var(--radius-pill)', fontSize: 13, cursor: 'pointer',
               background: form.category === k ? 'var(--accent-soft)' : 'var(--surface)',
               color: form.category === k ? 'var(--accent-strong)' : 'var(--text-secondary)',
-              border: `1px solid ${form.category === k ? 'var(--accent)' : 'var(--border)'}`,
-              fontFamily: 'var(--f-mono)', fontWeight: 500,
+              border: `1px solid ${form.category === k ? 'var(--accent)' : 'var(--border)'}`, fontWeight: 500
             }}>{m.icon} {m.label}</button>
         ))}
       </div>
@@ -469,9 +468,8 @@ export function RoadmapTimeline({ milestones, monthsAhead = 6, onAdd, onUpdate, 
             {ticks.map((t, i) => (
               <div key={i} style={{ position: 'absolute', top: 30, left: `${t.pct}%`, transform: 'translateX(-50%)' }}>
                 <div style={{ width: 1, height: 8, background: 'var(--border-strong)', margin: '0 auto' }} />
-                <div style={{
-                  fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)',
-                  marginTop: 4, textAlign: 'center', fontWeight: 500,
+                <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)',
+                  marginTop: 4, textAlign: 'center', fontWeight: 500
                 }}>
                   {t.label}
                 </div>
@@ -480,7 +478,7 @@ export function RoadmapTimeline({ milestones, monthsAhead = 6, onAdd, onUpdate, 
             <div style={{ position: 'absolute', top: 14, left: `${todayPct}%`, transform: 'translateX(-50%)' }}>
               <div style={{
                 fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--accent-strong)', textAlign: 'center', marginBottom: 2, fontWeight: 600
-              }}>NOW</div>
+              }}>ตอนนี้</div>
               <div style={{ width: 1.5, height: 30, background: 'var(--accent)', margin: '0 auto' }} />
             </div>
             {milestones.map((m, idx) => {
@@ -531,7 +529,7 @@ export function RoadmapTimeline({ milestones, monthsAhead = 6, onAdd, onUpdate, 
                   alignItems: 'center', fontSize: 12, padding: '4px 0',
                 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color }} />
-                  <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
+                  <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                     {d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                   </span>
                   <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -572,12 +570,11 @@ function MilestoneForm({ onSubmit, onCancel }) {
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {Object.entries(CATEGORY_META).map(([k, m]) => (
           <button key={k} type="button" onClick={() => set('category', k)} className="focus-ring"
-            style={{
-              padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontSize: 10.5, cursor: 'pointer',
+            style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+              padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontSize: 13, cursor: 'pointer',
               background: form.category === k ? 'var(--accent-soft)' : 'var(--surface)',
               color: form.category === k ? 'var(--accent-strong)' : 'var(--text-secondary)',
-              border: `1px solid ${form.category === k ? 'var(--accent)' : 'var(--border)'}`,
-              fontFamily: 'var(--f-mono)',
+              border: `1px solid ${form.category === k ? 'var(--accent)' : 'var(--border)'}`
             }}>{m.icon} {m.label}</button>
         ))}
       </div>

@@ -80,11 +80,27 @@
   templates, and the changelog's own history.
 - Fonts: the native system stack (`--f-display` / `--f-body` / `--f-mono`), no webfont.
 - **Inline styles using CSS variables**. Avoid creating new utility classes — extend `src/styles.css` only when a pattern repeats 3+ times.
-- **Small labels are sentence case** (phase 2, v4.56): `fontSize: 13, fontWeight: 500,
-  color: 'var(--text-muted)'` — never `textTransform: 'uppercase'`, never positive
-  `letterSpacing`, never `--f-mono` on text that is not digits. `--f-mono` and
-  `fontVariantNumeric: 'tabular-nums'` are for amounts, dates-as-digits and
-  counters only; prefer the latter. Section headings are 20px / 700 / -0.02em.
+- **Small labels are sentence case** (v4.56, completed v4.57): `fontSize: 13,
+  fontWeight: 500, color: 'var(--text-muted)'` — never `textTransform:
+  'uppercase'`, never positive `letterSpacing`, never `--f-mono` on words.
+  Section headings are 20px / 700 / -0.02em.
+- **`--f-mono` belongs to NUMBERS and TOKENS, never to words** (v4.57): amounts,
+  percentages, dates/times as digits, counters and ratios, and identifiers read
+  as a token (trade symbols like XAUUSD, employee codes, order ids, tag names,
+  version strings, file names, chart axis ticks). Anything a reader reads as
+  words — Thai or English — is the body face. Dropping mono from a label? add
+  `fontVariantNumeric: 'tabular-nums'` so its digits still line up.
+- **Icon-only controls need an accessible name** (v4.57): `<Icon>` is
+  `aria-hidden` by default, so a `<button>` containing only an icon computes an
+  EMPTY name. Give the button `aria-label` (a `title` alone is a last-resort
+  fallback, not a name); give a standalone status icon `<Icon label="…">`. A
+  toggle's name follows the state it moves to, plus `aria-pressed`.
+- **The style rules above are enforced, not aspirational.** `audit/cases.mjs`
+  scans `src/` on every harness run: zero uppercase, zero positive tracking, a
+  per-file `--f-mono` allowlist WITH ceilings, an emoji-as-data allowlist, no
+  `✓`/`✗` glyphs, and every icon-only button named. Adding mono or an emoji to
+  a new file fails the build's harness — update the allowlist deliberately, with
+  a reason, or don't add it.
 - All copy is **Thai**. Commit messages and code comments stay English.
 
 ### Data model conventions

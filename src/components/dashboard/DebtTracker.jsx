@@ -16,13 +16,13 @@ const TYPE_META = {
 };
 
 const STATUS_META = {
-  paid:      { label: 'จ่ายแล้ว',    tone: 'success', icon: '✓' },
-  pending:   { label: 'รอจ่าย',      tone: 'warning', icon: '◷' },
-  overdue:   { label: 'เกินกำหนด',   tone: 'danger',  icon: '!' },
-  upcoming:  { label: 'ยังไม่เริ่ม',  tone: 'neutral', icon: '…' },
+  paid:      { label: 'จ่ายแล้ว',    tone: 'success', icon: 'check' },
+  pending:   { label: 'รอจ่าย',      tone: 'warning', icon: 'clock' },
+  overdue:   { label: 'เกินกำหนด',   tone: 'danger',  icon: 'warning' },
+  upcoming:  { label: 'ยังไม่เริ่ม',  tone: 'neutral', icon: 'hourglass' },
   // Batch C · B8: a loan that is finished says so, instead of going overdue
   // again every month for the rest of time.
-  completed: { label: 'ผ่อนหมดแล้ว', tone: 'success', icon: '🎉' },
+  completed: { label: 'ผ่อนหมดแล้ว', tone: 'success', icon: 'flag' },
 };
 
 function fmt(n) {
@@ -228,18 +228,18 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
               fontSize: 13.5, color: 'var(--text-primary)', fontWeight: 500,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{debt.name}</div>
-            <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10.5, color: 'var(--text-muted)', marginTop: 1 }}>
+            <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', marginTop: 1 }}>
               {typeMeta.label} · ครบกำหนดทุกวันที่ {debt.due_day || 5}
               {debt.creditor && ` · ${debt.creditor}`}
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-          <div style={{ fontFamily: 'var(--f-mono)', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
             {fmt(debt.monthly_payment)}<span style={{ fontSize: 10, color: 'var(--text-muted)' }}>/เดือน</span>
           </div>
           <Badge tone={statusMeta.tone} size="sm">
-            <span style={{ marginRight: 4 }}>{statusMeta.icon}</span>{statusMeta.label}
+            <span style={{ marginRight: 4 }}><Icon name={statusMeta.icon} size={12} /></span>{statusMeta.label}
           </Badge>
         </div>
       </div>
@@ -247,7 +247,7 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
       {/* Progress bar — only if we know total_months */}
       {debt.total_months && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', marginBottom: 4 }}>
+          <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
             <span>{debt.months_paid || 0} / {debt.total_months} งวด</span>
             <span>
               {progressPct.toFixed(0)}%
@@ -268,11 +268,11 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
 
       {/* Interest breakdown — only if interest_rate set */}
       {math.hasInterestData && (
-        <div style={{
+        <div style={{ fontVariantNumeric: 'tabular-nums',
           display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
           padding: '8px 10px', background: 'var(--background-soft)',
           borderRadius: 'var(--radius-control)', border: '1px solid var(--hairline)',
-          fontSize: 10.5, fontFamily: 'var(--f-mono)',
+          fontSize: 10.5
         }}>
           <MiniStat label="เงินต้น" value={fmt(math.principal)} color="var(--text-primary)" />
           <MiniStat label="ดอกเบี้ยรวม" value={fmt(math.totalInterest)} color="var(--danger)"
@@ -291,16 +291,16 @@ function DebtRow({ debt, status, isEditing, busy = false, onMarkPaid, onUnmark, 
             <Icon name="archive" size={14} /> ผ่อนหมดแล้ว — เก็บเข้าคลัง
           </Button>
         ) : status.status === 'upcoming' ? (
-          <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', alignSelf: 'center' }}>
+          <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', alignSelf: 'center' }}>
             เริ่มผ่อน {status.startDate ? new Date(status.startDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : 'เดือนหน้า'}
           </span>
         ) : status.status === 'paid' ? (
           <Button variant="ghost" size="sm" onClick={onUnmark} disabled={busy}>
-            ✓ จ่ายแล้วเมื่อ {new Date(status.paid_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · ยกเลิก
+            <Icon name="check" size={12} /> จ่ายแล้วเมื่อ {new Date(status.paid_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })} · ยกเลิก
           </Button>
         ) : (
           <Button variant="primary" size="sm" onClick={onMarkPaid} disabled={busy}>
-            {busy ? 'กำลังบันทึก…' : '✓ บันทึกว่าจ่ายแล้ว'}
+            {busy ? 'กำลังบันทึก…' : <><Icon name="check" size={13} /> บันทึกว่าจ่ายแล้ว</>}
           </Button>
         )}
         <Button variant="ghost" size="sm" onClick={onEdit}>{isEditing ? '× ปิด' : 'แก้ไข'}</Button>
@@ -383,19 +383,19 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px', gap: 6 }}>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>ค่างวด/เดือน (฿)</label>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>ค่างวด/เดือน (฿)</label>
           <input type="number" min="0" step="0.01" value={form.monthly_payment}
             onChange={e => set('monthly_payment', e.target.value)} placeholder="19253" required
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
         </div>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>ครบกำหนด</label>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>ครบกำหนด</label>
           <input type="number" min="1" max="31" value={form.due_day}
             onChange={e => set('due_day', e.target.value)} required
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
         </div>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>งวดทั้งหมด</label>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>งวดทั้งหมด</label>
           <input type="number" min="0" value={form.total_months}
             onChange={e => set('total_months', e.target.value)} placeholder="60"
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
@@ -404,20 +404,20 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>จ่ายไปแล้วกี่งวด</label>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>จ่ายไปแล้วกี่งวด</label>
           <input type="number" min="0" value={form.months_paid}
             onChange={e => set('months_paid', e.target.value)}
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
         </div>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>เริ่มผ่อน</label>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>เริ่มผ่อน</label>
           <input type="date" value={form.start_date}
             onChange={e => set('start_date', e.target.value)}
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
         </div>
         <div>
           {/* B8: the end of the loan is what tells the tracker to stop. */}
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>ผ่อนหมด</label>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>ผ่อนหมด</label>
           <input type="date" value={form.end_date}
             onChange={e => set('end_date', e.target.value)}
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }} />
@@ -427,7 +427,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
       {/* Interest rate + original principal — optional for interest math */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>
             ดอกเบี้ยต่อปี (%) <span style={{ color: 'var(--text-muted)' }}>· optional</span>
           </label>
           <input type="number" min="0" step="0.01" value={form.interest_rate}
@@ -435,7 +435,7 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
             style={{ ...inputStyle, width: '100%', fontFamily: 'var(--f-mono)' }} />
         </div>
         <div>
-          <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 3 }}>
+          <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>
             เงินต้น (฿) <span style={{ color: 'var(--text-muted)' }}>· optional</span>
           </label>
           <input type="number" min="0" step="0.01" value={form.original_principal}
@@ -444,10 +444,9 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
         </div>
       </div>
       {(form.interest_rate || form.original_principal) && (
-        <div style={{
+        <div style={{ fontVariantNumeric: 'tabular-nums',
           padding: '8px 12px', background: 'var(--accent-soft)',
-          borderRadius: 'var(--radius-control)', fontSize: 11, color: 'var(--accent-strong)',
-          fontFamily: 'var(--f-mono)',
+          borderRadius: 'var(--radius-control)', fontSize: 11, color: 'var(--accent-strong)'
         }}>
           <Icon name="bulb" size={13} /> ใส่อย่างใดอย่างหนึ่งก็พอ — ถ้ามีดอกเบี้ย ระบบจะคำนวณเงินต้นและดอกเบี้ยรวมให้
         </div>
@@ -455,16 +454,15 @@ function DebtForm({ initial, scope, onSubmit, onCancel }) {
 
       {/* Type chips */}
       <div>
-        <label style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', display: 'block', marginBottom: 5 }}>ประเภท</label>
+        <label style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>ประเภท</label>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {Object.entries(TYPE_META).map(([k, m]) => (
             <button key={k} type="button" onClick={() => set('type', k)} className="focus-ring"
-              style={{
-                padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontSize: 11, cursor: 'pointer',
+              style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
+                padding: '4px 10px', borderRadius: 'var(--radius-pill)', fontSize: 13, cursor: 'pointer',
                 background: form.type === k ? 'var(--accent-soft)' : 'var(--surface)',
                 color: form.type === k ? 'var(--accent-strong)' : 'var(--text-secondary)',
-                border: `1px solid ${form.type === k ? 'var(--accent)' : 'var(--border)'}`,
-                fontFamily: 'var(--f-mono)',
+                border: `1px solid ${form.type === k ? 'var(--accent)' : 'var(--border)'}`
               }}>{m.icon} {m.label}</button>
           ))}
         </div>
@@ -498,7 +496,7 @@ function StatTile({ label, value, color, sub, small }) {
         color, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums',
       }}>{value}</div>
       {sub && (
-        <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-muted)' }}>
           {sub}
         </div>
       )}
@@ -522,7 +520,7 @@ function ForecastChart({ data }) {
         fontSize: 11, color: 'var(--text-secondary)',
       }}>
         <span>ภาระต่อเดือนเริ่มลดลงเมื่อหนี้แต่ละก้อนผ่อนหมด</span>
-        <span style={{ fontFamily: 'var(--f-mono)', color: 'var(--text-muted)' }}>
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
           สูงสุด ฿{Math.round(max).toLocaleString('th')}/เดือน
         </span>
       </div>
@@ -537,9 +535,9 @@ function ForecastChart({ data }) {
                 background: i === 0 ? 'var(--accent)' : 'var(--accent-soft)',
                 borderRadius: '3px 3px 0 0', transition: 'all 200ms',
               }} />
-              <div style={{
-                fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)',
-                fontWeight: i === 0 ? 600 : 400,
+              <div style={{ fontVariantNumeric: 'tabular-nums',
+                fontSize: 13, color: 'var(--text-muted)',
+                fontWeight: i === 0 ? 600 : 400
               }}>{THAI_MONTHS_SHORT[m - 1]}</div>
             </div>
           );
@@ -584,9 +582,9 @@ function DebtStrategyCard({ debts }) {
 
   if (!result.debts.length) {
     return (
-      <div style={{
+      <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums',
         marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--hairline)',
-        fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)', textAlign: 'center',
+        fontSize: 13, color: 'var(--text-muted)', textAlign: 'center'
       }}>
         ต้องการ "งวดทั้งหมด" ในหนี้อย่างน้อย 1 รายการ เพื่อจำลองการโปะหนี้
       </div>
@@ -629,13 +627,13 @@ function DebtStrategyCard({ debts }) {
             { id: 'avalanche', label: 'Avalanche' },
           ].map(s => (
             <button key={s.id} onClick={() => setStrategy(s.id)} className="focus-ring"
-              style={{
+              style={{ fontVariantNumeric: 'tabular-nums',
                 padding: '5px 12px', borderRadius: 'var(--radius-pill)', border: 0,
                 background: strategy === s.id ? 'var(--surface)' : 'transparent',
                 color: strategy === s.id ? 'var(--accent-strong)' : 'var(--text-muted)',
-                fontSize: 11, fontFamily: 'var(--f-mono)', cursor: 'pointer',
+                fontSize: 13, cursor: 'pointer',
                 boxShadow: strategy === s.id ? 'var(--shadow-card)' : 'none',
-                fontWeight: strategy === s.id ? 600 : 400,
+                fontWeight: strategy === s.id ? 600 : 400
               }}>{s.label}</button>
           ))}
         </div>
@@ -665,7 +663,7 @@ function DebtStrategyCard({ debts }) {
         <input type="range" min="0" max="50000" step="500" value={extra}
           onChange={e => setExtra(e.target.value)}
           style={{ accentColor: 'var(--accent)', width: '100%' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: 'var(--text-muted)', fontFamily: 'var(--f-mono)' }}>
+        <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-muted)' }}>
           <span>฿0</span><span>฿25K</span><span>฿50K</span>
         </div>
       </div>
@@ -730,11 +728,11 @@ function DebtStrategyCard({ debts }) {
               }}>{d.payoffOrder}</div>
               <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
                 {d.name}
-                <span style={{ marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)' }}>
+                <span style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', marginLeft: 6, fontSize: 13, color: 'var(--text-muted)' }}>
                   {d.interest_rate > 0 ? `· ${d.interest_rate.toFixed(1)}%/ปี` : ''}
                 </span>
               </div>
-              <div style={{ fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--text-secondary)' }}>
+              <div style={{ fontWeight: 500, fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-secondary)' }}>
                 {d.simMonths} เดือน
               </div>
               {d.monthsSaved > 0 && (
