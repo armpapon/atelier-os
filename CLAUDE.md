@@ -108,6 +108,15 @@
   local function, SVG written as a template string, and styles reached through
   a variable or spread. Negative cases inject each shape in memory and assert
   it is caught — if you simplify the scanner, they go red.
+- **"Paints" includes attributes and classes** (v4.60). A control paints its own
+  `placeholder` and `value`, not only its children — and the face can arrive
+  from `styles.css` rather than an inline style. The scanner reads the
+  stylesheet for both facts: which classes set a mono face, and whether
+  `::placeholder` is given a body face. **A placeholder is prose, so it takes
+  the body face** — `input::placeholder` is set globally in `styles.css`, which
+  lets a numeric input stay monospace for what gets TYPED into it. Delete that
+  rule and every Thai placeholder on a mono control fails the harness again.
+  `title` is deliberately NOT counted: the browser draws it in the OS UI font.
 - All copy is **Thai**. Commit messages and code comments stay English.
 
 ### Data model conventions

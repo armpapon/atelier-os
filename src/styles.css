@@ -326,6 +326,17 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 .mono, .stat__value--mono, .trade-row, .txn-row__amount, .num,
 input[type="number"], [style*="--f-mono"] { font-variant-numeric: tabular-nums; }
 
+/* A11 r3 · a placeholder is always a HINT IN PROSE, never a figure.
+   A monospace input is right for what gets TYPED into it (amounts, tokens,
+   passwords) but the hint it shows while empty is Thai words, and those words
+   were being painted on the mono face. The face belongs to the value, so the
+   hint gets the body face and the typed digits keep their column alignment.
+   audit/style-scan.mjs READS this rule — delete it and every Thai placeholder
+   on a mono control fails the harness again. */
+input::placeholder, textarea::placeholder {
+  font-family: var(--f-body); font-variant-numeric: normal;
+}
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--fill-2); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
