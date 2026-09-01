@@ -119,7 +119,7 @@ export function PlaybookA3Doc() {
     <Card>
       <div style={{ maxWidth: 780 }}>
         <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)'}}>
-          A3 PLAYBOOK · ฉบับเต็ม
+          A3 Playbook · ฉบับเต็ม
         </div>
         <p style={{ ...s.p, marginTop: 8 }}>
           เข้าเมื่อ<b>โมเมนตัมเพิ่งกลับทิศ</b> — เฉพาะฝั่งเดียวกับ<b>เทรนใหญ่</b> — แล้วปล่อยให้กำไรวิ่ง

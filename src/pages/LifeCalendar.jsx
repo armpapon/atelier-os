@@ -325,7 +325,7 @@ export function LifeCalendar() {
             <SetupCard initialBirth={birth} initialSpan={lifespan} onSave={save} onCancel={birth ? () => setEditing(false) : undefined} />
           ) : (
             <EmptyState
-              icon="⏳"
+              icon={<Icon name="hourglass" size={20} />}
               title="เริ่มต้น Life Calendar ของคุณ"
               description="ใส่วันเกิดและอายุที่คาดหวัง แล้วเราจะวาดชีวิตทั้งหมดให้เห็นเป็นกริด — เตือนใจว่าแต่ละสัปดาห์มีค่า"
               actionLabel="+ ตั้งค่าวันเกิด"
@@ -343,7 +343,7 @@ export function LifeCalendar() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
               <Stat label="อายุ" value={`${stats.ageYears.toFixed(1)} ปี`} sub={`${fmtInt(stats.weeksLived)} สัปดาห์`} />
               <Stat label="ผ่านมาแล้ว" value={`${stats.pct.toFixed(1)}%`} sub={`ของ ${lifespan} ปี`} tone="var(--accent-strong)" />
-              <Stat label="เหลืออีก" value={stats.over ? '—' : `${Math.floor(stats.yearsLeft)} ปี`} sub={stats.over ? 'เกินเป้าที่ตั้งไว้แล้ว 🎉' : `≈ ${fmtInt(stats.weeksLeft)} สัปดาห์`} tone="var(--profit)" />
+              <Stat label="เหลืออีก" value={stats.over ? '—' : `${Math.floor(stats.yearsLeft)} ปี`} sub={stats.over ? 'เกินเป้าที่ตั้งไว้แล้ว ' : `≈ ${fmtInt(stats.weeksLeft)} สัปดาห์`} tone="var(--profit)" />
               <Stat label="ทั้งชีวิต" value={`${fmtInt(stats.totalWeeks)}`} sub="สัปดาห์" />
             </div>
 

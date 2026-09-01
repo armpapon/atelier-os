@@ -73,7 +73,7 @@ export function PnLCalendar({ trades = [] }) {
           <button onClick={() => setMonth(new Date(y, m + 1, 1))} style={navBtn} aria-label="เดือนถัดไป">›</button>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>Monthly P&amp;L</div>
+          <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)' }}>กำไร/ขาดทุนรายเดือน</div>
           <div style={{ fontFamily: 'var(--f-mono)', fontSize: 22, fontWeight: 600, color: monthlyPnl >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
             {money(monthlyPnl)}
           </div>

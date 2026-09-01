@@ -133,7 +133,7 @@ function AddSourceForm({ onSave, onClose }) {
         {/* URL */}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--ink-3)' }}>
-            {form.type === 'youtube' ? '🔗 YouTube URL' : '🔗 URL / ลิงก์'}
+            {form.type === 'youtube' ? 'YouTube URL' : 'URL / ลิงก์'}
           </span>
           <input className="input" type="url" value={form.url} onChange={e => handleUrlChange(e.target.value)}
             placeholder={form.type === 'youtube' ? 'https://youtube.com/watch?v=...' : 'https://...'} />
@@ -188,11 +188,11 @@ function AddSourceForm({ onSave, onClose }) {
                 background: 'var(--surface-2)', border: '1px dashed var(--line)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: 'var(--ink-4)', fontSize: 24, flexShrink: 0,
-              }}>📚</div>
+              }}><Icon name="book" size={26} /></div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
               <label className="btn btn--ghost" style={{ cursor: 'pointer', textAlign: 'center', fontSize: 12, padding: '8px 12px' }}>
-                {uploadingCover ? 'อัพโหลด...' : (form.cover_url ? '🔄 เปลี่ยนรูป' : '📤 อัพโหลดรูปปก')}
+                {uploadingCover ? 'อัพโหลด...' : (form.cover_url ? 'เปลี่ยนรูป' : 'อัพโหลดรูปปก')}
                 <input type="file" accept="image/*"
                   onChange={e => handleCoverPick(e.target.files?.[0])}
                   style={{ display: 'none' }}
@@ -281,7 +281,7 @@ function NoteCard({ note, onDelete }) {
           borderRadius: 'var(--r-sm)', fontSize: 13, lineHeight: 1.6,
         }}>
           <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--amber-2)', marginBottom: 4}}>
-            🌐 แปล → {TARGET_LANGS.find(l => l.code === translation.lang)?.label || translation.lang}
+            <Icon name="globe" size={13} /> แปล → {TARGET_LANGS.find(l => l.code === translation.lang)?.label || translation.lang}
           </div>
           <div style={{ color: 'var(--ink-2)' }}>{translation.text}</div>
         </div>
@@ -305,7 +305,7 @@ function NoteCard({ note, onDelete }) {
               border: '1px solid var(--line)', cursor: 'pointer',
               fontFamily: 'var(--f-mono)',
             }}>
-            {translating ? '⏳' : '🌐 แปล'}
+            {translating ? '…' : 'แปล'}
           </button>
         </div>
 
@@ -401,7 +401,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         ) : source.url ? (
           <div style={{ padding: 24, background: 'var(--surface-2)', borderRadius: 'var(--r-lg)', textAlign: 'center' }}>
             <a href={source.url} target="_blank" rel="noopener noreferrer" className="btn btn--primary">
-              🔗 เปิดลิงก์ภายนอก
+              <Icon name="link" size={14} /> เปิดลิงก์ภายนอก
             </a>
           </div>
         ) : null}
@@ -428,17 +428,17 @@ function StudyMode({ source, onBack, onUpdate }) {
             ))}
           </div>
           <button onClick={handleSaveProgress} disabled={savingProgress} className="btn btn--primary" style={{ width: '100%', marginTop: 10, justifyContent: 'center' }}>
-            {savingProgress ? '...' : progress >= 100 ? '🎉 เรียนจบแล้ว!' : '💾 บันทึก Progress'}
+            {savingProgress ? '...' : progress >= 100 ? 'เรียนจบแล้ว!' : 'บันทึก Progress'}
           </button>
         </div>
 
         {/* YouTube tips */}
         {videoId && (
           <div style={{ marginTop: 14, padding: '12px 16px', background: 'var(--success-soft)', border: 'none', borderRadius: 'var(--r-md)' }}>
-            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--profit)', marginBottom: 6}}>💡 เคล็ดลับการเรียน</div>
+            <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--profit)', marginBottom: 6}}><Icon name="bulb" size={13} /> เคล็ดลับการเรียน</div>
             <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.7 }}>
               • กด <strong>CC</strong> เพื่อเปิดซับไตเติ้ล · <strong>Settings → Subtitles → Auto-translate → Thai</strong> เพื่อแปลอัตโนมัติ<br/>
-              • จด Key Insight ในช่องโน้ตด้านขวา · กด <strong>🌐 แปล</strong> เพื่อแปลโน้ตข้ามภาษา<br/>
+              • จด Key Insight ในช่องโน้ตด้านขวา · กด <strong>แปล</strong> เพื่อแปลโน้ตข้ามภาษา<br/>
               • กด <strong>.</strong> เพื่อเลื่อนทีละเฟรม · <strong>&lt; &gt;</strong> เพื่อปรับความเร็ว
             </div>
           </div>
@@ -473,7 +473,7 @@ function StudyMode({ source, onBack, onUpdate }) {
         <div style={{ flex: 1, overflow: 'auto', padding: '12px 20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {notes.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '24px 0', fontSize: 13, fontStyle: 'italic' }}>
-              ยังไม่มีโน้ต — จดขณะดูวิดีโอได้เลย ☝
+              ยังไม่มีโน้ต — จดขณะดูวิดีโอได้เลย
             </div>
           ) : (
             notes.map(note => (
@@ -509,7 +509,7 @@ function SourceCard({ source, onClick, onDelete }) {
             onMouseEnter={e => e.currentTarget.style.opacity = '1'}
             onMouseLeave={e => e.currentTarget.style.opacity = '0'}
           >
-            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>▶</div>
+            <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-inverse)' }}><Icon name="play" size={20} /></div>
           </div>
         )}
         <div className="course-thumb__progress">
@@ -528,7 +528,7 @@ function SourceCard({ source, onClick, onDelete }) {
         <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
           {source.category && <span className="tag tag--amber" style={{ fontSize: 9.5 }}>{source.category}</span>}
           <span className={`tag ${source.status === 'completed' ? 'tag--profit' : ''}`} style={{ fontSize: 9.5 }}>
-            {source.status === 'completed' ? '✓ เรียนจบ' : source.status === 'paused' ? '⏸ หยุด' : source.progress > 0 ? '▶ กำลังเรียน' : 'ยังไม่เริ่ม'}
+            {source.status === 'completed' ? '✓ เรียนจบ' : source.status === 'paused' ? 'หยุด' : source.progress > 0 ? 'กำลังเรียน' : 'ยังไม่เริ่ม'}
           </span>
           <button onClick={e => { e.stopPropagation(); if (confirm('ลบแหล่งเรียนนี้?')) onDelete(); }}
             style={{ marginLeft: 'auto', color: 'var(--ink-4)', fontSize: 13, padding: '2px 4px' }}>×</button>
@@ -608,7 +608,7 @@ export function Learning() {
               </div>
               <button className="btn btn--primary" style={{ padding: '10px 18px', flexShrink: 0 }}
                 onClick={() => setStudySource(featured)}>
-                {featured.type === 'youtube' ? '▶ เรียนต่อ' : '📖 เปิด'} · {featured.progress || 0}%
+                {featured.type === 'youtube' ? 'เรียนต่อ' : 'เปิด'} · {featured.progress || 0}%
               </button>
             </div>
             {featured.progress > 0 && (
@@ -637,7 +637,7 @@ export function Learning() {
         {/* Source grid */}
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: '48px 0', fontSize: 14 }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>📚</div>
+            <div style={{ marginBottom: 12, color: 'var(--text-muted)' }}><Icon name="book" size={30} /></div>
             {tab === 'all' ? 'ยังไม่มีแหล่งเรียน — กด "+ เพิ่มแหล่งเรียน" เพื่อเริ่มต้น' : `ยังไม่มี ${tab} — ลองเพิ่มดูสิ`}
             <br />
             <button className="btn btn--primary" style={{ marginTop: 16 }} onClick={() => setShowAddForm(true)}>+ เพิ่มแหล่งเรียน</button>

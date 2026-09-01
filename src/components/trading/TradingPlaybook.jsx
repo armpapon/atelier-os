@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, Badge, Button } from '../ui/index.js';
+import { Icon } from '../Icon.jsx';
 
 // ─── A3 — บอทเทรดตลอดเวลาตลาดเปิด ไม่มีหน้าต่างเวลา (วิจัยไม่มี session filter) ───
 // ระบบเดียว: XAUUSD · TF 1h · MACD(12,26,9) ตัด signal + EMA200 · SL 1.5×ATR14
 const SESSIONS = [
   {
-    id: 'A3', label: '🤖 Bot 24/5',
+    id: 'A3', label: 'Bot 24/5',
     start: '00:00', end: '24:00',
     startMin: 0, endMin: 24 * 60,
     setup: 'MACD ตัด signal + close เทียบ EMA200 → บอทเข้าที่ open แท่งถัดไป · ออกเมื่อตัดกลับ · SL 1.5×ATR14',
@@ -24,11 +25,11 @@ const CHECKLIST = [
 ];
 
 const RULES = [
-  { tone: 'danger',  icon: '🛑', text: 'ห้ามปิดไม้แทนบอท ห้ามเลื่อน SL — WR ระบบคือ 36% แพ้ติดกันหลายไม้คือเรื่องปกติของระบบนี้' },
-  { tone: 'danger',  icon: '🛑', text: 'ห้ามแก้ parameter กลางการทดสอบ — เปลี่ยนเมื่อไหร่ ไม้ที่นับมานับใหม่ทั้งหมด' },
-  { tone: 'danger',  icon: '🛑', text: 'ห้ามเพิ่ม Risk % เพราะอยากทวงทุนคืน — ถ้าบอท REJECT เพราะทุนไม่พอ ทางแก้เดียวคือเติมทุน ไม่ใช่เพิ่มเสี่ยง' },
-  { tone: 'success', icon: '✅', text: 'จดทุกไม้ภายในวันเดียวกัน ห้ามค้าง — ไม้ที่ไม่ได้จด = แหกกติกา' },
-  { tone: 'success', icon: '✅', text: 'แพ้ต่อเนื่องผิดปกติ (เกิน 6 ไม้ติด) = แคป Log มาคุยกับ Claude ก่อน ไม่ใช่ปิดบอทเอง' },
+  { tone: 'danger',  icon: 'ban' , text: 'ห้ามปิดไม้แทนบอท ห้ามเลื่อน SL — WR ระบบคือ 36% แพ้ติดกันหลายไม้คือเรื่องปกติของระบบนี้' },
+  { tone: 'danger',  icon: 'ban' , text: 'ห้ามแก้ parameter กลางการทดสอบ — เปลี่ยนเมื่อไหร่ ไม้ที่นับมานับใหม่ทั้งหมด' },
+  { tone: 'danger',  icon: 'ban' , text: 'ห้ามเพิ่ม Risk % เพราะอยากทวงทุนคืน — ถ้าบอท REJECT เพราะทุนไม่พอ ทางแก้เดียวคือเติมทุน ไม่ใช่เพิ่มเสี่ยง' },
+  { tone: 'success', icon: 'check', text: 'จดทุกไม้ภายในวันเดียวกัน ห้ามค้าง — ไม้ที่ไม่ได้จด = แหกกติกา' },
+  { tone: 'success', icon: 'check', text: 'แพ้ต่อเนื่องผิดปกติ (เกิน 6 ไม้ติด) = แคป Log มาคุยกับ Claude ก่อน ไม่ใช่ปิดบอทเอง' },
 ];
 
 /** Render text ที่มี *...* เป็นตัวเน้น (เก็บข้อความกติกาไว้ตรงตามต้นฉบับ) */
@@ -84,7 +85,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`🎯 A3 PLAYBOOK · ${today} · ${time}`}
+        eyebrow={`A3 Playbook · ${today} · ${time}`}
         title="วันนี้เทรดได้ไหม เข้าเงื่อนไขไหม"
         meta={
           <span>
@@ -150,7 +151,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
           border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)',
           fontSize: 13,
         }}>
-          🛑 <strong>แพ้ {lossesInRow} ไม้ติด</strong> — ปิดจอทันที ห้ามแก้มือ · กลับมาพรุ่งนี้
+          <Icon name="ban" size={14} /> <strong>แพ้ {lossesInRow} ไม้ติด</strong> — ปิดจอทันที ห้ามแก้มือ · กลับมาพรุ่งนี้
         </div>
       )}
 
@@ -160,7 +161,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
           {/* Session window */}
           <div>
             <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-              ⏰ หน้าต่างเทรด · UTC+7
+              <Icon name="clock" size={13} /> หน้าต่างเทรด · UTC+7
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
               {SESSIONS.map(s => {
@@ -193,7 +194,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
           {/* Pre-Trade Checklist */}
           <div>
             <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-              ✅ PRE-TRADE CHECKLIST · ตอบ "ใช่" ครบ 7 ข้อก่อนเข้า
+              <Icon name="check" size={13} /> เช็กลิสต์ก่อนเข้าไม้ · ตอบ "ใช่" ครบ 7 ข้อก่อนเข้า
             </div>
             <Card variant="paper" padding={14}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -216,7 +217,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
           {/* Rules */}
           <div>
             <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-              📜 กฎเหล็ก
+              <Icon name="history" size={13} /> กฎเหล็ก
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8 }}>
               {RULES.map((r, i) => (
@@ -228,7 +229,7 @@ export function TradingPlaybook({ tradesToday = 0, lossesInRow = 0 }) {
                   display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12,
                   color: r.tone === 'success' ? 'var(--success)' : 'var(--danger)',
                 }}>
-                  <span style={{ fontSize: 14, flexShrink: 0 }}>{r.icon}</span>
+                  <span style={{ flexShrink: 0 }}><Icon name={r.icon} size={14} /></span>
                   <span style={{ color: 'var(--text-primary)', lineHeight: 1.6 }}>{r.text}</span>
                 </div>
               ))}

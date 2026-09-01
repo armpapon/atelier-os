@@ -12,6 +12,7 @@ import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/ses
 import {
   parseSheetId, pickClientTabs, parseTimeline, summarizeTimeline,
 } from '../lib/sheetTimeline.js';
+import { Icon } from './Icon.jsx';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 // Only what the parser needs — keeps a 300-row tab's payload small.
@@ -179,9 +180,9 @@ export function SheetTimeline({ date }) {
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
             <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
-              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
             <button onClick={() => { setEditing(true); setUrlInput(integ?.meta?.timeline_sheet_url || ''); }} title="เปลี่ยนชีท"
-              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
+              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}><Icon name="gear" size={15} /></button>
           </span>
         )}
       </div>
@@ -193,7 +194,7 @@ export function SheetTimeline({ date }) {
             เชื่อม Google Sheets เพื่อดูงานทีม AE และรายการรอวางบิล
           </div>
           <button className="btn btn--ghost" onClick={() => startGoogleAuth(ALL_GOOGLE_SCOPES)}>
-            📋 เชื่อม Google Sheets
+            <Icon name="clipboard" size={14} /> เชื่อม Google Sheets
           </button>
         </div>
       ) : !sheetId || editing ? (
@@ -240,14 +241,14 @@ export function SheetTimeline({ date }) {
             <Tile value={sum.monthTotal} label={`งาน ${TH_MONTHS[monthIdx]}`} />
             <Tile value={monthDoing.length} label="กำลังทำ" />
             <Tile value={sum.posted} label="โพสต์แล้ว" />
-            <Tile value={sum.billing.length} label="🚨 รอวางบิล" warn={sum.billing.length > 0} />
+            <Tile value={sum.billing.length} label="รอวางบิล" warn={sum.billing.length > 0} />
           </div>
 
           {/* Billing chase list — every month, oldest posted first */}
           {sum.billing.length > 0 && (
             <>
               <div style={{ ...mono10, fontFamily: 'var(--f-body)', fontWeight: 500, fontSize: 13, marginTop: 2 }}>
-                🚨 รอวางบิล ({sum.billing.length})
+                <Icon name="warning" size={14} /> รอวางบิล ({sum.billing.length})
               </div>
               {billingShown.map((j, i) => jobRow(j, `b${i}`, true))}
               {sum.billing.length > 6 && (

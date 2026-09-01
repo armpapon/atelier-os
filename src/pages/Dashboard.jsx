@@ -17,6 +17,7 @@ import {
   ManifestCard, ThemesCard, GoalsList, RoadmapTimeline, LifePulse,
 } from '../components/dashboard/LifeOSWidgets.jsx';
 import { todayStr } from '../lib/dates.js';
+import { Icon } from '../components/Icon.jsx';
 
 const THAI_DAYS   = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
 const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
@@ -133,7 +134,7 @@ export function Dashboard({ onNav, user }) {
           padding: '12px 16px', background: 'var(--danger-soft)', color: 'var(--danger)',
           border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)', fontSize: 13,
         }}>
-          ⚠️ {error}
+          <Icon name="warning" size={14} /> {error}
           {error.includes('does not exist') && (
             <div style={{ marginTop: 6, fontSize: 11, fontFamily: 'var(--f-mono)', color: 'var(--text-secondary)' }}>
               ต้องรัน <code>supabase/migration_add_lifeos.sql</code> ใน Supabase ก่อน
@@ -209,7 +210,7 @@ function CompassStrip({ manifest, themes, isMobile }) {
           borderRadius: 'var(--r-md)', padding: '9px 14px',
         }}>
           <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)' }}>
-            ✦ North Star
+            <Icon name="spark" size={12} /> North Star
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.4 }}>{northStar}</div>
         </div>
@@ -221,7 +222,7 @@ function CompassStrip({ manifest, themes, isMobile }) {
           borderRadius: 'var(--r-md)', padding: '9px 14px',
         }}>
           <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)' }}>
-            ◷ ธีมสัปดาห์นี้
+            <Icon name="hourglass" size={12} /> ธีมสัปดาห์นี้
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, lineHeight: 1.4 }}>{weekTheme}</div>
         </div>

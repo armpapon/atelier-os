@@ -9,6 +9,7 @@ import { listTrades, deleteTrade, subscribeTrades, computeStats } from '../lib/a
 import { useAuth } from '../lib/useAuth.js';
 import { useMediaQuery, MOBILE_QUERY } from '../lib/useMediaQuery.js';
 import { todayStr } from '../lib/dates.js';
+import { Icon } from '../components/Icon.jsx';
 
 const SESSION_COLOR = {
   // A3 (ปัจจุบัน — บอทเทรด 24/5)
@@ -121,7 +122,7 @@ export function Trading() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
         <div>
           <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)'}}>
-            📈 TRADING JOURNAL · A3 SYSTEM
+            <Icon name="trade" size={14} /> Trading journal · ระบบ A3
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: isMobile ? 24 : 30, color: 'var(--text-primary)', lineHeight: 1.1 }}>
@@ -133,19 +134,19 @@ export function Trading() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="ghost"     onClick={() => setShowDoc(v => !v)}>{showDoc ? '📖 ซ่อน Playbook' : '📖 Playbook'}</Button>
-          <Button variant="ghost"     onClick={refresh}>🔄 Refresh</Button>
+          <Button variant="ghost"     onClick={() => setShowDoc(v => !v)}>{showDoc ? 'ซ่อน Playbook' : 'Playbook'}</Button>
+          <Button variant="ghost"     onClick={refresh}><Icon name="refresh" size={14} /> Refresh</Button>
           <Button variant="primary"   onClick={() => setFormOpen(true)}>+ Log Trade</Button>
         </div>
       </div>
 
       {error && (
         <div style={{ padding: '12px 16px', background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)', fontSize: 13 }}>
-          ⚠️ {error}
+          <Icon name="warning" size={14} /> {error}
         </div>
       )}
 
-      {/* A3 Playbook ฉบับเต็ม — เปิดอ่านได้จากปุ่ม 📖 */}
+      {/* A3 Playbook ฉบับเต็ม — เปิดอ่านได้จากปุ่ม Playbook */}
       {showDoc && <PlaybookA3Doc />}
 
       {/* A3 mission — 30 ไม้แรกของระบบใหม่ */}
@@ -202,7 +203,7 @@ export function Trading() {
             meta={`${equityPoints.length} trade · max DD $${Math.abs(stats.maxDrawdown).toFixed(2)}`} />
           {equityPoints.length >= 2
             ? <EquityChart data={equityPoints} />
-            : <EmptyState icon="📈" title="ยังไม่มี trade เพียงพอ" description="ต้องการอย่างน้อย 2 trades เพื่อแสดง equity curve" compact />}
+            : <EmptyState icon={<Icon name="trade" size={20} />} title="ยังไม่มี trade เพียงพอ" description="ต้องการอย่างน้อย 2 trades เพื่อแสดง equity curve" compact />}
         </Card>
 
         <Card>
@@ -223,7 +224,7 @@ export function Trading() {
           meta="คลิกแถวเพื่อดู Setup Detail + Lesson" />
 
         {filtered.length === 0 ? (
-          <EmptyState icon="📈"
+          <EmptyState icon={<Icon name="trade" size={20} />}
             title={scopedTrades.length === 0 ? 'ยังไม่มี trade' : 'ไม่เจอ trade ที่ตรง filter'}
             description={scopedTrades.length === 0
               ? 'เริ่มบันทึก trade แรกของคุณ'
@@ -427,7 +428,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <Button variant="ghost" size="sm" onClick={onEdit}>✎ แก้ไข</Button>
+            <Button variant="ghost" size="sm" onClick={onEdit}><Icon name="edit" size={14} /> แก้ไข</Button>
             <button onClick={onClose} aria-label="ปิด" style={{ background: 'none', border: 0, color: 'var(--text-muted)', fontSize: 22, cursor: 'pointer', padding: 4 }}>×</button>
           </div>
         </div>
@@ -485,7 +486,7 @@ function TradeDetailDrawer({ trade, onClose, onEdit }) {
 
           {trade.lesson_learned && (
             <Card variant="paper" padding={16}>
-              <CardHeader eyebrow="🌟 Lesson Learned" title="สิ่งที่เรียนรู้" accent="var(--accent-strong)" />
+              <CardHeader eyebrow="Lesson Learned" title="สิ่งที่เรียนรู้" accent="var(--accent-strong)" />
               <div style={{ fontSize: 13.5, color: 'var(--paper-ink)', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
                 {trade.lesson_learned}
               </div>

@@ -3,6 +3,7 @@ import {
   totalInterestBurn, payoffPriority, rolloverOpportunities,
   creditCardDeadline, dataGaps,
 } from '../../lib/debtAdvice.js';
+import { Icon } from '../Icon.jsx';
 
 // ── Reason-tag → Thai copy. The lib emits fact-derived tags; the words live
 //    here so the component owns all the language. ─────────────────────────────
@@ -134,7 +135,7 @@ export function DebtAdvice({ debts }) {
 
       {/* Rollover wins — one per near-done debt */}
       {rollovers.map((o) => (
-        <Callout key={o.debt.id} tone="win" icon="💡" data-rollover>
+        <Callout key={o.debt.id} tone="win" icon={<Icon name="bulb" size={15} />} data-rollover>
           <b>โอกาสใกล้ตัว:</b> {o.debt.name} เหลืออีก ~{o.monthsLeft} งวด
           จะปลดล็อกเงิน <b>{baht(o.freesPerMonth)}/เดือน</b> — เอาไปทบโปะก้อนดอกสูง
         </Callout>
@@ -142,7 +143,7 @@ export function DebtAdvice({ debts }) {
 
       {/* Credit-card minimum-payment scenario (dated — see MIN_PAYMENT_RISE) */}
       {deadline && (
-        <Callout tone="warn" icon="⏰" data-deadline>
+        <Callout tone="warn" icon={<Icon name="clock" size={15} />} data-deadline>
           <b>ขั้นต่ำบัตร (มาตรการชั่วคราว):</b> เกณฑ์ขั้นต่ำ {deadline.fromPct}% มีผลถึง 31 ธ.ค. 2569 —
           หากปี 2570 กลับสู่เกณฑ์ปกติ {deadline.toPct}% ยอดขั้นต่ำจะขยับจาก ~{baht(deadline.currentMinTotal)}
           {' '}เป็น <b>~{baht(deadline.futureMinTotal)}/เดือน</b> วางแผนโปะให้จบก่อนถึงตอนนั้น

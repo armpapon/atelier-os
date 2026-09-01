@@ -151,7 +151,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
             <div style={s.eyebrow}>{isEdit ? 'EDIT TRADE' : 'NEW TRADE · A3'}</div>
             <div style={s.title}>{isEdit ? 'แก้ไข Trade' : 'บันทึก Trade ใหม่'}</div>
           </div>
-          <button type="button" onClick={onClose} style={s.close}>✕</button>
+          <button type="button" onClick={onClose} style={s.close}><Icon name="x" size={15} /></button>
         </div>
 
         <div style={s.body}>
@@ -217,7 +217,7 @@ export function TradeForm({ open, onClose, onSaved, initialTrade }) {
                 {rManual && (
                   <button type="button" onClick={() => setRManual(false)}
                     title="กลับไปคิดอัตโนมัติ"
-                    style={{ ...s.btnGhost, padding: '9px 10px', fontSize: 12, flexShrink: 0 }}>↻</button>
+                    style={{ ...s.btnGhost, padding: '9px 10px', fontSize: 12, flexShrink: 0 }}><Icon name="refresh" size={15} /></button>
                 )}
               </div>
             </Field>

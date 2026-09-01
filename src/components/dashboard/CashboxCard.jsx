@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
+import { Icon } from '../Icon.jsx';
 
 /**
  * CashboxCard — รายงานเงินไหลผ่าน Cashbox เดือนนั้น
@@ -32,9 +33,9 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
   if (!hasData) {
     return (
       <Card>
-        <CardHeader eyebrow="💰 CASHBOX · กล่องกลาง" title="เงินไหลผ่าน Cashbox" />
+        <CardHeader eyebrow="Cashbox · กล่องกลาง" title="เงินไหลผ่าน Cashbox" />
         <EmptyState
-          icon="💰"
+          icon={<Icon name="money" size={20} />}
           title="ยังไม่มีกระเป๋า Cashbox"
           description="Import CSV จาก Make → ระบบจะสร้างบัญชี Cashbox ให้อัตโนมัติ"
           compact
@@ -51,7 +52,7 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`💰 CASHBOX · กล่องกลาง · ${monthLabel(yearMonth)}`}
+        eyebrow={`Cashbox · กล่องกลาง · ${monthLabel(yearMonth)}`}
         title="เงินไหลผ่าน Cashbox"
         meta="เงินเดือน → กระจายไปกองทุน · ที่เหลือใช้รายวัน"
         action={cashboxAcc && <Badge tone="accent" size="lg">฿{balance.toLocaleString('th', { maximumFractionDigits: 0 })}</Badge>}
@@ -114,7 +115,7 @@ export function CashboxCard({ txns, accounts, yearMonth }) {
             border: '1px solid var(--warning)', borderRadius: 'var(--radius-control)',
             fontSize: 12,
           }}>
-            ⚠️ มี <strong>{fmt(remaining)}</strong> ใน Cashbox ที่ยังไม่ได้แบ่งงบ — พิจารณาโอนเข้ากองทุนครอบครัวหรือ savings
+            <Icon name="warning" size={14} /> มี <strong>{fmt(remaining)}</strong> ใน Cashbox ที่ยังไม่ได้แบ่งงบ — พิจารณาโอนเข้ากองทุนครอบครัวหรือ savings
           </div>
         )}
       </div>

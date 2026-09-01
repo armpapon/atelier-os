@@ -7,6 +7,7 @@ import {
   updateAccount, createTransaction,
   monthlyizeRecurring, monthlyRecurringTotal,
 } from '../../lib/api/finance.js';
+import { Icon } from '../Icon.jsx';
 
 const fmt = (n) => {
   const a = Math.abs(n || 0);
@@ -83,14 +84,14 @@ export function RecurringTracker({ recurring, transactions, historyTxns, yearMon
   return (
     <Card>
       <CardHeader
-        eyebrow={`📅 RECURRING · ${recurring.length} รายการ · ภาระต่อเดือน ${fmt(total)}`}
+        eyebrow={`บิลประจำ · ${recurring.length} รายการ · ภาระต่อเดือน ${fmt(total)}`}
         title="บิล / ค่าใช้จ่ายประจำ"
         meta={`${paidCount} จ่ายแล้ว · ${overdueCount} เกินกำหนด`}
         action={
           <div style={{ display: 'flex', gap: 6 }}>
             {suggestions.length > 0 && (
               <Button variant="ghost" size="sm" onClick={() => setShowSuggest(s => !s)}>
-                {showSuggest ? '× Suggest' : `🔍 พบ ${suggestions.length}`}
+                {showSuggest ? '× Suggest' : `พบ ${suggestions.length}`}
               </Button>
             )}
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>+ เพิ่ม</Button>
@@ -115,12 +116,12 @@ export function RecurringTracker({ recurring, transactions, historyTxns, yearMon
 
       {recurring.length === 0 && !adding ? (
         <EmptyState
-          icon="📅"
+          icon={<Icon name="calendar" size={20} />}
           title="ยังไม่มีบิลประจำ"
           description={suggestions.length
-            ? `ระบบเจอ ${suggestions.length} รายการที่น่าจะเป็นบิลประจำ — คลิก 🔍 เพื่อดู`
+            ? `ระบบเจอ ${suggestions.length} รายการที่น่าจะเป็นบิลประจำ — คลิก เพื่อดู`
             : 'เพิ่มบิลประจำ (Netflix, AIS, ค่าไฟ ฯลฯ) เพื่อ track ว่าจ่ายหรือยัง'}
-          actionLabel={suggestions.length ? `🔍 ดู ${suggestions.length} suggestions` : '+ เพิ่มบิลแรก'}
+          actionLabel={suggestions.length ? `ดู ${suggestions.length} suggestions` : '+ เพิ่มบิลแรก'}
           onAction={() => suggestions.length ? setShowSuggest(true) : setAdding(true)}
           compact
         />
@@ -183,7 +184,7 @@ function SuggestionsList({ suggestions, scope, onAdd }) {
       borderRadius: 'var(--radius-control)', padding: 12, marginBottom: 10,
     }}>
       <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)', marginBottom: 8 }}>
-        🔍 ตรวจพบ — รายการที่เกิดซ้ำใน ≥ 2 เดือน
+        <Icon name="search" size={14} /> ตรวจพบ — รายการที่เกิดซ้ำใน ≥ 2 เดือน
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {suggestions.map((s, i) => (
@@ -282,9 +283,9 @@ export function CashFlowForecastCard({ forecast }) {
   if (!forecast || forecast.monthlyIncome === 0) {
     return (
       <Card>
-        <CardHeader eyebrow="🔮 FORECAST · 3 เดือน" title="คาดการณ์เงินสด" />
+        <CardHeader eyebrow="คาดการณ์ · 3 เดือน" title="คาดการณ์เงินสด" />
         <EmptyState
-          icon="🔮"
+          icon={<Icon name="chart" size={20} />}
           title="ต้องการข้อมูลเพิ่ม"
           description="ระบบจะคำนวณ forecast เมื่อมีรายรับ + recurring expenses + debts ในระบบ"
           compact
@@ -300,7 +301,7 @@ export function CashFlowForecastCard({ forecast }) {
   return (
     <Card>
       <CardHeader
-        eyebrow="🔮 CASH FLOW · 3 เดือนข้างหน้า"
+        eyebrow="กระแสเงินสด · 3 เดือนข้างหน้า"
         title="คาดการณ์เงินสด"
         meta={`รายเดือน: ${fmt(monthlyIncome)} − ${fmt(fixedExpense + debtPaymentNow + avgVariableExpense)} = ${monthlyNetNow >= 0 ? '+' : '-'}${fmt(Math.abs(monthlyNetNow))}`}
       />
@@ -368,11 +369,11 @@ export function CashFlowForecastCard({ forecast }) {
         borderRadius: 'var(--radius-control)', fontSize: 12.5,
       }}>
         {finalCum >= 0 ? (
-          <>✅ <strong>มีเงินเหลือสะสม {fmt(finalCum)}</strong> ใน 3 เดือนหน้า (จากการคำนวณ baseline)</>
+          <><Icon name="check" size={13} /> <strong>มีเงินเหลือสะสม {fmt(finalCum)}</strong> ใน 3 เดือนหน้า (จากการคำนวณ baseline)</>
         ) : (
-          <>⚠️ <strong>เงินจะติดลบ {fmt(Math.abs(finalCum))}</strong> ใน 3 เดือนหน้า — พิจารณาลดค่าใช้จ่ายหรือเพิ่มรายได้</>
+          <><Icon name="warning" size={13} /> <strong>เงินจะติดลบ {fmt(Math.abs(finalCum))}</strong> ใน 3 เดือนหน้า — พิจารณาลดค่าใช้จ่ายหรือเพิ่มรายได้</>
         )}
-        {willOverflow && finalCum >= 0 && ' · ⚠️ บางเดือนเงินอาจไม่พอ ดูตารางด้านบน'}
+        {willOverflow && finalCum >= 0 && ' · บางเดือนเงินอาจไม่พอ ดูตารางด้านบน'}
       </div>
     </Card>
   );
@@ -401,11 +402,11 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
   return (
     <Card>
       <CardHeader
-        eyebrow="🛡 EMERGENCY FUND · กองทุนฉุกเฉิน"
+        eyebrow="กองทุนฉุกเฉิน"
         title="เพียงพอกี่เดือน?"
         action={
           <Button variant="ghost" size="sm" onClick={() => setPicking(p => !p)}>
-            {picking ? '× เสร็จ' : '⚙ ตั้งบัญชี'}
+            {picking ? '× เสร็จ' : 'ตั้งบัญชี'}
           </Button>
         }
       />
@@ -449,7 +450,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
           fontWeight: 500, fontSize: 13,
           color: 'var(--warning)', marginBottom: 10
         }}>
-          ⚠️ ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
+          <Icon name="warning" size={13} /> ยังไม่ยืนยัน — ยังไม่รวมรายการหลังวันตั้งต้น
         </div>
       )}
 
@@ -484,7 +485,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <Badge tone={coverage.status === 'safe' ? 'success' : coverage.status === 'warning' ? 'warning' : 'danger'} size="sm">
-              {coverage.status === 'safe' ? '✅ ปลอดภัย' : coverage.status === 'warning' ? '⚠️ พอใช้' : '🚨 ต้องเก็บเพิ่ม'}
+              {coverage.status === 'safe' ? 'ปลอดภัย' : coverage.status === 'warning' ? 'พอใช้' : 'ต้องเก็บเพิ่ม'}
             </Badge>
             {coverage.accountsCount > 0 && (
               <Badge tone="neutral" size="sm">{coverage.accountsCount} บัญชี</Badge>
@@ -499,7 +500,7 @@ export function EmergencyFundCard({ coverage, accounts, unconfirmed = false, onA
           padding: '8px 12px', background: ringBg, border: '1px solid ' + ringColor,
           borderRadius: 'var(--radius-control)', fontSize: 12, color: 'var(--text-primary)',
         }}>
-          🎯 ขาดอีก <strong>{fmt(coverage.targetGap6)}</strong> เพื่อครอบคลุม 6 เดือน
+          <Icon name="target" size={13} /> ขาดอีก <strong>{fmt(coverage.targetGap6)}</strong> เพื่อครอบคลุม 6 เดือน
           {coverage.target6 > 0 && (
             <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontFamily: 'var(--f-mono)', fontSize: 11 }}>
               (target: {fmt(coverage.target6)})

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button, Card, CardHeader, Badge, EmptyState } from '../ui/index.js';
 import { canSeePage } from '../Sidebar.jsx';
+import { Icon } from '../Icon.jsx';
 
 const CATEGORY_META = {
   finance:  { color: 'var(--success)',  icon: '💰', label: 'การเงิน'  },
@@ -40,7 +41,7 @@ export function ManifestCard({ manifest, onSave }) {
         title="หลักการตัดสินใจของชีวิตคุณ"
         accent="var(--accent-strong)"
         action={!editing && !isEmpty ? (
-          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>✎ แก้ไข</Button>
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> แก้ไข</Button>
         ) : null}
       />
 
@@ -58,7 +59,7 @@ export function ManifestCard({ manifest, onSave }) {
             style={{ color: 'var(--text-secondary)', fontFamily: 'var(--f-mono)', fontSize: 12 }} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <Button variant="ghost" size="sm" onClick={cancel}>ยกเลิก</Button>
-            <Button variant="primary" size="sm" onClick={save}>💾 บันทึก</Button>
+            <Button variant="primary" size="sm" onClick={save}><Icon name="save" size={14} /> บันทึก</Button>
           </div>
         </div>
       ) : isEmpty ? (
@@ -130,9 +131,9 @@ export function ThemesCard({ themes, onSave }) {
   return (
     <Card>
       <CardHeader
-        eyebrow="☉ Compass · Themes"
+        eyebrow="Compass · Themes"
         title="ทิศทางของช่วงเวลานี้"
-        action={!editing && <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>✎ แก้ไข</Button>}
+        action={!editing && <Button variant="ghost" size="sm" onClick={() => setEditing(true)}><Icon name="edit" size={14} /> แก้ไข</Button>}
       />
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -173,7 +174,7 @@ export function ThemesCard({ themes, onSave }) {
       {editing && (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
           <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>ยกเลิก</Button>
-          <Button variant="primary" size="sm" onClick={save}>💾 บันทึก</Button>
+          <Button variant="primary" size="sm" onClick={save}><Icon name="save" size={14} /> บันทึก</Button>
         </div>
       )}
     </Card>
@@ -189,7 +190,7 @@ export function GoalsList({ goals, onAdd, onUpdate, onDelete }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`◎ Active Goals · ${goals.length}`}
+        eyebrow={`Active Goals · ${goals.length}`}
         title="เป้าหมายที่กำลังทำ"
         action={!adding && <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>+ เพิ่มเป้าหมาย</Button>}
       />
@@ -198,7 +199,7 @@ export function GoalsList({ goals, onAdd, onUpdate, onDelete }) {
 
       {goals.length === 0 && !adding ? (
         <EmptyState
-          icon="◎"
+          icon={<Icon name="target" size={20} />}
           title="ยังไม่มีเป้าหมายที่กำลังทำ"
           description="เพิ่มเป้าหมาย 1–3 ข้อที่สำคัญที่สุดในช่วงนี้ แล้วเชื่อมกับ focus รายวัน"
           actionLabel="เพิ่มเป้าหมายแรก"
@@ -237,7 +238,7 @@ function GoalRow({ goal, onUpdate, onDelete }) {
             </div>
             {goal.deadline && (
               <div style={{ fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
-                ⌛ {new Date(goal.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                <Icon name="hourglass" size={12} /> {new Date(goal.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
               </div>
             )}
           </div>
@@ -349,14 +350,14 @@ export function TodayFocus({ items, onAdd, onToggle, onDelete }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`☼ Today's Focus · ${items.length}/3`}
+        eyebrow={`Today's Focus · ${items.length}/3`}
         title="วันนี้ — 3 สิ่งที่สำคัญที่สุด"
       />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {items.length === 0 && !canAdd && (
           <EmptyState
-            icon="☼"
+            icon={<Icon name="target" size={20} />}
             title="วันนี้ยังว่างอยู่"
             description="บันทึก 1–3 สิ่งที่สำคัญที่สุดวันนี้ เริ่มจากงาน ความรู้สึก หรือสิ่งที่อยากจำ"
             compact
@@ -441,7 +442,7 @@ export function RoadmapTimeline({ milestones, monthsAhead = 6, onAdd, onUpdate, 
   return (
     <Card>
       <CardHeader
-        eyebrow={`➔ Roadmap · ${monthsAhead} เดือนข้างหน้า`}
+        eyebrow={`Roadmap · ${monthsAhead} เดือนข้างหน้า`}
         title="Milestones สำคัญ"
         action={!adding && <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>+ เพิ่ม milestone</Button>}
       />
@@ -450,7 +451,7 @@ export function RoadmapTimeline({ milestones, monthsAhead = 6, onAdd, onUpdate, 
 
       {milestones.length === 0 && !adding ? (
         <EmptyState
-          icon="➔"
+          icon={<Icon name="route" size={20} />}
           title="ยังไม่มี milestone"
           description="วาง milestone สำคัญใน 6 เดือนข้างหน้า เพื่อมองเห็นภาพรวมระยะกลาง"
           actionLabel="เพิ่ม milestone แรก"
@@ -623,7 +624,7 @@ export function LifePulse({ finance, modules, onNav, user }) {
     <div>
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
-          ⚡ Life Pulse
+          <Icon name="bolt" size={13} /> Life Pulse
         </div>
         <div style={{ fontFamily: 'var(--f-display)', fontSize: 17, color: 'var(--text-primary)', marginTop: 4, fontWeight: 500 }}>
           ภาพรวมทุกโมดูล

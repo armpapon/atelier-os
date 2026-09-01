@@ -12,6 +12,7 @@ import {
   getIntegration, connectAsana, updateIntegrationMeta, disconnect, callProvider,
 } from '../lib/integrations.js';
 import { getCache, setCache, cacheAge, clearCache, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
+import { Icon } from './Icon.jsx';
 
 const ASANA_API = 'https://app.asana.com/api/1.0';
 
@@ -114,9 +115,9 @@ function newRoleId() { return 'r' + Math.random().toString(36).slice(2, 7); }
 function cleanTarget(t) { const n = parseFloat(t); return isNaN(n) ? FALLBACK_TARGET : Math.max(0, n); }
 
 const STATUSES = [
-  { key: 'done', icon: '✅', label: 'Finished' },
-  { key: 'proc', icon: '😄', label: 'On Process' },
-  { key: 'wait', icon: '❌', label: 'Waiting' },
+  { key: 'done', icon: 'check', label: 'Finished' },
+  { key: 'proc', icon: 'play', label: 'On Process' },
+  { key: 'wait', icon: 'clock', label: 'Waiting' },
 ];
 
 export function AsanaHours({ date }) {
@@ -324,9 +325,9 @@ export function AsanaHours({ date }) {
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
             <button onClick={load} disabled={busy} title="รีเฟรชเดี๋ยวนี้"
-              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 14, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
             <button onClick={openPicker} title="เปลี่ยนทีม / workspace"
-              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}>⚙</button>
+              style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 13, padding: 2 }}><Icon name="gear" size={15} /></button>
           </span>
         )}
       </div>
@@ -345,7 +346,7 @@ export function AsanaHours({ date }) {
             onKeyDown={e => e.key === 'Enter' && connect()}
             style={{ ...inputStyle, fontFamily: 'var(--f-mono)' }} />
           <button className="btn btn--ghost" onClick={connect} disabled={busy || !pat.trim()}>
-            {busy ? 'กำลังเช็ค token...' : '🔗 เชื่อม Asana'}
+            {busy ? 'กำลังเช็ค token...' : 'เชื่อม Asana'}
           </button>
         </div>
       ) : picking || !ready ? (
@@ -373,7 +374,7 @@ export function AsanaHours({ date }) {
                     <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>ชม.</span>
                     {roleDraft.length > 1 && (
                       <button onClick={() => removeRole(r.id)} title="ลบบทบาท"
-                        style={{ ...linkBtn, fontSize: 13, color: 'var(--ink-4)' }}>✕</button>
+                        style={{ ...linkBtn, fontSize: 13, color: 'var(--ink-4)' }}><Icon name="x" size={15} /></button>
                     )}
                   </div>
                 ))}
@@ -445,9 +446,9 @@ export function AsanaHours({ date }) {
               {/* Overview strip */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                 <OverviewTile value={`${sum.full}/${people.length}`} label="คนครบเป้า" />
-                <OverviewTile value={fmtHr(sum.done)} label="✅ Finished" />
-                <OverviewTile value={fmtHr(sum.proc)} label="😄 On Process" />
-                <OverviewTile value={fmtHr(sum.wait)} label="❌ Waiting" />
+                <OverviewTile value={fmtHr(sum.done)} label="Finished" />
+                <OverviewTile value={fmtHr(sum.proc)} label="On Process" />
+                <OverviewTile value={fmtHr(sum.wait)} label="Waiting" />
               </div>
 
               {/* Per person */}
@@ -473,13 +474,13 @@ export function AsanaHours({ date }) {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {STATUSES.map(s => (
                           <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: p[s.key] ? 'var(--ink-2)' : 'var(--ink-4)' }}>
-                            <span>{s.icon} {s.label}</span>
+                            <span><Icon name={s.icon} size={13} /> {s.label}</span>
                             <span style={{ fontFamily: 'var(--f-mono)' }}>{fmtHr(p[s.key])}</span>
                           </div>
                         ))}
                         {p.untagged > 0 && (
                           <div style={{ fontSize: 10, color: 'var(--amber-deep)' }}>
-                            ⚠ งานไม่ระบุ ชม. อีก {p.untagged} ใบ — ตัวเลขยังไม่ครบจริง
+                            <Icon name="warning" size={13} /> งานไม่ระบุ ชม. อีก {p.untagged} ใบ — ตัวเลขยังไม่ครบจริง
                           </div>
                         )}
                       </div>
@@ -494,7 +495,7 @@ export function AsanaHours({ date }) {
                               textDecoration: t.status === 'done' ? 'line-through' : 'none',
                             }}>{t.name}</span>
                             <span style={{ ...mono10, flexShrink: 0 }}>
-                              {t.hrs != null ? `${fmtHr(t.hrs)} Hr` : '—'} {STATUSES.find(s => s.key === t.status)?.icon}
+                              {t.hrs != null ? `${fmtHr(t.hrs)} Hr` : '—'}{' '}<Icon name={STATUSES.find(s => s.key === t.status)?.icon} size={13} />
                             </span>
                           </div>
                         ))}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardHeader, Button, Badge } from '../ui/index.js';
 import { createScopeTransfer, listAccounts } from '../../lib/api/finance.js';
 import { todayStr } from '../../lib/dates.js';
+import { Icon } from '../Icon.jsx';
 
 const SCOPE_META = {
   personal: { label: 'ส่วนตัว',  icon: '👤', color: 'var(--accent-strong)' },
@@ -79,7 +80,7 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
             <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)'}}>
-              💸 SCOPE TRANSFER
+              <Icon name="transfer" size={14} /> โอนข้าม scope
             </div>
             <div style={{ fontFamily: 'var(--f-display)', fontSize: 22, color: 'var(--text-primary)', marginTop: 4, fontWeight: 600, letterSpacing: '-0.01em' }}>
               โอนเงินระหว่าง scope
@@ -195,21 +196,21 @@ export function ScopeTransferModal({ defaultFromScope = 'personal', onSaved, onC
             <div style={{ fontWeight: 500, fontSize: 13, color: 'var(--accent-strong)', marginBottom: 4 }}>
               จะสร้าง 2 รายการ:
             </div>
-            <div>👤 <strong>{fromMeta.label}</strong> · -{fmt(amt)} · "{title.trim() || `โอนไป${toMeta.label}`}"</div>
-            <div>❤️ <strong>{toMeta.label}</strong> · +{fmt(amt)} · "{title.trim() || `รับจาก${fromMeta.label}`}"</div>
+            <div><Icon name="user" size={13} /> <strong>{fromMeta.label}</strong> · -{fmt(amt)} · "{title.trim() || `โอนไป${toMeta.label}`}"</div>
+            <div><Icon name="health" size={13} /> <strong>{toMeta.label}</strong> · +{fmt(amt)} · "{title.trim() || `รับจาก${fromMeta.label}`}"</div>
           </div>
         )}
 
         {error && (
           <div style={{ padding: '10px 14px', background: 'var(--danger-soft)', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-control)', fontSize: 13 }}>
-            ⚠️ {error}
+            <Icon name="warning" size={13} /> {error}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <Button type="button" variant="ghost" onClick={onClose}>ยกเลิก</Button>
           <Button type="submit" variant="primary" disabled={saving || !amount}>
-            {saving ? 'กำลังบันทึก...' : '💾 โอน 2 ฝั่ง'}
+            {saving ? 'กำลังบันทึก...' : 'โอน 2 ฝั่ง'}
           </Button>
         </div>
       </form>

@@ -10,6 +10,7 @@ import { PageHeader } from '../components/PageHeader.jsx';
 import { getIntegration, callProvider } from '../lib/integrations.js';
 import { getCache, setCache, cacheAge, STALE_MS, fmtSyncClock } from '../lib/sessionCache.js';
 import { parseRoster, parsePettyCash, tabYear } from '../lib/pettyCash.js';
+import { Icon } from '../components/Icon.jsx';
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 const FIELDS = 'sheets(properties(title),data(rowData(values(formattedValue,effectiveValue))))';
@@ -98,7 +99,7 @@ export function Team() {
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       {lastSync && <span style={{ fontFamily: 'var(--f-mono)', fontSize: 9, color: 'var(--ink-4)' }}>ซิงก์ {fmtSyncClock(lastSync)}</span>}
       <button onClick={() => load(sheetId)} disabled={busy} title="รีเฟรช"
-        style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}>↻</button>
+        style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontSize: 15, padding: 2, opacity: busy ? 0.4 : 1 }}><Icon name="refresh" size={15} /></button>
     </div>
   );
 
@@ -121,12 +122,12 @@ export function Team() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               <Tile v={data.roster.length} l="รายชื่อทั้งหมด" />
               <Tile v={data.roster.filter(e => e.inMaster).length} l="อยู่ในทะเบียนหลัก" />
-              <Tile v={unregistered} l="⚠ ยังไม่ลงทะเบียน" warn={unregistered > 0} />
+              <Tile v={unregistered} l="ยังไม่ลงทะเบียน" warn={unregistered > 0} />
             </div>
 
             {unregistered > 0 && (
               <div style={{ ...mono10, background: 'var(--warning-soft)', border: '1px solid var(--warning)', borderRadius: 'var(--r-sm)', padding: '8px 11px', color: 'var(--accent-strong)' }}>
-                ⚠ มี {unregistered} รหัสที่เบิกเงินปี {data.year} แต่ยังไม่อยู่ใน Dropdown List — ควรเพิ่มในชีทให้ครบ
+                <Icon name="warning" size={13} /> มี {unregistered} รหัสที่เบิกเงินปี {data.year} แต่ยังไม่อยู่ใน Dropdown List — ควรเพิ่มในชีทให้ครบ
               </div>
             )}
 

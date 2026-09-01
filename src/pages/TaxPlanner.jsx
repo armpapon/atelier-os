@@ -20,6 +20,7 @@ import {
 import {
   listProfiles, createProfile, updateProfile, deleteProfile, copyYear,
 } from '../lib/api/tax.js';
+import { Icon } from '../components/Icon.jsx';
 
 const mono = { fontFamily: 'var(--f-mono)', fontVariantNumeric: 'tabular-nums' };
 const label10 = {
@@ -921,7 +922,7 @@ function SanityCard({ warnings }) {
     }}>
       {warnings.map(w => (
         <div key={w.key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <span aria-hidden style={{ color: 'var(--accent-strong)', fontSize: 12, lineHeight: 1.7 }}>⚠</span>
+          <span aria-hidden style={{ color: 'var(--accent-strong)', fontSize: 12, lineHeight: 1.7 }}><Icon name="warning" size={12} /></span>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12.5, color: 'var(--accent-strong)', lineHeight: 1.6, fontWeight: 600 }}>
               {w.text}
@@ -1003,12 +1004,12 @@ function DeductionsCard({ profile, result, onChange, onPeriod, onSso, onCustomCh
           )))}
           {section.keys.includes('ssf') && result.retirement.trimmed > 0 && (
             <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
-              ⚠ รวมกันเกินเพดาน {baht(RETIREMENT_COMBINED_CAP)} — ส่วนเกิน {baht(result.retirement.trimmed)} หักไม่ได้
+              <Icon name="warning" size={12} /> รวมกันเกินเพดาน {baht(RETIREMENT_COMBINED_CAP)} — ส่วนเกิน {baht(result.retirement.trimmed)} หักไม่ได้
             </div>
           )}
           {section.keys.includes('healthInsurance') && result.lifeHealth.trimmed > 0 && (
             <div style={{ ...mono, fontSize: 11, color: 'var(--accent-strong)', marginTop: 4 }}>
-              ⚠ ประกันชีวิต + สุขภาพ รวมกันเกิน {baht(100000)} — ส่วนเกิน {baht(result.lifeHealth.trimmed)} หักไม่ได้
+              <Icon name="warning" size={12} /> ประกันชีวิต + สุขภาพ รวมกันเกิน {baht(100000)} — ส่วนเกิน {baht(result.lifeHealth.trimmed)} หักไม่ได้
             </div>
           )}
         </div>

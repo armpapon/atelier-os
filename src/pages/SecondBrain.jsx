@@ -76,7 +76,7 @@ function NoteListItem({ note, active, onClick }) {
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-muted)'; }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'var(--surface)'; }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {note.pinned && <span style={{ color: 'var(--accent-strong)', fontSize: 11 }}>📌</span>}
+        {note.pinned && <span style={{ color: 'var(--accent-strong)', }}><Icon name="pin" size={11} /></span>}
         <span style={{
           fontFamily: 'var(--f-display)', fontSize: 14.5, fontWeight: 500, color: 'var(--ink)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
@@ -323,7 +323,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
             title={note.pinned ? 'เลิกปักหมุด' : 'ปักหมุด'}
             style={{ padding: '6px 8px', borderRadius: 'var(--r-sm)', fontSize: 14,
               color: note.pinned ? 'var(--accent-strong)' : 'var(--ink-4)', cursor: 'pointer' }}>
-            📌
+            <Icon name="pin" size={14} />
           </button>
           <button onClick={() => onDelete(note.id)} title="ลบโน้ต"
             style={{ padding: '6px 8px', borderRadius: 'var(--r-sm)', fontSize: 16, color: 'var(--ink-4)', cursor: 'pointer' }}
@@ -400,7 +400,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
                   background: i === activeIdx ? 'var(--accent-soft)' : 'transparent',
                   color: i === activeIdx ? 'var(--accent-strong)' : 'var(--ink)', fontSize: 13.5,
                 }}>
-                <span style={{ fontSize: 11 }}>🔗</span>
+                <span><Icon name="link" size={11} /></span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t}</span>
               </button>
             ))}
@@ -415,7 +415,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
                   color: 'var(--accent-strong)', fontSize: 13.5,
                   borderTop: suggestions.length ? '1px solid var(--line)' : 'none',
                 }}>
-                <span style={{ fontSize: 13 }}>➕</span>
+                <span><Icon name="plus" size={13} /></span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   สร้างลิงก์ "{linkQuery}"
                 </span>
@@ -429,7 +429,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
           <button onMouseDown={e => { e.preventDefault(); toggleMarker('- '); }} title="รายการ (bullet)" style={TOOL_BTN}>• รายการ</button>
-          <button onMouseDown={e => { e.preventDefault(); toggleMarker('[ ] '); }} title="เช็กลิสต์" style={TOOL_BTN}>☐ เช็กลิสต์</button>
+          <button onMouseDown={e => { e.preventDefault(); toggleMarker('[ ] '); }} title="เช็กลิสต์" style={TOOL_BTN}><Icon name="checkbox" size={13} /> เช็กลิสต์</button>
           <button onMouseDown={e => { e.preventDefault(); toggleMarker('1. '); }} title="ลำดับเลข" style={TOOL_BTN}>1. ลำดับ</button>
           <span style={{ width: 1, height: 16, background: 'var(--line)', margin: '0 2px' }} />
           <button onClick={insertLinkTemplate} style={{ ...TOOL_BTN, color: 'var(--accent-strong)' }}>[[ ]] แทรกลิงก์</button>
@@ -457,7 +457,7 @@ function NoteEditor({ note, titleIndex, allTitles, onPatch, onDelete, onOpenTitl
                     color: exists ? 'var(--accent-strong)' : 'var(--ink-3)',
                     fontStyle: exists ? 'normal' : 'italic',
                   }}>
-                  {exists ? '🔗' : '+'} {t}
+                  {exists ? <Icon name="link" size={11} /> : '+'} {t}
                 </button>
               );
             })}
@@ -669,7 +669,7 @@ export function SecondBrain() {
           </div>
         ) : notes.length === 0 && !search && !activeTag ? (
           <EmptyState
-            icon="✦"
+            icon={<Icon name="spark" size={20} />}
             title="เริ่มต้น Second Brain ของคุณ"
             description="จดทุกอย่างที่อยากจำ ความคิด ไอเดีย บทเรียน แล้วเชื่อมโยงกันด้วย [[ลิงก์]] — ค้นเจอได้เสมอ"
             actionLabel="+ สร้างโน้ตแรก"
@@ -718,7 +718,7 @@ export function SecondBrain() {
                   </div>
                 ) : pinnedNotes.length > 0 ? (
                   <>
-                    <div style={SECTION_LABEL}>📌 ปักหมุด</div>
+                    <div style={SECTION_LABEL}><Icon name="pin" size={12} /> ปักหมุด</div>
                     {pinnedNotes.map(n => (
                       <NoteListItem key={n.id} note={n} active={n.id === selectedId} onClick={() => setSelectedId(n.id)} />
                     ))}

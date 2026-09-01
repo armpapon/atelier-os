@@ -7,6 +7,7 @@ import {
   listMilestones, createMilestone, deleteMilestone,
 } from '../../lib/api/family.js';
 import { todayStr } from '../../lib/dates.js';
+import { Icon } from '../Icon.jsx';
 
 /** Whole years between a birth date and today, by the calendar. */
 function calcAge(birthDate) {
@@ -107,10 +108,10 @@ export function MemberDetail({ member, onClose, onChange }) {
           background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexShrink: 0,
         }}>
           {[
-            { id: 'profile',    label: '👤 Profile' },
-            { id: 'health',     label: '🏥 Health' },
-            { id: 'growth',     label: '📏 Growth' },
-            { id: 'milestones', label: '🌟 Milestones' },
+            { id: 'profile',    label: 'Profile' },
+            { id: 'health',     label: 'Health' },
+            { id: 'growth',     label: 'Growth' },
+            { id: 'milestones', label: 'Milestones' },
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} className="focus-ring"
               style={{
@@ -155,7 +156,7 @@ function ProfileTab({ member }) {
       </Card>
 
       <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500, fontSize: 13, color: 'var(--text-muted)', textAlign: 'center'}}>
-        แก้ไขข้อมูล/รูปได้จากปุ่ม ✎ บนการ์ดสมาชิก
+        แก้ไขข้อมูล/รูปได้จากปุ่มแก้ไขบนการ์ดสมาชิก
       </div>
     </>
   );
@@ -221,7 +222,7 @@ function HealthTab({ member, onChange }) {
           title="Health Profile"
           action={!editing && (
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              {isEmpty ? '+ เพิ่ม' : '✎ แก้ไข'}
+              {isEmpty ? '+ เพิ่ม' : 'แก้ไข'}
             </Button>
           )}
         />
@@ -254,12 +255,12 @@ function HealthTab({ member, onChange }) {
             </div>
             <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
               <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>ยกเลิก</Button>
-              <Button variant="primary" size="sm" onClick={saveHealth}>💾 บันทึก</Button>
+              <Button variant="primary" size="sm" onClick={saveHealth}><Icon name="save" size={14} /> บันทึก</Button>
             </div>
           </div>
         ) : isEmpty ? (
           <EmptyState
-            icon="🏥"
+            icon={<Icon name="health" size={20} />}
             title="ยังไม่ได้บันทึกข้อมูลสุขภาพ"
             description="เลือดกรุ๊ป · แพ้ยา · หมอประจำ — มีประโยชน์ตอนพาไปหาหมอ / ฉุกเฉิน"
             actionLabel="เริ่มบันทึก"
@@ -269,19 +270,19 @@ function HealthTab({ member, onChange }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-              {member.blood_type && <InfoChip icon="🩸" label="เลือดกรุ๊ป" value={member.blood_type} />}
-              {member.last_checkup && <InfoChip icon="📅" label="checkup" value={new Date(member.last_checkup).toLocaleDateString('th-TH')} />}
+              {member.blood_type && <InfoChip icon={<Icon name="drop" size={15} />} label="เลือดกรุ๊ป" value={member.blood_type} />}
+              {member.last_checkup && <InfoChip icon={<Icon name="calendar" size={15} />} label="checkup" value={new Date(member.last_checkup).toLocaleDateString('th-TH')} />}
             </div>
-            {member.allergies && <InfoBlock icon="⚠️" label="แพ้ยา/อาหาร" value={member.allergies} tone="danger" />}
-            {member.chronic_conditions && <InfoBlock icon="🫀" label="โรคประจำตัว" value={member.chronic_conditions} />}
-            {member.current_medications && <InfoBlock icon="💊" label="ยาประจำ" value={member.current_medications} />}
+            {member.allergies && <InfoBlock icon={<Icon name="warning" size={15} />} label="แพ้ยา/อาหาร" value={member.allergies} tone="danger" />}
+            {member.chronic_conditions && <InfoBlock icon={<Icon name="health" size={15} />} label="โรคประจำตัว" value={member.chronic_conditions} />}
+            {member.current_medications && <InfoBlock icon={<Icon name="pill" size={15} />} label="ยาประจำ" value={member.current_medications} />}
             {(member.doctor_name || member.doctor_phone) && (
               <InfoBlock
-                icon="👨‍⚕️" label="หมอประจำ"
+                icon={<Icon name="user" size={20} />} label="หมอประจำ"
                 value={[member.doctor_name, member.doctor_clinic, member.doctor_phone].filter(Boolean).join(' · ')}
               />
             )}
-            {member.insurance_info && <InfoBlock icon="🛡" label="ประกัน" value={member.insurance_info} />}
+            {member.insurance_info && <InfoBlock icon={<Icon name="shield" size={15} />} label="ประกัน" value={member.insurance_info} />}
           </div>
         )}
       </Card>
@@ -289,7 +290,7 @@ function HealthTab({ member, onChange }) {
       {/* Vaccinations */}
       <Card>
         <CardHeader
-          eyebrow={`💉 วัคซีน · ${vaccinations.length} เข็ม`}
+          eyebrow={`วัคซีน · ${vaccinations.length} เข็ม`}
           title="Vaccinations"
           action={<Button variant="secondary" size="sm" onClick={() => setAddingVacc(true)}>+ เพิ่ม</Button>}
         />
@@ -306,7 +307,7 @@ function HealthTab({ member, onChange }) {
 
         {vaccinations.length === 0 && !addingVacc ? (
           <EmptyState
-            icon="💉" title="ยังไม่มีบันทึกวัคซีน"
+            icon={<Icon name="syringe" size={20} />} title="ยังไม่มีบันทึกวัคซีน"
             description="บันทึกประวัติวัคซีน เผื่อต้องใช้ตอนเดินทาง / สมัครเรียน"
             actionLabel="เพิ่มวัคซีนแรก"
             onAction={() => setAddingVacc(true)}
@@ -415,7 +416,7 @@ function GrowthTab({ member }) {
     <>
       <Card>
         <CardHeader
-          eyebrow={`📏 พัฒนาการ · ${records.length} บันทึก`}
+          eyebrow={`พัฒนาการ · ${records.length} บันทึก`}
           title="Growth Log"
           meta={latest ? `ล่าสุด ${new Date(latest.recorded_at).toLocaleDateString('th-TH')}` : null}
           action={<Button variant="secondary" size="sm" onClick={() => setAdding(true)}>+ วัดใหม่</Button>}
@@ -427,7 +428,7 @@ function GrowthTab({ member }) {
 
         {records.length === 0 && !adding ? (
           <EmptyState
-            icon="📏" title="ยังไม่มีข้อมูลพัฒนาการ"
+            icon={<Icon name="ruler" size={20} />} title="ยังไม่มีข้อมูลพัฒนาการ"
             description="บันทึกส่วนสูง · น้ำหนัก · รอบหัว ดูแนวโน้มและจุดสำคัญ"
             actionLabel="เริ่มบันทึก" onAction={() => setAdding(true)} compact
           />
@@ -459,9 +460,9 @@ function GrowthTab({ member }) {
                     {new Date(r.recorded_at).toLocaleDateString('th-TH')}
                   </span>
                   <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--f-mono)' }}>
-                    {r.height_cm && `📏 ${r.height_cm}cm`}
-                    {r.weight_kg && `  ⚖ ${r.weight_kg}kg`}
-                    {r.head_cm && `  🧠 ${r.head_cm}cm`}
+                    {r.height_cm && `${r.height_cm}cm`}
+                    {r.weight_kg && `${r.weight_kg}kg`}
+                    {r.head_cm && `${r.head_cm}cm`}
                     {r.notes && <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontFamily: 'var(--f-body)' }}>· {r.notes}</span>}
                   </span>
                   <button onClick={() => { if (confirm('ลบรายการนี้?')) deleteGrowthRecord(r.id).then(refresh); }}
@@ -584,8 +585,8 @@ function GrowthChart({ records }) {
       borderRadius: 'var(--radius-control)', padding: 14, marginBottom: 14,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11, fontFamily: 'var(--f-mono)' }}>
-        <span style={{ color: 'var(--blue)' }}>📏 ส่วนสูง (cm)</span>
-        <span style={{ color: 'var(--accent-strong)' }}>⚖ น้ำหนัก (kg)</span>
+        <span style={{ color: 'var(--blue)' }}><Icon name="ruler" size={13} /> ส่วนสูง (cm)</span>
+        <span style={{ color: 'var(--accent-strong)' }}><Icon name="scale" size={13} /> น้ำหนัก (kg)</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
         {/* Baseline */}
@@ -649,7 +650,7 @@ function MilestonesTab({ member }) {
   return (
     <Card>
       <CardHeader
-        eyebrow={`🌟 ความทรงจำ · ${items.length}`}
+        eyebrow={`ความทรงจำ · ${items.length}`}
         title="Milestones"
         action={<Button variant="secondary" size="sm" onClick={() => setAdding(true)}>+ เพิ่ม</Button>}
       />
@@ -660,7 +661,7 @@ function MilestonesTab({ member }) {
 
       {items.length === 0 && !adding ? (
         <EmptyState
-          icon="🌟" title="ยังไม่มี milestone"
+          icon={<Icon name="star" size={20} />} title="ยังไม่มี milestone"
           description="บันทึกช่วงเวลาสำคัญ — เดินครั้งแรก พูดประโยคแรก โรงเรียนใหม่ รางวัล"
           actionLabel="เพิ่ม milestone แรก"
           onAction={() => setAdding(true)}

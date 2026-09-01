@@ -4,6 +4,7 @@ import {
 } from '../../lib/moneyPlanner.js';
 import { currentYearMonth } from '../../lib/api/finance.js';
 import { formatThaiMonth } from './MonthNav.jsx';
+import { Icon } from '../Icon.jsx';
 
 // ── Month OFFSET → Thai Buddhist-year label ──────────────────────────────────
 // The engine speaks in offsets from the current month (1 = next month). The
@@ -231,7 +232,7 @@ export function MoneyPlanner({ debts }) {
           marginTop: 18, paddingTop: 14, borderTop: HAIRLINE,
           fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6,
         }}>
-          <b style={{ color: 'var(--warning)' }}>⚠️ ข้อสังเกตจากข้อมูล:</b>{' '}
+          <b style={{ color: 'var(--warning)' }}><Icon name="warning" size={13} /> ข้อสังเกตจากข้อมูล:</b>{' '}
           {belowInterest.map((o, i) => (
             <span key={o.id}>
               {i > 0 && ' · '}

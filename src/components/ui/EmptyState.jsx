@@ -4,9 +4,10 @@
  * Use this ANY time a list/card is empty.
  */
 import { Button } from './Button.jsx';
+import { Icon } from '../Icon.jsx';
 
 export function EmptyState({
-  icon = '✦',
+  icon = <Icon name="spark" size={20} />,
   title,
   description,
   actionLabel,

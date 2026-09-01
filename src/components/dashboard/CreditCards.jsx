@@ -27,6 +27,7 @@ import {
   canShareInto, lineSharersOf,
   HEALTHY_UTILIZATION, DEFAULT_INTEREST_RATE,
 } from '../../lib/creditCards.js';
+import { Icon } from '../Icon.jsx';
 
 // ── Tokens shared by every block in this file ────────────────────────────────
 const MONO_LABEL = {
@@ -977,7 +978,7 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
       <Card>
         <CardHeader title="บัตรเครดิต" meta="รอติดตั้งตารางในฐานข้อมูล" />
         <EmptyState
-          icon="💳"
+          icon={<Icon name="card" size={20} />}
           title="ยังไม่ได้ติดตั้งตาราง credit_cards — รัน SQL migration ใน Supabase แล้วรีเฟรช"
           description="เปิด Supabase → SQL Editor → รัน supabase/migration_add_credit_cards.sql (ตั้งชื่อแท็บว่า loop_credit_cards) แล้วกลับมารีเฟรชหน้านี้ หน้าอื่นในแอปใช้งานได้ตามปกติ"
           compact
@@ -1018,7 +1019,7 @@ export function CreditCards({ scope = 'personal', debts = [], isMobile = false, 
             <Card>
               <CardHeader title="บัตรเครดิต" meta="เริ่มจากใบแรก" />
               <EmptyState
-                icon="💳"
+                icon={<Icon name="card" size={20} />}
                 title="ยังไม่มีบัตรในระบบ"
                 description="กรอกเอง: ชื่อบัตร · วงเงิน · วันสรุปยอด/ครบกำหนด · เงื่อนไขฟรีค่าธรรมเนียม — แล้วหน้านี้จะสรุป utilization ดอกเบี้ย และบิลถัดไปให้เอง"
                 actionLabel="+ เพิ่มบัตร"

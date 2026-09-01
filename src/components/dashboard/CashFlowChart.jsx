@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, CardHeader, EmptyState } from '../ui/index.js';
 import { chartGeometry, barPath, monthReadout, resolveSelection } from '../../lib/cashflow.js';
+import { Icon } from '../Icon.jsx';
 
 const THAI_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -47,7 +48,7 @@ export function CashFlowChart({ data, selectedYm, currentYm, onMonthClick }) {
       <Card>
         <CardHeader eyebrow="Cash Flow · 12 เดือน" title="กระแสเงินสด" />
         <EmptyState
-          icon="📈"
+          icon={<Icon name="trade" size={20} />}
           title="ยังไม่มีข้อมูลย้อนหลัง"
           description="เมื่อมีรายรับ-รายจ่ายในเดือนต่าง ๆ จะเห็นกราฟ 12 เดือนล่าสุด"
           compact
