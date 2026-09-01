@@ -80,7 +80,8 @@ import { __tables, __stats, __config, supabase } from './mock-supabase.mjs';
 // ── Palette acceptance (v4.53 · A10 finding 4) ────────────────────────────
 // Pure colour maths + a literal read of src/styles.css. No DOM, no network.
 import {
-  monoSites, monoSitesIn, monoOnWords, wordsAmong,
+  monoSites, monoSitesIn, monoOnWords, wordsAmong, styleFacts, cssStyleFacts,
+  interactiveComponentsIn,
   emojiSites, emojiSitesIn,
   unnamedIconControls, unnamedIconControlsIn, interactiveComponents,
 } from './style-scan.mjs';
@@ -5058,18 +5059,43 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     // through a variable — and it passed while four real violations sat in
     // HEAD. audit/style-scan.mjs parses the file and answers the real
     // question: what text does this style actually paint?
+    //
+    // v4.60 widened "paints" twice more, and both had live examples in HEAD:
+    // a visible text ATTRIBUTE (a mono <input>'s Thai placeholder) and a face
+    // that arrives from a CLASS in styles.css rather than an inline style.
     const TOKEN_OK = [
       'hr', 'min',            // unit suffixes glued to a figure — fmtHr()
       'csv', 'UTF',           // a file-format stamp: ".csv · UTF-8"
       'personal', 'family',   // the scope KEY, printed as an identifier
       'MACD', 'EMA', 'Signal', // indicator names on the playbook diagram
     ];
-    const wordy = monoOnWords(SRC_ROOT, TOKEN_OK);
+    const FACTS = styleFacts(SRC_ROOT);
+    const wordy = wordsAmong(monoSites(SRC_ROOT, FACTS), TOKEN_OK);
     check('ไม่มีคำ (ไทย/อังกฤษ) ถูกเรนเดอร์ด้วยฟอนต์ mono — ตรวจด้วย AST ไม่ใช่ regex',
       wordy.length === 0,
       wordy.map(w => `${w.file}:${w.line} ${w.via} ${JSON.stringify(w.text.slice(0, 40))}`).join(' · ') || 'สะอาด');
     check('AST inventory เห็น mono site ครบทั้ง src/ (ไม่ใช่ scan ที่ตาบอด)',
-      monoSites(SRC_ROOT).length >= 150, `${monoSites(SRC_ROOT).length} sites`);
+      monoSites(SRC_ROOT, FACTS).length >= 150, `${monoSites(SRC_ROOT, FACTS).length} sites`);
+
+    // The scan now DEPENDS on the stylesheet, so the stylesheet is asserted.
+    // Deleting either rule silently re-blinds the scanner, which is exactly the
+    // failure mode r1 and r2 shipped — so neither may vanish quietly.
+    check('scanner อ่าน styles.css เจอคลาสที่เป็น mono (class-based paint path)',
+      FACTS.monoClasses.has('mono') && FACTS.monoClasses.size >= 5,
+      [...FACTS.monoClasses].join(', '));
+    check('placeholder ของ input/textarea ถูกกำหนดเป็น body face ใน styles.css',
+      FACTS.placeholderBodyFace.has('input') && FACTS.placeholderBodyFace.has('textarea'),
+      [...FACTS.placeholderBodyFace].join(', ') || 'ไม่มีกฎ — placeholder ไทยจะถูกวาดด้วย mono');
+
+    // Class-based mono is a REAL path, not a hypothetical: assert the audit of
+    // it, so the day someone writes className="mono" on Thai prose it fails.
+    const key = s => `${s.file}:${s.line}:${s.via}`;
+    const withoutClasses = new Set(
+      monoSites(SRC_ROOT, { ...FACTS, monoClasses: new Set() }).map(key));
+    const classOnly = monoSites(SRC_ROOT, FACTS).filter(s => !withoutClasses.has(key(s)));
+    check('ไม่มี element ไหนรับ mono มาจาก className แล้วพ่นคำออกมา',
+      wordsAmong(classOnly, TOKEN_OK).length === 0,
+      `${classOnly.length} class-mono sites · ${wordsAmong(classOnly, TOKEN_OK).length} เป็นคำ`);
   }
 
   section('v4.58 · A11 r2 Minor — emoji ผูกกับตัวแปรที่ประกาศ ไม่ใช่ทั้งไฟล์');
@@ -5140,9 +5166,21 @@ section('F4 · ตัวนับที่ขึ้นกับตัวนั�
     // `</button>`, so a shared <Button> wrapper, an <a>, or any nesting was
     // invisible to it. This walks the AST, and treats as interactive every
     // component in src/ whose own markup ROOTS at a <button> or an <a>.
+    //
+    // v4.60: "its own markup" now means what it says. v4.58 walked the whole
+    // subtree, so any `return <button>` inside a CALLBACK counted and page
+    // components (CSVImporter, Journal, Learning, PettyCash, TaxPlanner…) were
+    // classified as button wrappers — 50 names, most of them wrong. Counting
+    // only the component's own returns gives a list that is actually true.
     const custom = [...interactiveComponents(SRC_ROOT)];
     check(`guard รู้จัก component ที่เป็นปุ่มเอง ไม่ใช่แค่ <button> ตัวเล็ก (${custom.length} ตัว)`,
-      custom.includes('Button') && custom.includes('IconButton'), custom.slice(0, 8).join(', '));
+      custom.includes('Button') && custom.includes('IconButton'), custom.sort().join(', '));
+    // and it must NOT over-classify: a page is not a button because it holds one
+    const notButtons = ['CSVImporter', 'Journal', 'Learning', 'PettyCash', 'TaxPlanner', 'App'];
+    const overClassified = notButtons.filter(n => custom.includes(n));
+    check('หน้าเพจที่แค่ "มีปุ่มอยู่ข้างใน" ต้องไม่ถูกนับเป็น component ปุ่ม',
+      overClassified.length === 0 && custom.length < 20,
+      overClassified.join(', ') || `${custom.length} ตัว — ไม่มีเพจปนมา`);
     const unnamed = unnamedIconControls(SRC_ROOT);
     check('ทุก control ที่มีแต่ไอคอนมี aria-label (หรือ Icon ที่มี label) — ตรวจด้วย AST',
       unnamed.length === 0,
@@ -5199,6 +5237,92 @@ section('v4.58 · A11 r2 — negative cases: scanner จับ 4 รูปแบ
   check('โทเคนที่ประกาศไว้ไม่ถูกจับผิด — "XAUUSD" อยู่ได้',
     !caught(`export const F = ({ t }) => <span style={{ fontFamily: 'var(--f-mono)' }}>XAUUSD</span>;`,
       ['XAUUSD']));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// v4.60 · A11 r3 — the two paint paths r2 still could not see
+//
+// r2 asked "what text does this element render?" and answered it by reading
+// CHILDREN, from a file with a .jsx extension. Both halves were too narrow:
+//
+//   (e) a control paints its own ATTRIBUTES too. `<input placeholder="ส่วนสูง
+//       cm" style={mono}/>` renders no children at all, so it returned text:""
+//       and passed — while the user reads Thai words on the monospace face.
+//   (f) the face need not be in the component. `.mono` lives in styles.css,
+//       which srcFiles() never opened, so className="mono" was invisible.
+//
+// Both are resolved FROM THE STYLESHEET, so each case is asserted in both
+// directions: the violation is caught when the CSS does not excuse it, and NOT
+// caught when the CSS genuinely does.
+// ════════════════════════════════════════════════════════════════════════════
+section('v4.60 · A11 r3 — negative cases: placeholder และ mono ที่มาจาก class');
+{
+  const MONO_INPUT = `export const A = () =>
+    <input placeholder="ส่วนสูง cm" style={{ fontFamily: 'var(--f-mono)' }} />;`;
+
+  // (e) with NO ::placeholder rule the hint really is painted mono → catch it
+  check('(e) placeholder ไทยบน input ที่เป็น mono → ถูกจับ (ไม่มีกฎ ::placeholder)',
+    wordsAmong(monoSitesIn('synthetic.jsx', MONO_INPUT, {})).length === 1);
+  // …and the stylesheet is allowed to settle it, but only by actually saying so
+  const BODY_FACE = cssStyleFacts('input::placeholder { font-family: var(--f-body); }');
+  check('(e) ถ้า styles.css ให้ placeholder เป็น body face → ไม่ถูกจับผิด',
+    wordsAmong(monoSitesIn('synthetic.jsx', MONO_INPUT, BODY_FACE)).length === 0,
+    [...BODY_FACE.placeholderBodyFace].join(', '));
+  // a mono ::placeholder rule is NOT an excuse — it confirms the violation
+  const MONO_PH = cssStyleFacts('input::placeholder { font-family: var(--f-mono); }');
+  check('(e) กฎ ::placeholder ที่ยังเป็น mono ไม่ใช่ข้อยกเว้น → ยังถูกจับ',
+    wordsAmong(monoSitesIn('synthetic.jsx', MONO_INPUT, MONO_PH)).length === 1);
+  // the value attribute paints too, when it resolves to literal words
+  check('(e) value ที่เป็นคำไทยบน control mono → ถูกจับ',
+    wordsAmong(monoSitesIn('synthetic.jsx',
+      `export const V = () => <input readOnly value="ยังไม่ได้บันทึก" style={{ fontFamily: 'var(--f-mono)' }} />;`, {})).length === 1);
+  // …but a title is drawn by the BROWSER in the OS font, not this face
+  check('(e) title ไม่ถูกนับ — เบราว์เซอร์วาด tooltip ด้วยฟอนต์ระบบ ไม่ใช่ฟอนต์ของ element',
+    wordsAmong(monoSitesIn('synthetic.jsx',
+      `export const T = () => <span title="คำอธิบายยาว ๆ" style={{ fontFamily: 'var(--f-mono)' }}>12.5</span>;`, {})).length === 0);
+
+  // (f) the face arrives from styles.css, not from the component
+  const CSS = cssStyleFacts('.mono { font-family: var(--f-mono); } .num { font-family: monospace; }');
+  check('(f) styles.css ถูก parse เจอคลาสที่เป็น mono',
+    CSS.monoClasses.has('mono') && CSS.monoClasses.has('num'),
+    [...CSS.monoClasses].join(', '));
+  const CLASS_USE = `export const B = () => <div className="mono">ยอดคงเหลือรวม</div>;`;
+  check('(f) className="mono" กับข้อความไทย → ถูกจับ',
+    wordsAmong(monoSitesIn('synthetic.jsx', CLASS_USE, CSS)).length === 1);
+  check('(f) นี่คือจุดบอดของ r2 จริง — ถ้าไม่อ่าน CSS จะไม่เห็นเลย',
+    monoSitesIn('synthetic.jsx', CLASS_USE, {}).length === 0);
+  check('(f) className ที่ไม่ได้เป็น mono ไม่ถูกจับผิด',
+    monoSitesIn('synthetic.jsx',
+      `export const C = () => <div className="card muted">ยอดคงเหลือรวม</div>;`, CSS).length === 0);
+  check('(f) className="mono" กับตัวเลขล้วน ไม่ถูกจับผิด',
+    wordsAmong(monoSitesIn('synthetic.jsx',
+      `export const D = ({ x }) => <div className="mono">{baht(x)}</div>;`, CSS)).length === 0);
+}
+
+section('v4.60 · A11 r3 — negative case: หน้าเพจที่มีปุ่มข้างใน ไม่ใช่ "component ปุ่ม"');
+{
+  // r2 walked the whole subtree, so a `return <button>` inside a CALLBACK made
+  // the enclosing page look like a button wrapper. That inflated the list to 50
+  // and would have handed the icon-name guard false positives to cry wolf with.
+  const PAGE = `
+    export function ImporterPage({ rows }) {
+      const renderRow = (r) => { return <button onClick={r.go}>{r.label}</button>; };
+      return <div className="page">{rows.map(renderRow)}</div>;
+    }
+    export function Toolbar() {
+      return <div>{['a','b'].map(k => <button key={k}>{k}</button>)}</div>;
+    }
+    export function RealButton({ children, onClick }) {
+      return <button onClick={onClick} className="focus-ring">{children}</button>;
+    }
+    export const LinkBtn = ({ href, children }) => <a href={href}>{children}</a>;`;
+  const found = [...interactiveComponentsIn(PAGE)].sort();
+  check('เพจที่คืน <div> แต่มีปุ่มใน callback → ต้องไม่ถูกจัดเป็น component ปุ่ม',
+    !found.includes('ImporterPage') && !found.includes('Toolbar'), found.join(', '));
+  check('component ที่ root เป็น <button>/<a> จริง → ยังถูกจับได้',
+    found.includes('RealButton') && found.includes('LinkBtn'), found.join(', '));
+  check('นับได้เฉพาะสองตัวที่เป็นปุ่มจริง ไม่มีเพจปนมา',
+    found.length === 2, `${found.length} ตัว — ${found.join(', ')}`);
 }
 
 section('v4.58 · A11 r2 — negative cases: emoji ระดับตัวแปร และปุ่ม custom');

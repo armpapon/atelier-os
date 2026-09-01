@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  style-scan.mjs — render-aware style inventory for src/  (v4.58 · audit A11 r2)
+//  style-scan.mjs — render-aware style inventory for src/  (v4.60 · audit A11 r3)
 //
 //  WHY THIS EXISTS
 //  v4.57 guarded the typography rules with a regex that looked at the first
@@ -19,6 +19,21 @@
 //  structurally: for every JSX element (and every element inside an SVG
 //  template string) it resolves BOTH the effective style AND the text that
 //  element renders, following constants, functions, spreads and ternaries.
+//
+//  v4.60 · A11 r3 closed two more paint paths the r2 scanner could not see, and
+//  both had live examples in HEAD:
+//
+//    (e) VISIBLE TEXT ATTRIBUTES      <input placeholder="ส่วนสูง cm" style={mono}/>
+//        renderedText() read only children, so a mono input whose only visible
+//        words are its placeholder returned text:"" and passed as clean.
+//    (f) CLASS-BASED mono             <div className="mono">ไทย</div>
+//        the face arrives from styles.css, which the scanner never opened.
+//
+//  Both are resolved from the STYLESHEET rather than a hardcoded list: the CSS
+//  is parsed for the classes that set a mono face and for whether ::placeholder
+//  is given a body face. Delete the ::placeholder rule and every Thai
+//  placeholder on a mono input lights up again — the guard is bound to the CSS,
+//  not to an assumption about it.
 //
 //  It is deliberately conservative in one direction only: when it cannot
 //  resolve something it reports the text it *did* find rather than assuming
@@ -49,6 +64,91 @@ export function srcFiles(root) {
 
 export function relPath(root, p) {
   return relative(root, p).split(sep).join('/');
+}
+
+// ── (f) · what the STYLESHEET says ─────────────────────────────────────────
+//
+// srcFiles() only ever yielded .js/.jsx, so a face applied by a class was
+// invisible: `<div className="mono">ไทย</div>` reads as clean while `.mono` in
+// styles.css sets --f-mono. The face is not in the component, so the component
+// alone cannot answer the question — the CSS has to be read too.
+//
+// Two facts come out of it:
+//   monoClasses          class names whose rule sets a monospace font-family
+//   placeholderBodyFace  element selectors whose ::placeholder is given a
+//                        NON-mono font-family, i.e. where placeholder prose is
+//                        painted in the body face even on a mono control
+
+const isMonoFace = (v) => v.includes('--f-mono') || /\bmonospace\b/.test(v);
+
+/** Innermost `selector { declarations }` pairs, so @media wrappers are skipped. */
+function cssRules(css) {
+  const out = [];
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  let depth = 0, selStart = 0, blockStart = -1;
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') {
+      stack.push({ sel: text.slice(selStart, i).trim(), start: i + 1 });
+      depth++;
+    } else if (c === '}') {
+      const frame = stack.pop();
+      depth--;
+      if (frame) {
+        const body = text.slice(frame.start, i);
+        // a block that contains no nested block is a real rule, not an at-rule
+        if (!body.includes('{')) out.push({ selector: frame.sel, body });
+      }
+      selStart = i + 1;
+    } else if (c === ';' && depth === 0) selStart = i + 1;
+    if (c === '{' || c === '}') selStart = i + 1;
+  }
+  return out;
+}
+
+/** Declared `prop: value` pairs of a rule body. */
+function cssDecls(body) {
+  const out = new Map();
+  for (const part of body.split(';')) {
+    const i = part.indexOf(':');
+    if (i < 0) continue;
+    out.set(part.slice(0, i).trim().toLowerCase(), part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+/**
+ * Style facts the components depend on but do not contain.
+ * Returns { monoClasses:Set<string>, placeholderBodyFace:Set<string> }.
+ */
+export function cssStyleFacts(css) {
+  const monoClasses = new Set();
+  const placeholderBodyFace = new Set();
+  for (const { selector, body } of cssRules(css)) {
+    const font = cssDecls(body).get('font-family');
+    if (!font) continue;
+    if (selector.includes('::placeholder') || selector.includes(':placeholder-shown')) {
+      // a placeholder given a body face is NOT painted mono, whatever the
+      // control's own font-family says
+      if (!isMonoFace(font)) {
+        for (const part of selector.split(',')) {
+          const el = part.trim().split(/::|:/)[0].trim();
+          placeholderBodyFace.add(el || '*');
+        }
+      }
+      continue;
+    }
+    if (!isMonoFace(font)) continue;
+    for (const m of selector.matchAll(/\.([A-Za-z_][\w-]*)/g)) monoClasses.add(m[1]);
+  }
+  return { monoClasses, placeholderBodyFace };
+}
+
+/** Read the app stylesheet next to `root` (src/styles.css) and parse it. */
+export function styleFacts(root) {
+  try { return cssStyleFacts(readFileSync(join(root, 'styles.css'), 'utf8')); }
+  catch { return { monoClasses: new Set(), placeholderBodyFace: new Set() }; }
 }
 
 const ast = (code) => parse(code, {
@@ -149,9 +249,28 @@ function bindings(tree) {
     });
   };
 
+  // This map is flat, so it cannot tell one function's `text` from another's.
+  // Two guards keep attribute resolution honest about that:
+  //   ambiguous    a name declared more than once — the map holds the UNION of
+  //                unrelated declarations, so resolving it reports words the
+  //                element never paints
+  //   moduleScope  a name declared at the top level, where "the" binding for a
+  //                name really is unique. TaxPlanner's `<input value={text}>`
+  //                reads a function-local useState variable; the flat map only
+  //                knows the unrelated `const text = 'บันทึกแล้ว' : …` inside
+  //                SaveIndicator, and matching them is simply wrong.
+  const ambiguous = new Set();
+  const moduleScope = new Set();
+  for (const stmt of tree.program?.body || []) {
+    const decl = stmt.type === 'ExportNamedDeclaration' ? stmt.declaration : stmt;
+    if (decl?.type === 'VariableDeclaration') {
+      for (const d of decl.declarations) if (d.id?.type === 'Identifier') moduleScope.add(d.id.name);
+    } else if (decl?.type === 'FunctionDeclaration' && decl.id?.name) moduleScope.add(decl.id.name);
+  }
   walk(tree, (n) => {
     if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier' && n.init) {
       const name = n.id.name;
+      if (strings.has(name) || objects.has(name) || arrays.has(name) || fns.has(name)) ambiguous.add(name);
       if (n.init.type === 'ObjectExpression') objects.set(name, n.init);
       if (n.init.type === 'ArrayExpression') {
         arrays.set(name, n.init);
@@ -164,7 +283,7 @@ function bindings(tree) {
     if (n.type === 'FunctionDeclaration' && n.id?.name) fns.set(n.id.name, n);
   });
   bindMapParams();
-  return { objects, strings, fns, literalsOf, plainArrays };
+  return { objects, strings, fns, literalsOf, plainArrays, ambiguous, moduleScope };
 }
 
 // ── (d) · the effective style of a JSX element ─────────────────────────────
@@ -325,14 +444,90 @@ function svgStringSites(rel, code, tree) {
   return out;
 }
 
+// ── (e) · visible text that lives in an ATTRIBUTE ──────────────────────────
+//
+// A control's font paints more than its children. `placeholder` is the one that
+// bit us: an <input> whose only visible words are its placeholder rendered
+// text:"" and sailed through as clean.
+//
+// Only attributes the ELEMENT'S OWN font paints belong here:
+//   placeholder  yes — drawn inside the control, in the control's font
+//   value        yes — the same, for a value that resolves to literal words
+//   title        NO  — the browser draws it as a native tooltip in the OS UI
+//                      font; the element's font-family does not reach it
+//   alt          NO  — replacement text for a broken image, not this face
+// Getting that boundary wrong would make the guard cry wolf, and a guard that
+// cries wolf gets muted.
+const TEXT_ATTRS = ['placeholder', 'value'];
+
+function attributeTexts(el, b, placeholderBodyFace) {
+  const open = el.openingElement;
+  const tag = open.name?.name || '?';
+  const out = [];
+  const exempt = placeholderBodyFace.has(tag) || placeholderBodyFace.has('*');
+  for (const attr of open.attributes) {
+    if (attr.type !== 'JSXAttribute') continue;
+    const name = attr.name?.name;
+    if (!TEXT_ATTRS.includes(name)) continue;
+    // the stylesheet may hand placeholders a body face — then they are not
+    // painted mono, and saying otherwise would be a false alarm
+    if (name === 'placeholder' && exempt) continue;
+    const text = literalOfAttr(attr.value, b);
+    if (text) out.push({ attr: name, text });
+  }
+  return out;
+}
+
+/** The literal words an attribute value resolves to, if any. */
+function literalOfAttr(value, b) {
+  if (!value) return '';
+  const parts = [];
+  const take = (node, d = 0) => {
+    if (!node || d > 3) return;
+    if (node.type === 'StringLiteral') { parts.push(node.value); return; }
+    if (node.type === 'JSXExpressionContainer') return take(node.expression, d);
+    if (node.type === 'TemplateLiteral') {
+      for (const q of node.quasis) parts.push(q.value.cooked ?? q.value.raw ?? '');
+      return;
+    }
+    if (node.type === 'ConditionalExpression') { take(node.consequent, d); take(node.alternate, d); return; }
+    if (node.type === 'LogicalExpression') { take(node.left, d); take(node.right, d); return; }
+    if (node.type === 'Identifier') {
+      // resolve only a name the flat map can honestly answer for: declared once,
+      // and at module scope where that binding really is THE binding
+      if (b.ambiguous?.has(node.name)) return;
+      if (b.moduleScope && !b.moduleScope.has(node.name)) return;
+      const lits = b.strings.get(node.name);
+      if (lits) parts.push(...lits);
+    }
+  };
+  take(value);
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Does this element's className carry a class the stylesheet makes monospace? */
+function classNameUsesMono(open, b, monoClasses) {
+  if (!monoClasses.size) return null;
+  const attr = open.attributes.find(a => a.type === 'JSXAttribute' && a.name?.name === 'className');
+  if (!attr) return null;
+  const names = literalOfAttr(attr.value, b).split(/\s+/).filter(Boolean);
+  return names.find(nm => monoClasses.has(nm)) || null;
+}
+
 /**
- * Every place --f-mono is applied, with the text it actually paints.
+ * Every place a monospace face is applied, with the text it actually paints.
  * Returns [{ file, line, via, text }].
+ *
+ * `facts` carries what only the stylesheet knows — which classes are mono, and
+ * whether ::placeholder is given a body face.
  */
-export function monoSitesIn(rel, code) {
+export function monoSitesIn(rel, code, facts = {}) {
+  const monoClasses = facts.monoClasses || new Set();
+  const placeholderBodyFace = facts.placeholderBodyFace || new Set();
   const out = [];
   {
-    if (!code.includes(MONO)) return out;
+    const classHint = [...monoClasses].some(c => code.includes(c));
+    if (!code.includes(MONO) && !classHint) return out;
     let tree;
     try { tree = ast(code); } catch { return [{ file: rel, line: 0, via: 'PARSE-ERROR', text: '' }]; }
     const b = bindings(tree);
@@ -344,14 +539,22 @@ export function monoSitesIn(rel, code) {
         a.type === 'JSXAttribute' && a.name?.name === 'style');
       const fontAttr = open.attributes.find(a =>
         a.type === 'JSXAttribute' && (a.name?.name === 'fontFamily' || a.name?.name === 'font-family'));
+      const monoClass = classNameUsesMono(open, b, monoClasses);
       const usesMono =
         (styleAttr && styleUsesMono(styleAttr.value, b)) ||
-        (fontAttr && styleUsesMono(fontAttr.value, b));
+        (fontAttr && styleUsesMono(fontAttr.value, b)) ||
+        !!monoClass;
       if (!usesMono) return;
       const tag = open.name?.name || open.name?.property?.name || '?';
+      const line = open.loc?.start.line ?? 0;
+      // (e) each visible text attribute is its own paint site, so the report
+      // names the attribute that carries the prose rather than the element
+      for (const { attr, text } of attributeTexts(n, b, placeholderBodyFace)) {
+        out.push({ file: rel, line, via: `<${tag} ${attr}>`, text });
+      }
       out.push({
         file: rel,
-        line: open.loc?.start.line ?? 0,
+        line,
         via: `<${tag}>`,
         text: renderedText(n, b),
       });
@@ -362,10 +565,12 @@ export function monoSitesIn(rel, code) {
   return out;
 }
 
-/** Every place --f-mono is applied across src/, with the text it paints. */
-export function monoSites(root) {
+/** Every place a mono face is applied across src/, with the text it paints. */
+export function monoSites(root, facts = styleFacts(root)) {
   const out = [];
-  for (const file of srcFiles(root)) out.push(...monoSitesIn(relPath(root, file), readFileSync(file, 'utf8')));
+  for (const file of srcFiles(root)) {
+    out.push(...monoSitesIn(relPath(root, file), readFileSync(file, 'utf8'), facts));
+  }
   return out;
 }
 
@@ -504,44 +709,75 @@ function hasUnresolvedChild(el) {
   return found;
 }
 
+/**
+ * The expressions a function returns FROM ITS OWN BODY.
+ *
+ * v4.58 walked the whole subtree, so every `return` inside a callback, a
+ * handler or a nested helper counted as the component's own root. That made
+ * page components like CSVImporter and Journal — which merely CONTAIN a button
+ * somewhere in a callback — read as button wrappers, inflating the list to 50
+ * and giving the a11y guard false positives to cry wolf with.
+ *
+ * A nested function's returns belong to that function, so the walk stops at
+ * one. JSX attribute values are skipped for the same reason: `onClick={() =>
+ * …}` is not this component's markup.
+ */
+function ownReturns(fn) {
+  const out = [];
+  const body = fn.body;
+  if (!body) return out;
+  if (body.type !== 'BlockStatement') { out.push(body); return out; }
+  walk(body, (n) => {
+    if (n !== body && FN_TYPES.has(n.type)) return false;   // not our body
+    if (n.type === 'JSXAttribute') return false;            // not our markup
+    if (n.type === 'ReturnStatement' && n.argument) out.push(n.argument);
+  });
+  return out;
+}
+const FN_TYPES = new Set([
+  'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression',
+  'ClassMethod', 'ObjectMethod',
+]);
+
+/** The native interactive tag a component's own markup roots at, or null. */
+function rootTag(fnNode) {
+  for (const bnode of ownReturns(fnNode)) {
+    let el = bnode;
+    // unwrap `cond ? <a/> : <b/>` and `cond && <x/>` to their JSX
+    while (el && el.type !== 'JSXElement') {
+      if (el.type === 'ConditionalExpression') el = el.consequent;
+      else if (el.type === 'LogicalExpression') el = el.right;
+      else if (el.type === 'ParenthesizedExpression') el = el.expression;
+      else break;
+    }
+    if (el?.type === 'JSXElement') {
+      const t = el.openingElement.name?.name;
+      if (NATIVE_INTERACTIVE.has(t)) return t;
+    }
+  }
+  return null;
+}
+
+/** Components in one file whose own markup ROOTS at a <button> or <a>. */
+export function interactiveComponentsIn(code) {
+  const names = new Set();
+  let tree;
+  try { tree = ast(code); } catch { return names; }
+  walk(tree, (n) => {
+    const name = (n.type === 'FunctionDeclaration' || n.type === 'VariableDeclarator') ? n.id?.name : null;
+    if (!name || !/^[A-Z]/.test(name)) return;
+    const fn = n.type === 'FunctionDeclaration' ? n
+      : (n.init?.type === 'ArrowFunctionExpression' || n.init?.type === 'FunctionExpression') ? n.init : null;
+    if (fn && rootTag(fn)) names.add(name);
+  });
+  return names;
+}
+
 /** Components in src/ whose own markup ROOTS at a <button> or <a>. */
 export function interactiveComponents(root) {
   const names = new Set();
-  const rootTag = (fnNode) => {
-    // the JSX element a component returns, ignoring wrappers it renders inside
-    let tag = null;
-    const bodies = [];
-    walk(fnNode, (n) => {
-      if (n.type === 'ReturnStatement' && n.argument) bodies.push(n.argument);
-      if (n.type === 'ArrowFunctionExpression' && n.body?.type === 'JSXElement') bodies.push(n.body);
-    });
-    for (const bnode of bodies) {
-      let el = bnode;
-      // unwrap `cond ? <a/> : <b/>` and `cond && <x/>` to their JSX
-      while (el && el.type !== 'JSXElement') {
-        if (el.type === 'ConditionalExpression') el = el.consequent;
-        else if (el.type === 'LogicalExpression') el = el.right;
-        else if (el.type === 'ParenthesizedExpression') el = el.expression;
-        else break;
-      }
-      if (el?.type === 'JSXElement') {
-        const t = el.openingElement.name?.name;
-        if (NATIVE_INTERACTIVE.has(t)) { tag = t; break; }
-      }
-    }
-    return tag;
-  };
   for (const file of srcFiles(root)) {
-    const code = readFileSync(file, 'utf8');
-    let tree;
-    try { tree = ast(code); } catch { continue; }
-    walk(tree, (n) => {
-      const name = (n.type === 'FunctionDeclaration' || n.type === 'VariableDeclarator') ? n.id?.name : null;
-      if (!name || !/^[A-Z]/.test(name)) return;
-      const fn = n.type === 'FunctionDeclaration' ? n
-        : (n.init?.type === 'ArrowFunctionExpression' || n.init?.type === 'FunctionExpression') ? n.init : null;
-      if (fn && rootTag(fn)) names.add(name);
-    });
+    for (const n of interactiveComponentsIn(readFileSync(file, 'utf8'))) names.add(n);
   }
   return names;
 }
