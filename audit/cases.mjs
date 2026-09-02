@@ -17,7 +17,7 @@ import {
   pocketSourceKey, extractAccountsFromMapped, reassignAndArchiveAccount,
   createScopeTransfer, updateTransactionMaybePaired, deleteTransactionWithPair,
   debtLifecycle, updateDebt, archiveDebt, forecastDebts, forecastCashFlow,
-  summarizeDebts, debtOutstanding, outstandingDebts, nextMonth, previousMonth,
+  summarizeDebts, debtOutstanding, outstandingDebts, unfinishedDebts, nextMonth, previousMonth,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
@@ -2076,6 +2076,25 @@ section('C · B8 · a debt has a life: upcoming → active → completed');
     check('A12r2 outstandingDebts: null-safe และไม่พังกับแถวว่าง',
       outstandingDebts().length === 0 && outstandingDebts([null, undefined]).length === 0
       && debtOutstanding(null, THIS) === 0 && debtOutstanding({}, THIS) === 0);
+
+    // ── v4.63 · A12 r3 — สองลิสต์ ไม่ใช่ลิสต์เดียว ──────────────────────────
+    // ตัวเลขเงิน (ดอกที่เผา · ลำดับโปะ · rollover · ขั้นต่ำบัตร) ใช้
+    // outstandingDebts เพื่อไม่พูดแทนหนี้ที่จบแล้ว ส่วนคำชวน "กรอกเพิ่ม" ใช้
+    // unfinishedDebts เพราะแถวที่ไม่มีตัวเลขเลย พิสูจน์ไม่ได้ว่ายังค้าง แต่มัน
+    // คือแถวที่ต้องขอให้กรอกที่สุด — ถ้ากรองด้วยลิสต์แคบ คำชวนจะหายไปเงียบ ๆ
+    const blank = { id: 'blank', name: 'เมืองทอง', monthly_payment: 4000, is_active: true };
+    check('A12r3 unfinishedDebts: แถวที่ไม่รู้ตัวเลขอะไรเลยยังอยู่ (ยังต้องชวนให้กรอก)',
+      unfinishedDebts([blank], THIS).length === 1
+      && outstandingDebts([blank], THIS).length === 0);
+    check('A12r3 unfinishedDebts: หนี้ที่ผ่อนจบแล้วหลุดออกทั้งสองลิสต์',
+      unfinishedDebts([stale], THIS).length === 0
+      && outstandingDebts([stale], THIS).length === 0);
+    check('A12r3 unfinishedDebts: outstandingDebts เป็นสับเซตของ unfinishedDebts เสมอ',
+      outstandingDebts([stale, blank, running], THIS)
+        .every(d => unfinishedDebts([stale, blank, running], THIS).includes(d)));
+    check('A12r3 unfinishedDebts: null-safe และตัดแถวที่ archive แล้ว',
+      unfinishedDebts().length === 0 && unfinishedDebts([null]).length === 0
+      && unfinishedDebts([{ ...blank, is_active: false }], THIS).length === 0);
   }
 
   const fc = forecastDebts([future], 14);
