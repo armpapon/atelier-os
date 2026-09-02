@@ -3,6 +3,7 @@ import {
   totalInterestBurn, payoffPriority, rolloverOpportunities,
   creditCardDeadline, dataGaps,
 } from '../../lib/debtAdvice.js';
+import { outstandingDebts, unfinishedDebts } from '../../lib/api/finance.js';
 import { Icon } from '../Icon.jsx';
 import { SectionCaption, InsetGroup, InsetRow, Pill } from './InsetList.jsx';
 
@@ -45,11 +46,22 @@ const NOTE = {
 // ════════════════════════════════════════════════════════════════════════════
 export function DebtAdvice({ debts }) {
   const advice = useMemo(() => {
-    const priority  = payoffPriority(debts);
-    const burn      = totalInterestBurn(debts);
-    const rollovers = rolloverOpportunities(debts);
-    const deadline  = creditCardDeadline(debts);
-    const gaps      = dataGaps(debts);
+    // ⚠️ EVERY money figure below is computed over outstandingDebts() — the same
+    // lifecycle predicate the หนี้ hero and the Money Planner use (audit A12 r3).
+    // The page hands this card rows that are already lifecycle-filtered; the
+    // filter is repeated here so a standalone mount cannot disagree with the
+    // page. Without it a 12/12 loan whose remaining_balance was never zeroed
+    // was ranked #1 to pay off, burning ฿143.32/เดือน, directly under a hero
+    // that correctly read ฿0 owed.
+    const owed = outstandingDebts(debts);
+    const priority  = payoffPriority(owed);
+    const burn      = totalInterestBurn(owed);
+    const rollovers = rolloverOpportunities(owed);
+    const deadline  = creditCardDeadline(owed);
+    // …but the GAP prompt reads the wider list. A debt with no numbers at all
+    // cannot be shown to be outstanding, and it is precisely the row that needs
+    // filling in — a finished loan is never a gap, an unknown one always is.
+    const gaps      = dataGaps(unfinishedDebts(debts));
     return { priority, burn, rollovers, deadline, gaps };
   }, [debts]);
 

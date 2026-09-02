@@ -160,6 +160,54 @@ describe('A12·1 · hero “หมดหนี้” พูดได้เฉพ
     expect(heroStat(container, 'ดอกเบี้ย/เดือน').children[1].textContent).toBe('฿0');
     // With nothing real to plan, the planner does not render a run at all.
     expect(container.querySelector('[data-clear-date]')).toBeNull();
+
+    // ── A12 r3 · the advice card sits on this same screen and must agree.
+    // It used to rank this loan #1 to pay off and print ฿143.32/เดือน of burn
+    // from the stale balance, directly under a hero reading ฿0 — the suite went
+    // green because nothing asserted on DebtAdvice here.
+    expect(container.querySelectorAll('[data-prio-row]')).toHaveLength(0);
+    expect(container.querySelector('[data-burn-permonth]')).toBeNull();
+    expect(container.querySelector('[data-rollover]')).toBeNull();
+    // A completed loan is not a "gap" either — there is nothing to fill in.
+    expect(container.querySelector('[data-gap-note]')).toBeNull();
+    expect(container.querySelector('[data-debt-advice]')).toBeNull();
+    // The stale balance never becomes a figure the hero speaks with…
+    expect(hero.textContent).not.toContain('19,253');
+    // …and the ฿143.32/เดือน of phantom interest is nowhere on the room.
+    const room = document.getElementById('fin-panel-debt');
+    expect(room.textContent).not.toContain('143');
+    // The tracker still lists it, correctly, as finished, with the archive
+    // affordance — showing the row (and the stale figure the owner should fix)
+    // is exactly its job. Only the ADVICE had to stop speaking for it.
+    expect(room.textContent).toContain('โมนี่ 1');
+    expect(room.textContent).toContain('ผ่อนหมดแล้ว');
+  });
+
+  // A row we know too LITTLE about is not the same as a row that is over: the
+  // gap prompt must still nag for it, or the นudge that gets it filled in dies.
+  it('still asks for a debt with no numbers at all, while ignoring the finished one', async () => {
+    __tables.debts.push(
+      { id: 'debt-done', user_id: 'user-1', scope: 'personal', name: 'โมนี่ 1', type: 'loan',
+        monthly_payment: 19253, due_day: 5, total_months: 12, months_paid: 12,
+        remaining_balance: 19253, interest_rate: 9, is_active: true },
+      { id: 'debt-blank', user_id: 'user-1', scope: 'personal', name: 'เมืองทอง', type: 'loan',
+        monthly_payment: 4000, due_day: 9, is_active: true },
+    );
+    const { container } = render(<FinanceView scope="personal" />);
+    await openTab('หนี้');
+
+    const gap = await waitFor(() => {
+      const el = container.querySelector('[data-gap-note]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    // Exactly one gap: the unknown row. The finished one is not a gap.
+    expect(gap.textContent).toContain('ข้อมูลหนี้ยังไม่ครบ 1 ก้อน');
+    expect(gap.textContent).toContain('เมืองทอง');
+    expect(gap.textContent).not.toContain('โมนี่ 1');
+    // Still no ranking and no burn — neither row can carry a money figure.
+    expect(container.querySelectorAll('[data-prio-row]')).toHaveLength(0);
+    expect(container.querySelector('[data-burn-permonth]')).toBeNull();
   });
 
   // ── A12 r2 · Minor — the prompt names the field that is actually blank.
