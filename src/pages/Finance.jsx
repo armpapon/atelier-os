@@ -11,7 +11,7 @@ import {
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
   deleteTransactionsInMonth, financeMonthSummary,
-  listDebts, listDebtPayments, summarizeDebts, outstandingDebts,
+  listDebts, listDebtPayments, summarizeDebts, outstandingDebts, unfinishedDebts,
   listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
   monthlyRecurringTotal,
   bangkokDate, bangkokTime, isTransfer,
@@ -1135,14 +1135,21 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   // balance burns no interest, so it must not appear in this figure either —
   // otherwise the hero reads "คงเหลือรวม ฿0" beside "ดอกเบี้ย ฿144/เดือน".
   const owedDebts    = useMemo(() => outstandingDebts(debts), [debts]);
+  // The wider list: everything still in play, finished loans excluded. The
+  // advice card needs it because its data-gap prompt is about rows we know too
+  // LITTLE about — those can't be proven outstanding, but they must still be
+  // asked for (A12 r3).
+  const debtsInPlay  = useMemo(() => unfinishedDebts(debts), [debts]);
   const interestBurn = useMemo(() => totalInterestBurn(owedDebts), [owedDebts]);
   const ratedDebts   = useMemo(
     () => owedDebts.filter(d => Number(d.interest_rate) > 0).length,
     [owedDebts],
   );
   const leaks = useMemo(
-    () => buildLeakInsights({ txns, prevTxns, trend12: history12, debts, yearMonth }),
-    [txns, prevTxns, history12, debts, yearMonth],
+    // Same predicate as the หนี้ room: the "ดอกเบี้ยหนี้ที่ยังต้องจ่าย" row is a
+    // money figure, so a finished loan carrying a stale balance must not swell it.
+    () => buildLeakInsights({ txns, prevTxns, trend12: history12, debts: owedDebts, yearMonth }),
+    [txns, prevTxns, history12, owedDebts, yearMonth],
   );
   const debtSummary = useMemo(
     () => summarizeDebts(debts, debtPayments, yearMonth),
@@ -1401,7 +1408,7 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
             {/* Money Leaks / Insights — the detail behind the เงินรั่ว row above.
                 tabIndex -1 makes the anchor a legal focus target for that jump. */}
             <div id={MONEY_LEAKS_ANCHOR} tabIndex={-1} style={{ outline: 'none' }}>
-              <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={debts}
+              <MoneyLeaks txns={txns} prevTxns={prevTxns} trend12={history12} debts={owedDebts}
                 allCategories={allCategories} accounts={accounts} onOpenDebts={scrollToDebts}
                 yearMonth={yearMonth} />
             </div>
@@ -1727,9 +1734,12 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
                 tabIndex -1 makes the anchor a legal focus target so the jump can
                 hand the keyboard over (A1); it stays out of the tab order. */}
             <div id={DEBT_TRACKER_ANCHOR} tabIndex={-1} style={{ outline: 'none' }}>
-              {/* Computed advice card — reads the same `debts` the tracker does,
-                  renders nothing when there is no computable signal (v4.46). */}
-              <DebtAdvice debts={debts} />
+              {/* Computed advice card. It is handed rows that are still in play —
+                  a finished loan must never be ranked "โปะก่อน" or counted in the
+                  burn, which is exactly what it did while it read the raw list
+                  under a hero that already said ฿0 (audit A12 r3). The card
+                  repeats the filter internally, so a standalone mount agrees. */}
+              <DebtAdvice debts={debtsInPlay} />
               {/* Payoff simulator — slide the extra to see how much sooner all
                   filled-in debts clear and how much interest is saved (v4.48).
                   v4.59: the slider value is lifted so the hero above reads the

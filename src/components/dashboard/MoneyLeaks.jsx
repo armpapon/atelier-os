@@ -4,7 +4,7 @@ import {
 } from '../../lib/moneyLeaks.js';
 import { formatBaht } from './KPICard.jsx';
 import { formatThaiMonth } from './MonthNav.jsx';
-import { currentYearMonth } from '../../lib/api/finance.js';
+import { currentYearMonth, outstandingDebts } from '../../lib/api/finance.js';
 import { Card, CardHeader } from '../ui/index.js';
 import { Icon } from '../Icon.jsx';
 
@@ -166,7 +166,14 @@ export function MoneyLeaks({
   // is on the current Bangkok month, otherwise the month being viewed
   // (audited: DLG-FIN-001 · A4).
   const insights = useMemo(
-    () => buildLeakInsights({ txns, prevTxns, trend12, debts, yearMonth }),
+    // The debt row here is a money figure ("ดอกเบี้ยหนี้ที่ยังต้องจ่าย"), so it
+    // reads the same lifecycle-filtered rows the หนี้ room does — a finished
+    // loan whose remaining_balance was never zeroed must not swell it. The page
+    // already passes filtered rows; repeating it keeps a standalone mount
+    // honest too (audit A12 r3).
+    () => buildLeakInsights({
+      txns, prevTxns, trend12, debts: outstandingDebts(debts), yearMonth,
+    }),
     [txns, prevTxns, trend12, debts, yearMonth],
   );
   const viewedMonth = resolveYearMonth(yearMonth);
