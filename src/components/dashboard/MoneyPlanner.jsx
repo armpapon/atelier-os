@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
   planDebts, comparePayoff, paymentBelowInterest, MONTH_CAP,
 } from '../../lib/moneyPlanner.js';
-import { currentYearMonth } from '../../lib/api/finance.js';
+import { currentYearMonth, outstandingDebts } from '../../lib/api/finance.js';
 import { formatThaiMonth } from './MonthNav.jsx';
 import { Icon } from '../Icon.jsx';
 import { SectionCaption, Pill, NUM } from './InsetList.jsx';
@@ -32,36 +32,71 @@ const baht = (n) => '฿' + fmt(Math.round(Number(n || 0)));
  * หนี้ hero used to print as "หมดหนี้ <this month>" while ฿120,000 was still
  * owed. Nothing downstream may render a payoff DATE unless this says complete.
  *
- * An "outstanding" debt is an ACTIVE debt that still owes something, measured
- * the same way summarizeDebts measures it: a stored remaining_balance when there
- * is one, otherwise the instalments left × the monthly payment.
+ * An "outstanding" debt is whatever outstandingDebts() says it is — literally
+ * the predicate summarizeDebts uses for คงเหลือรวม, not a second reading of the
+ * same columns. v4.61 re-derived it here and got a 12/12 loan with a stale
+ * ฿19,253 balance wrong, so the hero could show "฿0" and a future date at once.
  *
- * Returns { planned, outstanding, missing: [rows], complete }:
+ * Returns { planned, outstanding, missing: [{ debt, name, reason }], complete }:
+ *   · reason is 'missing-rate' | 'missing-balance' | 'missing-both' — which
+ *     field is blank, so the prompt can name it (coveragePrompt below).
  *   · complete is TRUE only when there is at least one outstanding debt and the
  *     plan covers every one of them. No debt at all → complete: false, because
  *     "หมดหนี้ <date>" is not a claim to make about an empty ledger either.
  * Pure read over the rows the page already loaded — no fetch, no Date.
  */
-export function payoffCoverage(debts = []) {
-  const owed = (d) => {
-    const bal = Number(d?.remaining_balance);
-    if (d?.remaining_balance != null && Number.isFinite(bal)) return Math.max(0, bal);
-    const total = Number(d?.total_months);
-    if (Number.isFinite(total) && total > 0) {
-      const left = Math.max(0, total - (Number(d?.months_paid) || 0));
-      return left * (Number(d?.monthly_payment) || 0);
-    }
-    return 0;
+export function payoffCoverage(debts = [], yearMonth) {
+  // "Still owed" is NOT re-derived here: outstandingDebts() is the same
+  // lifecycle-aware predicate summarizeDebts uses for คงเหลือรวม, so the hero's
+  // total and its payoff date can never contradict each other (A12 r2 · Major).
+  const outstanding = outstandingDebts(debts, yearMonth);
+  const plannedIds = new Set(planDebts(outstanding).map(d => d.id));
+
+  // Why the engine could not take a row, so the prompt can ask for the field
+  // that is actually blank instead of always saying "ดอกเบี้ย" (A12 r2 · Minor).
+  const rateKnown = (d) => {
+    const v = d?.interest_rate;
+    if (v == null) return false;
+    if (typeof v === 'string' && v.trim() === '') return false;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0;
   };
-  const outstanding = (debts || []).filter(d => d && d.is_active !== false && owed(d) > 0);
-  const plannedIds = new Set(planDebts(debts).map(d => d.id));
-  const missing = outstanding.filter(d => !plannedIds.has(d.id));
+  const balanceKnown = (d) => {
+    const n = Number(d?.remaining_balance);
+    return d?.remaining_balance != null && Number.isFinite(n) && n > 0;
+  };
+
+  const missing = outstanding
+    .filter(d => !plannedIds.has(d.id))
+    .map(d => ({
+      debt: d,
+      name: d.name,
+      reason: !rateKnown(d) && !balanceKnown(d) ? 'missing-both'
+        : !rateKnown(d) ? 'missing-rate'
+        : 'missing-balance',
+    }));
+
   return {
     planned: outstanding.length - missing.length,
     outstanding: outstanding.length,
     missing,
     complete: outstanding.length > 0 && missing.length === 0,
   };
+}
+
+/**
+ * The prompt for an incomplete plan, named by what is actually blank.
+ * All rates → ask for rates. All balances → ask for balances. A mix (or a row
+ * missing both) → the neutral wording, because naming one field would send the
+ * owner looking for a gap that is not there.
+ */
+export function coveragePrompt(coverage) {
+  const n = coverage?.missing?.length || 0;
+  if (!n) return null;
+  const causes = new Set(coverage.missing.map(m => m.reason));
+  if (causes.size === 1 && causes.has('missing-rate'))    return `กรอกดอกเบี้ยอีก ${n} ก้อน`;
+  if (causes.size === 1 && causes.has('missing-balance')) return `กรอกยอดคงเหลืออีก ${n} ก้อน`;
+  return `กรอกข้อมูลหนี้อีก ${n} ก้อน`;
 }
 
 // prefers-reduced-motion — checked once, guarded for jsdom (no matchMedia).
@@ -103,10 +138,14 @@ export function MoneyPlanner({ debts, extra: extraProp, onExtraChange }) {
   const extra = controlled ? extraProp : localExtra;
   const setExtra = (v) => { if (!controlled) setLocalExtra(v); onExtraChange?.(v); };
 
-  const plan = useMemo(() => planDebts(debts), [debts]);
+  // The engine is handed only debts that are REALLY still owed — a finished
+  // loan with a stale balance is not planned for (A12 r2 · Major). The
+  // simulator's own maths is untouched; it simply gets honest rows.
+  const rows = useMemo(() => outstandingDebts(debts), [debts]);
+  const plan = useMemo(() => planDebts(rows), [rows]);
   const coverage = useMemo(() => payoffCoverage(debts), [debts]);
-  const cmp = useMemo(() => comparePayoff(debts, extra), [debts, extra]);
-  const belowInterest = useMemo(() => paymentBelowInterest(debts), [debts]);
+  const cmp = useMemo(() => comparePayoff(rows, extra), [rows, extra]);
+  const belowInterest = useMemo(() => paymentBelowInterest(rows), [rows]);
 
   if (plan.length < 1) return null;
 
@@ -243,7 +282,7 @@ export function MoneyPlanner({ debts, extra: extraProp, onExtraChange }) {
           }}>
             <Pill tone="info">กรอกเพิ่ม</Pill>
             ตัวเลขและวันข้างบนนับเฉพาะหนี้ที่กรอกครบ {coverage.planned} จาก {coverage.outstanding} ก้อน
-            {coverage.missing.length > 0 && ` — ยังไม่รวม ${coverage.missing.map(d => d.name).join(', ')}`}
+            {coverage.missing.length > 0 && ` — ยังไม่รวม ${coverage.missing.map(m => m.name).join(', ')}`}
           </div>
         )}
 
