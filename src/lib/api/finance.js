@@ -2055,7 +2055,26 @@ export function debtOutstanding(debt, yearMonth) {
  */
 export function outstandingDebts(debts = [], yearMonth) {
   const ym = yearMonth || currentYearMonth();
-  return (debts || []).filter(d => d && d.is_active !== false && debtOutstanding(d, ym) > 0);
+  return unfinishedDebts(debts, ym).filter(d => debtOutstanding(d, ym) > 0);
+}
+
+/**
+ * The ACTIVE debts whose life is not over — whatever we know about their numbers.
+ *
+ * The wider of the two lists, and the difference matters (audit A12 r3). A row
+ * with no balance, no term and no rate cannot be SHOWN to be owed, so it is not
+ * in outstandingDebts() — but it is exactly the row that needs the "กรอกเพิ่ม"
+ * prompt, and dropping it would silence the nudge that gets it filled in. So:
+ *
+ *   money figures (burn, payoff ranking, rollover, minimum-payment deadline,
+ *   payoff coverage) → outstandingDebts(): never speak for a finished loan.
+ *   the data-gap prompt                   → unfinishedDebts(): a completed row
+ *   is never a "gap", but an unknown one still is.
+ */
+export function unfinishedDebts(debts = [], yearMonth) {
+  const ym = yearMonth || currentYearMonth();
+  return (debts || []).filter(
+    d => d && d.is_active !== false && debtLifecycle(d, ym) !== 'completed');
 }
 
 /** For one debt + payment list, return status this month */
