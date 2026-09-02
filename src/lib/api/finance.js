@@ -2010,6 +2010,54 @@ export function debtLifecycle(debt, yearMonth) {
   return 'active';
 }
 
+/**
+ * What ONE debt still owes for a Bangkok month — the single definition of
+ * "outstanding" in the app (audit A12 r2 · Major).
+ *
+ * This is the arithmetic summarizeDebts has always used for คงเหลือรวม, lifted
+ * out verbatim so nothing can measure "still owed" a second way. It used to be
+ * inlined there while payoffCoverage() rolled its own, and the two disagreed on
+ * exactly the row that matters: a 12/12 loan whose remaining_balance is a stale
+ * ฿19,253. summarizeDebts said ฿0; the coverage check said "fully planned" and
+ * let the hero print a future payoff date beside that ฿0. One function, one
+ * answer, and the lifecycle predicate is consulted FIRST:
+ *
+ *   completed (debtLifecycle) → 0, whatever a stale balance still claims
+ *   a stored remaining_balance → that figure
+ *   otherwise, a known term    → instalments left × the monthly payment
+ *   nothing to go on           → 0
+ *
+ * Deliberately NOT clamped and NOT finite-guarded: this is a pure extraction,
+ * so a negative or unparseable balance flows through exactly as it did before.
+ * Callers that need a filter use outstandingDebts(), whose `> 0` test drops
+ * both cases.
+ */
+export function debtOutstanding(debt, yearMonth) {
+  if (!debt) return 0;
+  const ym = yearMonth || currentYearMonth();
+  if (debtLifecycle(debt, ym) === 'completed') return 0;
+  if (debt.remaining_balance != null) return Number(debt.remaining_balance);
+  if (debt.total_months) {
+    const remainingMonths = Math.max(0, Number(debt.total_months) - Number(debt.months_paid || 0));
+    return remainingMonths * Number(debt.monthly_payment);
+  }
+  return 0;
+}
+
+/**
+ * The ACTIVE debts that still owe something, for a Bangkok month.
+ *
+ * The one list every "which debts are we still talking about?" question reads:
+ * the หนี้ hero's payoff coverage, and the rows handed to the payoff simulator.
+ * Feeding the engine this instead of the raw table is what stops a finished
+ * loan with a stale balance from being planned for — the engine's own maths is
+ * untouched, it is simply no longer given rows that are not real debt.
+ */
+export function outstandingDebts(debts = [], yearMonth) {
+  const ym = yearMonth || currentYearMonth();
+  return (debts || []).filter(d => d && d.is_active !== false && debtOutstanding(d, ym) > 0);
+}
+
 /** For one debt + payment list, return status this month */
 export function getDebtStatus(debt, payments, yearMonth) {
   const monthKey = yearMonth + '-01';
@@ -2070,16 +2118,9 @@ export function summarizeDebts(debts, payments, yearMonth) {
     (s, d) => s + (isDone(d) ? 0 : Number(d.monthly_payment || 0)), 0);
 
   // Remaining balance estimate — a completed loan owes nothing, whatever a
-  // stale remaining_balance still says.
-  const totalRemaining = debts.reduce((s, d) => {
-    if (isDone(d)) return s;
-    if (d.remaining_balance != null) return s + Number(d.remaining_balance);
-    if (d.total_months) {
-      const remainingMonths = Math.max(0, Number(d.total_months) - Number(d.months_paid || 0));
-      return s + remainingMonths * Number(d.monthly_payment);
-    }
-    return s;
-  }, 0);
+  // stale remaining_balance still says. The per-debt arithmetic now lives in
+  // debtOutstanding() so the payoff hero measures this the same way (A12 r2).
+  const totalRemaining = debts.reduce((s, d) => s + debtOutstanding(d, ym), 0);
 
   // Months until everything is paid off (max of all individual debt remaining months)
   const maxMonthsRemaining = debts.reduce((m, d) => {
