@@ -125,6 +125,88 @@ describe('A12·1 · hero “หมดหนี้” พูดได้เฉพ
     expect(container.querySelector('[data-debt-hero]').textContent).toContain('฿120,000');
   });
 
+  // ── A12 r2 · Major — the counterexample the verify round ran against the
+  //    shipped module: a 12/12 loan whose remaining_balance was never zeroed.
+  //    summarizeDebts has always called it finished (คงเหลือรวม ฿0); the v4.61
+  //    coverage helper re-derived "outstanding" from the stale column, said the
+  //    plan was complete, and let the hero print a future date beside that ฿0.
+  it('never dates a finished loan whose remaining_balance is stale — hero reads ฿0 and no date', async () => {
+    __tables.debts.push({
+      id: 'debt-done', user_id: 'user-1', scope: 'personal', name: 'โมนี่ 1',
+      type: 'loan', monthly_payment: 19253, due_day: 5,
+      total_months: 12, months_paid: 12, remaining_balance: 19253,
+      interest_rate: 9, is_active: true,
+    });
+    const { container } = render(<FinanceView scope="personal" />);
+    await openTab('หนี้');
+
+    const hero = await waitFor(() => {
+      const el = container.querySelector('[data-debt-hero]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    const stat = await waitFor(() => {
+      const el = heroStat(container, 'หมดหนี้');
+      expect(el).toBeTruthy();
+      return el;
+    });
+
+    // The two halves of the hero agree: nothing is owed, so nothing is dated.
+    await waitFor(() => expect(stat.children[1].textContent).toBe('—'));
+    expect(hero.textContent).toContain('฿0');
+    expect(stat.children[2].textContent).toBe('ยังไม่มียอดค้างให้คำนวณ');
+    expect(hero.textContent).not.toMatch(/25\d\d/);
+    // …and the burn figure does not bill a loan that is over either.
+    expect(heroStat(container, 'ดอกเบี้ย/เดือน').children[1].textContent).toBe('฿0');
+    // With nothing real to plan, the planner does not render a run at all.
+    expect(container.querySelector('[data-clear-date]')).toBeNull();
+  });
+
+  // ── A12 r2 · Minor — the prompt names the field that is actually blank.
+  it('asks for the BALANCE, not the rate, when the rate is already filled in', async () => {
+    __tables.debts.push({
+      id: 'debt-nobal', user_id: 'user-1', scope: 'personal', name: 'ผ่อนมือถือ',
+      type: 'installment', monthly_payment: 5000, due_day: 9,
+      total_months: 12, months_paid: 3, remaining_balance: null,
+      interest_rate: 9, is_active: true,
+    });
+    const { container } = render(<FinanceView scope="personal" />);
+    await openTab('หนี้');
+
+    const stat = await waitFor(() => {
+      const el = heroStat(container, 'หมดหนี้');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    await waitFor(() => expect(stat.children[1].textContent).toBe('—'));
+    // 9 instalments × ฿5,000 still owed, so it IS outstanding…
+    expect(container.querySelector('[data-debt-hero]').textContent).toContain('฿45,000');
+    // …and the missing field is the balance. The rate is already there.
+    expect(stat.children[2].textContent).toBe('ข้อมูลไม่ครบ · กรอกยอดคงเหลืออีก 1 ก้อน');
+    expect(stat.children[2].textContent).not.toContain('ดอกเบี้ย');
+  });
+
+  it('falls back to the neutral wording when a debt is missing both fields', async () => {
+    __tables.debts.push(
+      { id: 'd-rate', user_id: 'user-1', scope: 'personal', name: 'ไลน์ BK', type: 'loan',
+        monthly_payment: 3000, due_day: 9, remaining_balance: 120000, is_active: true },
+      { id: 'd-bal', user_id: 'user-1', scope: 'personal', name: 'ผ่อนมือถือ', type: 'installment',
+        monthly_payment: 5000, due_day: 9, total_months: 12, months_paid: 3,
+        remaining_balance: null, interest_rate: 9, is_active: true },
+    );
+    const { container } = render(<FinanceView scope="personal" />);
+    await openTab('หนี้');
+
+    const stat = await waitFor(() => {
+      const el = heroStat(container, 'หมดหนี้');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    await waitFor(() => expect(stat.children[1].textContent).toBe('—'));
+    // One row wants a rate, the other a balance → name neither, count both.
+    expect(stat.children[2].textContent).toBe('ข้อมูลไม่ครบ · กรอกข้อมูลหนี้อีก 2 ก้อน');
+  });
+
   it('scopes the planner figures when only some debts are plannable', async () => {
     __tables.debts.push({ ...PLANNABLE }, { ...UNPLANNABLE });
     const { container } = render(<FinanceView scope="personal" />);

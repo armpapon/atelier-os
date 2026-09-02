@@ -11,7 +11,7 @@ import {
   summarize, aggregateByMonth, aggregateByCategory, aggregateByDay, topExpenses,
   previousMonth, lastNMonths, getMonthBounds, currentYearMonth,
   deleteTransactionsInMonth, financeMonthSummary,
-  listDebts, listDebtPayments, summarizeDebts,
+  listDebts, listDebtPayments, summarizeDebts, outstandingDebts,
   listRecurring, forecastCashFlow, computeEmergencyFundCoverage,
   monthlyRecurringTotal,
   bangkokDate, bangkokTime, isTransfer,
@@ -30,7 +30,7 @@ import { CashFlowChart } from '../components/dashboard/CashFlowChart.jsx';
 import { CategoryBreakdown, TopExpenses, BudgetProgress, NetWorthCard, DailyHeatmap } from '../components/dashboard/Charts.jsx';
 import { DebtTracker } from '../components/dashboard/DebtTracker.jsx';
 import { DebtAdvice } from '../components/dashboard/DebtAdvice.jsx';
-import { MoneyPlanner, monthOffsetLabel, payoffCoverage, DEFAULT_EXTRA } from '../components/dashboard/MoneyPlanner.jsx';
+import { MoneyPlanner, monthOffsetLabel, payoffCoverage, coveragePrompt, DEFAULT_EXTRA } from '../components/dashboard/MoneyPlanner.jsx';
 import { HeroCard, SectionCaption, InsetGroup, InsetRow, RowBar, Pill, NUM } from '../components/dashboard/InsetList.jsx';
 import { CreditCards } from '../components/dashboard/CreditCards.jsx';
 import { RecurringTracker, CashFlowForecastCard, EmergencyFundCard } from '../components/dashboard/FinanceWidgets.jsx';
@@ -1131,10 +1131,14 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   // Every one of these is a READ of an existing engine — nothing new is
   // computed here, the rows just show what the libs already return.
   const cardSummary  = useMemo(() => summarizeCards({ cards, debts }), [cards, debts]);
-  const interestBurn = useMemo(() => totalInterestBurn(debts), [debts]);
+  // Same rows the payoff hero plans over: a finished loan carrying a stale
+  // balance burns no interest, so it must not appear in this figure either —
+  // otherwise the hero reads "คงเหลือรวม ฿0" beside "ดอกเบี้ย ฿144/เดือน".
+  const owedDebts    = useMemo(() => outstandingDebts(debts), [debts]);
+  const interestBurn = useMemo(() => totalInterestBurn(owedDebts), [owedDebts]);
   const ratedDebts   = useMemo(
-    () => debts.filter(d => d.is_active !== false && Number(d.interest_rate) > 0).length,
-    [debts],
+    () => owedDebts.filter(d => Number(d.interest_rate) > 0).length,
+    [owedDebts],
   );
   const leaks = useMemo(
     () => buildLeakInsights({ txns, prevTxns, trend12: history12, debts, yearMonth }),
@@ -1153,8 +1157,11 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
   // hero used to print as "หมดหนี้ <this month>" over a ฿120,000 balance. With
   // anything missing the stat is "—" plus a prompt naming what to fill in.
   const payoffRun = useMemo(
-    () => simulatePayoff(debts, payoffExtra),
-    [debts, payoffExtra],
+    // The simulator is fed only debts that are really still owed — the same
+    // rows summarizeDebts counts — so a finished loan carrying a stale balance
+    // can never contribute a payoff month (A12 r2 · Major).
+    () => simulatePayoff(owedDebts, payoffExtra),
+    [owedDebts, payoffExtra],
   );
   const coverage = useMemo(() => payoffCoverage(debts), [debts]);
   const payoffStat = useMemo(() => {
@@ -1163,7 +1170,9 @@ export function FinanceView({ scope, tab: tabProp, onTabChange }) {
         v: '—',
         sub: coverage.outstanding === 0
           ? 'ยังไม่มียอดค้างให้คำนวณ'
-          : `ข้อมูลไม่ครบ · กรอกดอกเบี้ยอีก ${coverage.missing.length} ก้อน`,
+          // Names the field that is actually blank — asking for an interest
+          // rate that is already filled in sends the owner hunting (A12 r2).
+          : `ข้อมูลไม่ครบ · ${coveragePrompt(coverage)}`,
         subTone: 'var(--accent-strong)',
       };
     }

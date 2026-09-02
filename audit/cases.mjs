@@ -17,7 +17,7 @@ import {
   pocketSourceKey, extractAccountsFromMapped, reassignAndArchiveAccount,
   createScopeTransfer, updateTransactionMaybePaired, deleteTransactionWithPair,
   debtLifecycle, updateDebt, archiveDebt, forecastDebts, forecastCashFlow,
-  summarizeDebts, nextMonth, previousMonth,
+  summarizeDebts, debtOutstanding, outstandingDebts, nextMonth, previousMonth,
   suggestDebtPaymentLinks, detectRecurringFromTransactions, checkRecurringStatus,
   parseCSV, detectKBankColumns, mapRowsToTransactions, mapRowsWithQuarantine,
   classifyImportRows, txnMinuteKey, txnSecond, setAccountBalanceAnchor,
@@ -2046,6 +2046,37 @@ section('C · B8 · a debt has a life: upcoming → active → completed');
     `${sum.completedCount} / ${sum.upcomingCount}`);
   check('a stale remaining_balance on a completed loan cannot inflate คงเหลือรวม',
     summarizeDebts([{ ...done, remaining_balance: 19253 }], [], THIS).totalRemaining === 0);
+
+  // ── v4.62 · A12 r2 Major — ONE definition of "still owed" ──────────────────
+  // The guard above proves summarizeDebts ignores a stale balance on a finished
+  // loan. v4.61 shipped a SECOND reading of the same columns in the payoff
+  // coverage helper, which did not, so the หนี้ hero could show "฿0" and a
+  // future payoff date at once. The arithmetic now lives in debtOutstanding()
+  // and both callers consume it; these cases pin that one definition.
+  {
+    const stale = { ...done, remaining_balance: 19253 };
+    check('A12r2 debtOutstanding: ลูปที่ผ่อนครบแล้วเป็น 0 แม้ remaining_balance ค้างเป็นบวก',
+      debtOutstanding(stale, THIS) === 0,
+      String(debtOutstanding(stale, THIS)));
+    check('A12r2 debtOutstanding: ให้ตัวเลขเดียวกับที่ summarizeDebts รวมเป็นคงเหลือรวม',
+      summarizeDebts([stale, running], [], THIS).totalRemaining
+        === debtOutstanding(stale, THIS) + debtOutstanding(running, THIS));
+
+    // No stored balance → the term tells us: instalments left × the payment.
+    const byTerm = { name: 'ผ่อนมือถือ', total_months: 12, months_paid: 3,
+      monthly_payment: 5000, remaining_balance: null, interest_rate: 9, is_active: true };
+    check('A12r2 debtOutstanding: ไม่มียอดเก็บไว้ ก็คิดจากงวดที่เหลือ × ค่างวด',
+      debtOutstanding(byTerm, THIS) === 45000, String(debtOutstanding(byTerm, THIS)));
+
+    check('A12r2 outstandingDebts: คัดเฉพาะหนี้ที่ยัง active และยังค้างจริง',
+      outstandingDebts([stale, byTerm, { ...running, is_active: false }, running], THIS)
+        .map(d => d.name ?? d.id).join(',') === [byTerm, running].map(d => d.name ?? d.id).join(','),
+      outstandingDebts([stale, byTerm, { ...running, is_active: false }, running], THIS).length + ' แถว');
+
+    check('A12r2 outstandingDebts: null-safe และไม่พังกับแถวว่าง',
+      outstandingDebts().length === 0 && outstandingDebts([null, undefined]).length === 0
+      && debtOutstanding(null, THIS) === 0 && debtOutstanding({}, THIS) === 0);
+  }
 
   const fc = forecastDebts([future], 14);
   check('the forecast does not bill a debt before its start_date',
